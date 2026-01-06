@@ -6,6 +6,8 @@
     <title>View Reports | FG Operations</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 </head>
 <body>
     <!-- Loading Overlay -->
@@ -80,8 +82,40 @@
                         <label for="filterDate">Date:</label>
                         <input type="date" id="filterDate" class="filter-select" onchange="loadReports()">
                     </div>
-                    <button class="btn btn-secondary" onclick="clearFilters()">
-                        <i class="fas fa-redo"></i> Clear
+                    <div class="filter-group">
+                        <button class="btn btn-secondary" onclick="clearFilters()">
+                            <i class="fas fa-redo"></i> Clear
+                        </button>
+                        <div class="export-dropdown">
+                            <button class="btn btn-primary export-toggle" onclick="exportReports()">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                            <div class="export-options">
+                                <button class="export-option" onclick="exportReports('all')">
+                                    <i class="fas fa-download"></i> Export All Reports
+                                </button>
+                                <button class="export-option" onclick="exportReports('current')">
+                                    <i class="fas fa-filter"></i> Export Filtered Reports
+                                </button>
+                                <button class="export-option" onclick="exportReports('date')">
+                                    <i class="fas fa-calendar"></i> Export by Date
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Export Date Selector (hidden by default) -->
+            <div id="exportDateContainer" class="export-date-container" style="display: none;">
+                <div class="filter-group">
+                    <label for="exportDate">Select Date:</label>
+                    <input type="date" id="exportDate" class="filter-select">
+                    <button class="btn btn-primary" onclick="exportReports('date')">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                    <button class="btn btn-secondary" onclick="hideExportDate()">
+                        <i class="fas fa-times"></i> Cancel
                     </button>
                 </div>
             </div>

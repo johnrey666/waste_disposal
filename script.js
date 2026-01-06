@@ -811,6 +811,359 @@ function applyFiltersClientSide(reports) {
 }
 
 // ================================
+// EXPORT FUNCTIONS
+// ================================
+function showExportProgress(show, message = 'Preparing export...') {
+    let progressEl = document.getElementById('exportProgress');
+    
+    if (!progressEl) {
+        progressEl = document.createElement('div');
+        progressEl.id = 'exportProgress';
+        progressEl.className = 'loading-overlay';
+        progressEl.innerHTML = `
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 20px; color: var(--color-primary); font-weight: 500;">${message}</p>
+        `;
+        document.body.appendChild(progressEl);
+    }
+    
+    progressEl.style.display = show ? 'flex' : 'none';
+    if (show) {
+        const messageEl = progressEl.querySelector('p');
+        if (messageEl) messageEl.textContent = message;
+    }
+}
+
+function showExportDate() {
+    const exportDateContainer = document.getElementById('exportDateContainer');
+    if (exportDateContainer) {
+        exportDateContainer.style.display = 'block';
+        const exportDateInput = document.getElementById('exportDate');
+        if (exportDateInput) {
+            const today = new Date().toISOString().split('T')[0];
+            exportDateInput.value = today;
+        }
+    }
+}
+
+function hideExportDate() {
+    const exportDateContainer = document.getElementById('exportDateContainer');
+    if (exportDateContainer) {
+        exportDateContainer.style.display = 'none';
+    }
+}
+
+async function exportReports(type = 'current') {
+    try {
+        if (type === 'date') {
+            showExportDate();
+            return;
+        }
+        
+        showExportProgress(true, 'Gathering report data...');
+        
+        let reportsToExport = [];
+        
+        if (type === 'all') {
+            // Export all reports from database
+            showExportProgress(true, 'Loading all reports...');
+            const snapshot = await db.collection('wasteReports')
+                .orderBy('submittedAt', 'desc')
+                .get();
+            
+            snapshot.forEach(doc => {
+                const report = { id: doc.id, ...doc.data() };
+                reportsToExport.push(report);
+            });
+            
+        } else {
+            // Export current filtered results (from cache)
+            showExportProgress(true, 'Loading filtered reports...');
+            
+            if (!allReportsCache) {
+                await loadAllReportsForFiltering();
+            }
+            
+            if (allReportsCache) {
+                reportsToExport = applyFiltersClientSide(allReportsCache);
+            }
+        }
+        
+        if (reportsToExport.length === 0) {
+            showExportProgress(false);
+            showNotification('No reports to export with current filters', 'info');
+            return;
+        }
+        
+        showExportProgress(true, `Processing ${reportsToExport.length} reports...`);
+        
+        // Prepare data for export
+        const exportData = reportsToExport.map(report => {
+            // Flatten the data for Excel
+            const itemData = {};
+            
+            // Basic report info
+            itemData['Report ID'] = report.reportId || 'N/A';
+            itemData['Store'] = report.store || 'N/A';
+            itemData['Personnel'] = report.personnel || 'N/A';
+            itemData['Email'] = report.email || 'N/A';
+            itemData['Report Date'] = formatDate(report.reportDate);
+            itemData['Disposal Type'] = report.disposalType || 'N/A';
+            itemData['Submitted'] = formatDateTime(report.submittedAt);
+            itemData['Status'] = report.status || 'Submitted';
+            
+            // Handle items based on type
+            if (report.disposalType === 'expired' && report.expiredItems) {
+                itemData['Total Items'] = report.expiredItems.length;
+                itemData['Item Details'] = report.expiredItems.map(item => 
+                    `${item.quantity} ${item.unit} of ${item.item} (Exp: ${formatDate(item.expirationDate)})`
+                ).join('; ');
+            } else if (report.disposalType === 'waste' && report.wasteItems) {
+                itemData['Total Items'] = report.wasteItems.length;
+                itemData['Item Details'] = report.wasteItems.map(item => 
+                    `${item.quantity} ${item.unit} of ${item.item} - ${item.reason}`
+                ).join('; ');
+            } else if (report.disposalType === 'noWaste') {
+                itemData['Total Items'] = 0;
+                itemData['Item Details'] = 'No waste reported';
+            }
+            
+            // Add metadata
+            itemData['Created At'] = formatDateTime(report.createdAt);
+            itemData['Report Size (KB)'] = report.reportSizeKB || 'N/A';
+            
+            return itemData;
+        });
+        
+        showExportProgress(true, 'Creating Excel file...');
+        
+        // Create workbook
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        
+        // Set column widths
+        const wscols = [
+            { wch: 12 }, // Report ID
+            { wch: 20 }, // Store
+            { wch: 18 }, // Personnel
+            { wch: 25 }, // Email
+            { wch: 12 }, // Report Date
+            { wch: 15 }, // Disposal Type
+            { wch: 18 }, // Submitted
+            { wch: 10 }, // Status
+            { wch: 10 }, // Total Items
+            { wch: 50 }, // Item Details
+            { wch: 18 }, // Created At
+            { wch: 15 }  // Report Size
+        ];
+        ws['!cols'] = wscols;
+        
+        // Add header styling
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const address = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (!ws[address]) continue;
+            ws[address].s = {
+                font: { bold: true },
+                fill: { fgColor: { rgb: "E8F5E9" } },
+                alignment: { vertical: "center", horizontal: "center" }
+            };
+        }
+        
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Waste Reports');
+        
+        // Add summary sheet
+        const summaryData = generateExportSummary(reportsToExport);
+        const ws2 = XLSX.utils.json_to_sheet(summaryData);
+        ws2['!cols'] = [{ wch: 30 }, { wch: 15 }];
+        XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+        
+        // Generate filename
+        let filename = 'waste_reports';
+        if (type === 'all') {
+            filename = `waste_reports_all_${new Date().toISOString().slice(0, 10)}`;
+        } else {
+            const filters = getActiveFilterText();
+            if (filters) {
+                filename = `waste_reports_filtered_${new Date().toISOString().slice(0, 10)}`;
+            } else {
+                filename = `waste_reports_${new Date().toISOString().slice(0, 10)}`;
+            }
+        }
+        
+        // Save file
+        showExportProgress(true, 'Saving file...');
+        XLSX.writeFile(wb, `${filename}.xlsx`);
+        
+        showExportProgress(false);
+        showNotification(`Exported ${reportsToExport.length} reports successfully!`, 'success');
+        
+    } catch (error) {
+        console.error('Error exporting reports:', error);
+        showExportProgress(false);
+        showNotification('Error exporting reports: ' + error.message, 'error');
+    }
+}
+
+async function exportReportsByDate() {
+    const exportDateEl = document.getElementById('exportDate');
+    const exportDate = exportDateEl ? exportDateEl.value : '';
+    
+    if (!exportDate) {
+        showNotification('Please select a date for export', 'error');
+        return;
+    }
+    
+    try {
+        showExportProgress(true, `Loading reports for ${exportDate}...`);
+        
+        const snapshot = await db.collection('wasteReports')
+            .where('reportDate', '==', exportDate)
+            .orderBy('submittedAt', 'desc')
+            .get();
+        
+        const reportsToExport = [];
+        snapshot.forEach(doc => {
+            const report = { id: doc.id, ...doc.data() };
+            reportsToExport.push(report);
+        });
+        
+        if (reportsToExport.length === 0) {
+            showExportProgress(false);
+            showNotification(`No reports found for ${exportDate}`, 'info');
+            hideExportDate();
+            return;
+        }
+        
+        // Continue with export...
+        showExportProgress(true, `Processing ${reportsToExport.length} reports...`);
+        
+        // Prepare data for export (same as exportReports function)
+        const exportData = reportsToExport.map(report => {
+            const itemData = {};
+            itemData['Report ID'] = report.reportId || 'N/A';
+            itemData['Store'] = report.store || 'N/A';
+            itemData['Personnel'] = report.personnel || 'N/A';
+            itemData['Email'] = report.email || 'N/A';
+            itemData['Report Date'] = formatDate(report.reportDate);
+            itemData['Disposal Type'] = report.disposalType || 'N/A';
+            itemData['Submitted'] = formatDateTime(report.submittedAt);
+            itemData['Status'] = report.status || 'Submitted';
+            
+            if (report.disposalType === 'expired' && report.expiredItems) {
+                itemData['Total Items'] = report.expiredItems.length;
+                itemData['Item Details'] = report.expiredItems.map(item => 
+                    `${item.quantity} ${item.unit} of ${item.item}`
+                ).join('; ');
+            } else if (report.disposalType === 'waste' && report.wasteItems) {
+                itemData['Total Items'] = report.wasteItems.length;
+                itemData['Item Details'] = report.wasteItems.map(item => 
+                    `${item.quantity} ${item.unit} of ${item.item}`
+                ).join('; ');
+            }
+            
+            return itemData;
+        });
+        
+        // Create workbook
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `Reports ${exportDate}`);
+        
+        // Save file
+        XLSX.writeFile(wb, `waste_reports_${exportDate}.xlsx`);
+        
+        showExportProgress(false);
+        hideExportDate();
+        showNotification(`Exported ${reportsToExport.length} reports for ${exportDate} successfully!`, 'success');
+        
+    } catch (error) {
+        console.error('Error exporting reports by date:', error);
+        showExportProgress(false);
+        hideExportDate();
+        showNotification('Error exporting reports: ' + error.message, 'error');
+    }
+}
+
+function generateExportSummary(reports) {
+    const summary = [];
+    
+    // Total reports
+    summary.push({ 'Metric': 'Total Reports', 'Value': reports.length });
+    
+    // By type
+    const byType = reports.reduce((acc, report) => {
+        const type = report.disposalType || 'unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+    }, {});
+    
+    summary.push({ 'Metric': '--- By Type ---', 'Value': '' });
+    Object.entries(byType).forEach(([type, count]) => {
+        summary.push({ 'Metric': `${type.charAt(0).toUpperCase() + type.slice(1)} Reports`, 'Value': count });
+    });
+    
+    // Items summary
+    let totalItems = 0;
+    let totalExpired = 0;
+    let totalWaste = 0;
+    
+    reports.forEach(report => {
+        if (report.disposalType === 'expired' && report.expiredItems) {
+            totalExpired += report.expiredItems.length;
+            totalItems += report.expiredItems.length;
+        } else if (report.disposalType === 'waste' && report.wasteItems) {
+            totalWaste += report.wasteItems.length;
+            totalItems += report.wasteItems.length;
+        }
+    });
+    
+    summary.push({ 'Metric': '--- Items Summary ---', 'Value': '' });
+    summary.push({ 'Metric': 'Total Items Reported', 'Value': totalItems });
+    summary.push({ 'Metric': 'Expired Items', 'Value': totalExpired });
+    summary.push({ 'Metric': 'Waste Items', 'Value': totalWaste });
+    
+    // Date range
+    if (reports.length > 0) {
+        const dates = reports.map(r => r.reportDate).filter(Boolean);
+        if (dates.length > 0) {
+            dates.sort();
+            summary.push({ 'Metric': '--- Date Range ---', 'Value': '' });
+            summary.push({ 'Metric': 'Earliest Report', 'Value': formatDate(dates[0]) });
+            summary.push({ 'Metric': 'Latest Report', 'Value': formatDate(dates[dates.length - 1]) });
+        }
+    }
+    
+    return summary;
+}
+
+function getActiveFilterText() {
+    const filters = [];
+    
+    const storeFilter = document.getElementById('filterStore');
+    if (storeFilter && storeFilter.value) {
+        filters.push(`Store: ${storeFilter.value}`);
+    }
+    
+    const typeFilter = document.getElementById('filterType');
+    if (typeFilter && typeFilter.value) {
+        filters.push(`Type: ${typeFilter.value}`);
+    }
+    
+    const dateFilter = document.getElementById('filterDate');
+    if (dateFilter && dateFilter.value) {
+        filters.push(`Date: ${dateFilter.value}`);
+    }
+    
+    const searchEmail = document.getElementById('searchEmail');
+    if (searchEmail && searchEmail.value) {
+        filters.push(`Email: ${searchEmail.value}`);
+    }
+    
+    return filters.length > 0 ? filters.join(', ') : null;
+}
+
+// ================================
 // REPORTS VIEW FUNCTIONS
 // ================================
 async function loadReports() {
@@ -1498,6 +1851,18 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Setup export dropdown
+    const exportDropdown = document.querySelector('.export-dropdown');
+    if (exportDropdown) {
+        exportDropdown.addEventListener('mouseenter', function() {
+            this.querySelector('.export-options').style.display = 'block';
+        });
+        
+        exportDropdown.addEventListener('mouseleave', function() {
+            this.querySelector('.export-options').style.display = 'none';
+        });
+    }
+    
     // Close modals when clicking outside
     window.addEventListener('click', function(event) {
         const detailsModal = document.getElementById('detailsModal');
@@ -1578,3 +1943,4 @@ window.clearCache = () => {
     console.log('Cache cleared');
     showNotification('Cache cleared', 'success');
 };
+window.exportReportsByDate = exportReportsByDate;
