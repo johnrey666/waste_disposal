@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Reports | FG Operations</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+    </div>
+    
+    <!-- Notification Container -->
+    <div id="notification" class="notification"></div>
+    
+    <div class="container">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-brand">
+                <i class="fas fa-recycle"></i>
+                <span>FG Operations</span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="submit_waste_report.html">Report Waste</a></li>
+                <li><a href="waste_report_table.html" class="active">View Reports</a></li>
+            </ul>
+            <div class="nav-actions">
+                <button class="btn btn-primary" onclick="window.location.href='submit_waste_report.html'">
+                    <i class="fas fa-plus"></i> New Report
+                </button>
+            </div>
+        </nav>
+
+        <!-- Reports Table Section -->
+        <section class="reports-section">
+            <div class="section-header">
+                <h1><i class="fas fa-list"></i> Submitted Reports</h1>
+                <p>All Waste/Disposal Reports</p>
+            </div>
+
+            <!-- Filters -->
+            <div class="table-controls">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchEmail" placeholder="Search by email..." oninput="loadReports()">
+                </div>
+                <div class="filter-controls">
+                    <div class="filter-group">
+                        <label for="filterStore">Store:</label>
+                        <select id="filterStore" class="filter-select" onchange="loadReports()">
+                            <option value="">All Stores</option>
+                            <option>FG Express IROSIN</option>
+                            <option>FG Express LIGAO</option>
+                            <option>FG Express POLANGUI</option>
+                            <option>FG Express MASBATE</option>
+                            <option>FG Express DARAGA</option>
+                            <option>FG Express BAAO</option>
+                            <option>FG Express PIODURAN</option>
+                            <option>FG Express RIZAL</option>
+                            <option>FG to go TABACO</option>
+                            <option>FG to go LEGAZPI</option>
+                            <option>FG LEGAZPI</option>
+                            <option>FG NAGA</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterType">Type:</label>
+                        <select id="filterType" class="filter-select" onchange="loadReports()">
+                            <option value="">All Types</option>
+                            <option value="expired">Expired Items</option>
+                            <option value="waste">Waste</option>
+                            <option value="noWaste">No Waste</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterDate">Date:</label>
+                        <input type="date" id="filterDate" class="filter-select" onchange="loadReports()">
+                    </div>
+                    <button class="btn btn-secondary" onclick="clearFilters()">
+                        <i class="fas fa-redo"></i> Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- Reports Table -->
+            <div class="table-container">
+                <table id="reportsTable">
+                    <thead>
+                        <tr>
+                            <th>Report ID</th>
+                            <th>Store</th>
+                            <th>Personnel</th>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Email</th>
+                            <th>Submitted</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reportsTableBody">
+                        <!-- Reports will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="table-info">
+                <div class="info-text">
+                    Showing <span id="showingCount">0</span> reports
+                </div>
+                <div class="page-navigation">
+                    <button class="page-btn" id="prevPageBtn" onclick="changePage(-1)" disabled>
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                    <div class="page-info" id="pageInfo">Page 1</div>
+                    <button class="page-btn" id="nextPageBtn" onclick="changePage(1)" disabled>
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Statistics -->
+        <section class="statistics-section">
+            <h2><i class="fas fa-chart-pie"></i> Report Statistics</h2>
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <div class="stat-icon total-reports">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="totalReports">0</h3>
+                        <p>Total Reports</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon expired">
+                        <i class="fas fa-calendar-times"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="expiredCount">0</h3>
+                        <p>Expired Items</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon waste">
+                        <i class="fas fa-trash-alt"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="wasteCount">0</h3>
+                        <p>Waste Reports</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon nowaste">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="noWasteCount">0</h3>
+                        <p>No Waste</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <i class="fas fa-recycle"></i>
+                    <span>FG Operations Waste/Disposal Reporting System</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Report Details Modal -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-alt"></i> Report Details</h3>
+                <span class="close-modal" onclick="closeDetailsModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="modalContent">
+                <!-- Report details will be loaded here -->
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="closeDetailsModal()">
+                    <i class="fas fa-times"></i> Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image View Modal -->
+    <div id="imageModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-image"></i> Image Preview</h3>
+                <span class="close-modal" onclick="closeImageModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <img id="modalImage" src="" alt="Preview" style="width: 100%; max-height: 70vh; object-fit: contain;">
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

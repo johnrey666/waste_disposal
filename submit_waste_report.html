@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Waste Report | FG Operations</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+    </div>
+    
+    <!-- Notification Container -->
+    <div id="notification" class="notification"></div>
+    
+    <div class="container">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-brand">
+                <i class="fas fa-recycle"></i>
+                <span>FG Operations</span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="submit_waste_report.html" class="active">Report Waste</a></li>
+                <li><a href="waste_report_table.html">View Reports</a></li>
+            </ul>
+            <div class="nav-actions">
+                <button class="btn btn-secondary" onclick="window.location.href='index.html'">
+                    <i class="fas fa-home"></i> Home
+                </button>
+            </div>
+        </nav>
+
+        <!-- Report Form Section -->
+        <section class="report-form-section">
+            <div class="form-header">
+                <h1><i class="fas fa-file-alt"></i> Submit Waste/Disposal Report</h1>
+                <p>Daily Report Form</p>
+            </div>
+
+            <form id="wasteReportForm" class="report-form">
+                <!-- Email -->
+                <div class="form-group">
+                    <label for="email">
+                        <i class="fas fa-envelope"></i> Email <span class="required">*</span>
+                    </label>
+                    <input type="email" id="email" name="email" required placeholder="name@example.com">
+                </div>
+
+                <!-- Store -->
+                <div class="form-group">
+                    <label for="store">
+                        <i class="fas fa-store"></i> Name of Store <span class="required">*</span>
+                    </label>
+                    <select id="store" name="store" required>
+                        <option value="" disabled selected>Select store location</option>
+                        <option>FG Express IROSIN</option>
+                        <option>FG Express LIGAO</option>
+                        <option>FG Express POLANGUI</option>
+                        <option>FG Express MASBATE</option>
+                        <option>FG Express DARAGA</option>
+                        <option>FG Express BAAO</option>
+                        <option>FG Express PIODURAN</option>
+                        <option>FG Express RIZAL</option>
+                        <option>FG to go TABACO</option>
+                        <option>FG to go LEGAZPI</option>
+                        <option>FG LEGAZPI</option>
+                        <option>FG NAGA</option>
+                    </select>
+                </div>
+
+                <!-- Personnel -->
+                <div class="form-group">
+                    <label for="personnel">
+                        <i class="fas fa-user"></i> Name of Personnel <span class="required">*</span>
+                    </label>
+                    <input type="text" id="personnel" name="personnel" required placeholder="Enter your full name">
+                    <span class="note">Please indicate your complete name</span>
+                </div>
+
+                <!-- Report Date -->
+                <div class="form-group">
+                    <label for="reportDate">
+                        <i class="fas fa-calendar"></i> Disposal Report Date <span class="required">*</span>
+                    </label>
+                    <input type="date" id="reportDate" name="reportDate" required>
+                </div>
+
+                <!-- Disposal Type -->
+                <div class="form-group">
+                    <label>
+                        <i class="fas fa-trash"></i> Type of Food Disposal <span class="required">*</span>
+                    </label>
+                    <span class="note">Please choose the correct disposal type</span>
+                    
+                    <div class="disposal-options">
+                        <div class="disposal-option">
+                            <input type="radio" id="expired" name="disposalType" value="expired" required onchange="toggleDynamicFields()">
+                            <label for="expired" class="disposal-label">
+                                <div class="disposal-icon">
+                                    <i class="fas fa-calendar-times"></i>
+                                </div>
+                                <div class="disposal-name">Expired Items</div>
+                                <div class="disposal-desc">Food products past expiration date</div>
+                            </label>
+                        </div>
+                        
+                        <div class="disposal-option">
+                            <input type="radio" id="waste" name="disposalType" value="waste" required onchange="toggleDynamicFields()">
+                            <label for="waste" class="disposal-label">
+                                <div class="disposal-icon">
+                                    <i class="fas fa-trash-alt"></i>
+                                </div>
+                                <div class="disposal-name">Waste</div>
+                                <div class="disposal-desc">Food spoilage or preparation waste</div>
+                            </label>
+                        </div>
+                        
+                        <div class="disposal-option">
+                            <input type="radio" id="noWaste" name="disposalType" value="noWaste" required onchange="toggleDynamicFields()">
+                            <label for="noWaste" class="disposal-label">
+                                <div class="disposal-icon">
+                                    <i class="fas fa-check-circle"></i>
+                                </div>
+                                <div class="disposal-name">No Waste</div>
+                                <div class="disposal-desc">No disposal required this period</div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expired Items Container -->
+                <div id="expiredContainer" class="dynamic-container">
+                    <h3><i class="fas fa-boxes"></i> Expired Items Details</h3>
+                    <div class="note">Add each expired item individually. Documentation is required per item.</div>
+                    
+                    <div id="expiredFields" class="dynamic-fields">
+                        <!-- Expired items will be added here dynamically -->
+                    </div>
+                    
+                    <button type="button" class="btn btn-secondary" onclick="addExpiredItem()">
+                        <i class="fas fa-plus"></i> Add Expired Item
+                    </button>
+                </div>
+
+                <!-- Waste Container -->
+                <div id="wasteContainer" class="dynamic-container">
+                    <h3><i class="fas fa-trash"></i> Waste Details</h3>
+                    <div class="note">Add each waste item individually. Documentation is required per item.</div>
+                    
+                    <div id="wasteFields" class="dynamic-fields">
+                        <!-- Waste items will be added here dynamically -->
+                    </div>
+                    
+                    <button type="button" class="btn btn-secondary" onclick="addWasteItem()">
+                        <i class="fas fa-plus"></i> Add Waste Item
+                    </button>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="window.location.href='index.html'">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane"></i> Submit Report
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <i class="fas fa-recycle"></i>
+                    <span>FG Operations Waste/Disposal Reporting System</span>
+                </div>
+                <p>Never submit sensitive information on demo forms.</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Report Details Modal -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-alt"></i> Report Details</h3>
+                <span class="close-modal" onclick="closeDetailsModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="modalContent">
+                <!-- Report details will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
