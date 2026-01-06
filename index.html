@@ -1,0 +1,2309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FG Operations - Waste/Disposal Reporting</title>
+    
+    <!-- Add Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
+    <style>
+        /* Simplified Base Styles */
+        :root {
+            --color-white: #ffffff;
+            --color-offwhite: #f8f9fa;
+            --color-lightgray: #e9ecef;
+            --color-gray: #6c757d;
+            --color-darkgray: #495057;
+            --color-black: #212529;
+            --color-primary: #2c3e50;
+            --color-primary-light: #3a506b;
+            --color-accent: #3498db;
+            --color-accent-light: #ebf5fb;
+            --color-error: #e74c3c;
+            --color-success: #27ae60;
+            --color-warning: #f39c12;
+            
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 16px;
+            --spacing-lg: 24px;
+            --spacing-xl: 32px;
+            
+            --border-radius: 6px;
+            --border-radius-sm: 4px;
+            
+            --font-primary: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            --font-size-sm: 13px;
+            --font-size-base: 14px;
+            --font-size-md: 16px;
+            --font-size-lg: 18px;
+            
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.12);
+            --shadow-md: 0 2px 4px rgba(0,0,0,0.08);
+            --shadow-lg: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--font-primary);
+            background-color: var(--color-offwhite);
+            color: var(--color-black);
+            line-height: 1.5;
+            min-height: 100vh;
+            padding: var(--spacing-xl);
+        }
+        
+        /* Landing Page */
+        .landing-container {
+            background: var(--color-white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+        
+        .landing-header {
+            background-color: var(--color-primary);
+            color: var(--color-white);
+            padding: var(--spacing-xl);
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .landing-logo-container {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto var(--spacing-lg);
+            background: var(--color-white);
+            border-radius: var(--border-radius-sm);
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .landing-logo-img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .landing-logo-placeholder {
+            width: 100%;
+            height: 100%;
+            background: var(--color-accent);
+            border-radius: var(--border-radius-sm);
+        }
+        
+        .landing-header h1 {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        .landing-subtitle {
+            font-size: var(--font-size-base);
+            opacity: 0.9;
+        }
+        
+        .landing-content {
+            padding: var(--spacing-xl);
+            text-align: center;
+        }
+        
+        .landing-description {
+            font-size: var(--font-size-base);
+            color: var(--color-gray);
+            margin-bottom: var(--spacing-xl);
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--spacing-lg);
+            margin: var(--spacing-xl) 0;
+        }
+        
+        .action-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: var(--spacing-xl);
+            background-color: var(--color-white);
+            border: 2px solid var(--color-lightgray);
+            border-radius: var(--border-radius);
+            text-decoration: none;
+            color: var(--color-black);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .action-btn:hover {
+            border-color: var(--color-accent);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .action-icon {
+            font-size: 48px;
+            margin-bottom: var(--spacing-md);
+            opacity: 0.8;
+        }
+        
+        .action-title {
+            font-size: var(--font-size-md);
+            font-weight: 600;
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        .action-description {
+            font-size: var(--font-size-sm);
+            color: var(--color-gray);
+        }
+        
+        /* Back Button */
+        .back-btn {
+            background-color: var(--color-lightgray);
+            color: var(--color-darkgray);
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--border-radius-sm);
+            font-size: var(--font-size-base);
+            cursor: pointer;
+            margin-bottom: var(--spacing-lg);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+        
+        .back-btn:hover {
+            background-color: var(--color-gray);
+            color: var(--color-white);
+        }
+        
+        /* Form Container */
+        .form-container {
+            background: var(--color-white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+        
+        /* Header */
+        .header {
+            background-color: var(--color-primary);
+            color: var(--color-white);
+            padding: var(--spacing-xl);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-lg);
+        }
+        
+        .logo-container {
+            flex-shrink: 0;
+            width: 60px;
+            height: 60px;
+            background: var(--color-white);
+            border-radius: var(--border-radius-sm);
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .logo-img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .logo-placeholder {
+            width: 100%;
+            height: 100%;
+            background: var(--color-accent);
+            border-radius: var(--border-radius-sm);
+        }
+        
+        .header-text {
+            flex: 1;
+        }
+        
+        .header h1 {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        .header .subtitle {
+            font-size: var(--font-size-sm);
+            opacity: 0.9;
+        }
+        
+        /* Content */
+        .content {
+            padding: var(--spacing-xl);
+        }
+        
+        /* Form */
+        .form {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-xl);
+        }
+        
+        .question {
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .question label {
+            display: block;
+            font-size: var(--font-size-base);
+            font-weight: 500;
+            margin-bottom: var(--spacing-sm);
+            color: var(--color-black);
+        }
+        
+        .required {
+            color: var(--color-error);
+        }
+        
+        /* Input Fields */
+        input[type="email"],
+        input[type="text"],
+        input[type="date"],
+        input[type="number"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            font-size: var(--font-size-base);
+            font-family: var(--font-primary);
+            border: 1px solid var(--color-lightgray);
+            border-radius: var(--border-radius-sm);
+            background-color: var(--color-white);
+            color: var(--color-black);
+            transition: border-color 0.15s ease;
+        }
+        
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--color-accent);
+        }
+        
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23495057' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px;
+            padding-right: 36px;
+        }
+        
+        /* Disposal Options */
+        .disposal-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-sm);
+        }
+        
+        .disposal-option {
+            position: relative;
+        }
+        
+        .disposal-option input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+        }
+        
+        .disposal-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: var(--spacing-lg);
+            border: 1px solid var(--color-lightgray);
+            border-radius: var(--border-radius-sm);
+            background-color: var(--color-white);
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.15s ease;
+        }
+        
+        .disposal-label:hover {
+            border-color: var(--color-gray);
+        }
+        
+        .disposal-option input[type="radio"]:checked + .disposal-label {
+            border-color: var(--color-accent);
+            background-color: var(--color-accent-light);
+        }
+        
+        .disposal-icon {
+            font-size: 24px;
+            margin-bottom: var(--spacing-sm);
+            opacity: 0.8;
+        }
+        
+        .disposal-name {
+            font-weight: 500;
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        .disposal-desc {
+            font-size: var(--font-size-sm);
+            color: var(--color-gray);
+        }
+        
+        /* Dynamic Containers */
+        .dynamic-container {
+            margin-top: var(--spacing-lg);
+            padding: var(--spacing-lg);
+            background-color: var(--color-offwhite);
+            border-radius: var(--border-radius-sm);
+            border: 1px solid var(--color-lightgray);
+            display: none;
+        }
+        
+        .dynamic-container.show {
+            display: block;
+        }
+        
+        .dynamic-container h3 {
+            font-size: var(--font-size-md);
+            font-weight: 600;
+            margin-bottom: var(--spacing-md);
+            color: var(--color-primary);
+        }
+        
+        .dynamic-fields {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-lg);
+        }
+        
+        .field-group {
+            padding: var(--spacing-lg);
+            background-color: var(--color-white);
+            border-radius: var(--border-radius-sm);
+            border: 1px solid var(--color-lightgray);
+            position: relative;
+        }
+        
+        .field-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-lg);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 1px solid var(--color-lightgray);
+        }
+        
+        .field-title {
+            font-weight: 500;
+            color: var(--color-darkgray);
+        }
+        
+        .remove-btn {
+            background-color: var(--color-error);
+            color: white;
+            border: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .add-btn {
+            background-color: var(--color-primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: var(--border-radius-sm);
+            font-size: var(--font-size-base);
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: var(--spacing-lg);
+            transition: background-color 0.15s ease;
+        }
+        
+        .add-btn:hover {
+            background-color: var(--color-primary-light);
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-md);
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-xs);
+        }
+        
+        .form-group label {
+            font-size: var(--font-size-sm);
+            color: var(--color-gray);
+        }
+        
+        /* File Upload */
+        .file-upload-container {
+            margin-top: var(--spacing-sm);
+        }
+        
+        .file-input-group input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--color-lightgray);
+            border-radius: var(--border-radius-sm);
+            background-color: var(--color-white);
+        }
+        
+        /* File preview styles */
+        .file-preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--spacing-sm);
+            margin-top: var(--spacing-sm);
+        }
+        
+        .file-preview-item {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            border-radius: var(--border-radius-sm);
+            overflow: hidden;
+            border: 1px solid var(--color-lightgray);
+        }
+        
+        .file-preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .file-preview-item .remove-file {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background-color: var(--color-error);
+            color: white;
+            border: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .file-preview-item.pdf-file {
+            background-color: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .file-info {
+            font-size: var(--font-size-sm);
+            color: var(--color-gray);
+            margin-top: var(--spacing-xs);
+        }
+        
+        /* Note */
+        .note {
+            font-size: var(--font-size-sm);
+            color: var(--color-gray);
+            margin-top: var(--spacing-xs);
+            display: block;
+        }
+        
+        /* Submit Button */
+        .submit-btn {
+            background-color: var(--color-primary);
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            font-size: var(--font-size-base);
+            font-weight: 500;
+            border-radius: var(--border-radius-sm);
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+            margin-top: var(--spacing-lg);
+        }
+        
+        .submit-btn:hover {
+            background-color: var(--color-primary-light);
+        }
+        
+        .submit-btn:disabled {
+            background-color: var(--color-lightgray);
+            cursor: not-allowed;
+        }
+        
+        /* Reports Table */
+        .reports-container {
+            background: var(--color-white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+        
+        .reports-header {
+            padding: var(--spacing-xl);
+            border-bottom: 1px solid var(--color-lightgray);
+        }
+        
+        .reports-header h1 {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            margin-bottom: var(--spacing-xs);
+            color: var(--color-primary);
+        }
+        
+        .filters {
+            display: flex;
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-lg);
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-xs);
+            min-width: 200px;
+        }
+        
+        .filter-group label {
+            font-size: var(--font-size-sm);
+            font-weight: 500;
+            color: var(--color-darkgray);
+        }
+        
+        .reports-table-container {
+            overflow-x: auto;
+            padding: var(--spacing-md);
+        }
+        
+        .reports-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: var(--font-size-sm);
+        }
+        
+        .reports-table th {
+            background-color: var(--color-offwhite);
+            padding: var(--spacing-md);
+            text-align: left;
+            font-weight: 600;
+            color: var(--color-darkgray);
+            border-bottom: 2px solid var(--color-lightgray);
+        }
+        
+        .reports-table td {
+            padding: var(--spacing-md);
+            border-bottom: 1px solid var(--color-lightgray);
+            vertical-align: top;
+        }
+        
+        .reports-table tr:hover {
+            background-color: var(--color-accent-light);
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .status-submitted {
+            background-color: var(--color-accent-light);
+            color: var(--color-accent);
+        }
+        
+        .type-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .type-expired {
+            background-color: #ffeaa7;
+            color: #e17055;
+        }
+        
+        .type-waste {
+            background-color: #fab1a0;
+            color: #d63031;
+        }
+        
+        .type-noWaste {
+            background-color: #55efc4;
+            color: #00b894;
+        }
+        
+        .view-details-btn {
+            background-color: var(--color-primary);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: var(--border-radius-sm);
+            font-size: var(--font-size-sm);
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+        
+        .view-details-btn:hover {
+            background-color: var(--color-primary-light);
+        }
+        
+        .details-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 3000;
+            padding: var(--spacing-xl);
+        }
+        
+        .modal-content {
+            background-color: var(--color-white);
+            border-radius: var(--border-radius);
+            width: 100%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: var(--spacing-xl);
+            position: relative;
+        }
+        
+        .modal-close {
+            position: absolute;
+            top: var(--spacing-md);
+            right: var(--spacing-md);
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--color-gray);
+        }
+        
+        .modal-close:hover {
+            color: var(--color-error);
+        }
+        
+        .details-section {
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        .details-section h3 {
+            font-size: var(--font-size-md);
+            font-weight: 600;
+            margin-bottom: var(--spacing-md);
+            color: var(--color-primary);
+            padding-bottom: var(--spacing-sm);
+            border-bottom: 1px solid var(--color-lightgray);
+        }
+        
+        .details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-md);
+        }
+        
+        .detail-item {
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .detail-label {
+            font-size: var(--font-size-sm);
+            color: var(--color-gray);
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        .detail-value {
+            font-size: var(--font-size-base);
+            font-weight: 500;
+        }
+        
+        .item-list {
+            background-color: var(--color-offwhite);
+            border-radius: var(--border-radius-sm);
+            padding: var(--spacing-md);
+            margin-top: var(--spacing-md);
+        }
+        
+        .item-list-item {
+            padding: var(--spacing-md);
+            background-color: var(--color-white);
+            border-radius: var(--border-radius-sm);
+            margin-bottom: var(--spacing-md);
+            border: 1px solid var(--color-lightgray);
+        }
+        
+        .image-gallery {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--spacing-sm);
+            margin-top: var(--spacing-md);
+        }
+        
+        .image-thumbnail {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: var(--border-radius-sm);
+            cursor: pointer;
+            border: 1px solid var(--color-lightgray);
+        }
+        
+        .image-thumbnail:hover {
+            transform: scale(1.05);
+            transition: transform 0.2s ease;
+        }
+        
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-radius: var(--border-radius-sm);
+            color: white;
+            font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            z-index: 1000;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .notification.success {
+            background-color: var(--color-success);
+            display: block;
+        }
+        
+        .notification.error {
+            background-color: var(--color-error);
+            display: block;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid var(--color-lightgray);
+            border-top: 5px solid var(--color-accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            font-size: var(--font-size-sm);
+            color: var(--color-gray);
+            padding: var(--spacing-lg);
+            border-top: 1px solid var(--color-lightgray);
+            background-color: var(--color-offwhite);
+        }
+        
+        /* Page Navigation */
+        .page-navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-md) var(--spacing-xl);
+            background-color: var(--color-offwhite);
+            border-top: 1px solid var(--color-lightgray);
+        }
+        
+        .page-info {
+            font-size: var(--font-size-sm);
+            color: var(--color-gray);
+        }
+        
+        .page-buttons {
+            display: flex;
+            gap: var(--spacing-sm);
+        }
+        
+        .page-btn {
+            padding: 8px 16px;
+            background-color: var(--color-white);
+            border: 1px solid var(--color-lightgray);
+            border-radius: var(--border-radius-sm);
+            cursor: pointer;
+            font-size: var(--font-size-sm);
+        }
+        
+        .page-btn:hover:not(:disabled) {
+            background-color: var(--color-primary);
+            color: var(--color-white);
+            border-color: var(--color-primary);
+        }
+        
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: var(--spacing-md);
+            }
+            
+            .header {
+                padding: var(--spacing-lg);
+                flex-direction: column;
+                text-align: center;
+                gap: var(--spacing-md);
+            }
+            
+            .logo-container {
+                width: 50px;
+                height: 50px;
+            }
+            
+            .header,
+            .content {
+                padding: var(--spacing-lg);
+            }
+            
+            .disposal-options {
+                grid-template-columns: 1fr;
+            }
+            
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .submit-btn {
+                width: 100%;
+            }
+            
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
+            
+            .reports-table {
+                font-size: var(--font-size-xs);
+            }
+            
+            .reports-table th,
+            .reports-table td {
+                padding: var(--spacing-sm);
+            }
+            
+            .filters {
+                flex-direction: column;
+            }
+            
+            .filter-group {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+    </div>
+    
+    <!-- Notification Container -->
+    <div id="notification" class="notification"></div>
+    
+    <!-- Landing Page (Initially Visible) -->
+    <div id="landingPage" class="landing-container">
+        <div class="landing-header">
+            <div class="landing-logo-container">
+                <img src="logo.jpg" alt="FG Operations Logo" class="landing-logo-img" onerror="this.style.display='none';">
+                <div class="landing-logo-placeholder" style="display: none;"></div>
+            </div>
+            <div>
+                <h1>FG Operations Waste/Disposal Reporting</h1>
+                <div class="landing-subtitle">Daily Reporting System</div>
+            </div>
+        </div>
+        
+        <div class="landing-content">
+            <p class="landing-description">
+                Welcome to the FG Operations Waste and Disposal Reporting System. 
+                Submit daily reports for expired items and waste, or view previously submitted reports.
+            </p>
+            
+            <div class="action-buttons">
+                <div class="action-btn" onclick="showSubmitForm()">
+                    <div class="action-icon">📋</div>
+                    <div class="action-title">Submit Waste Report</div>
+                    <div class="action-description">Submit a new waste or disposal report</div>
+                </div>
+                
+                <div class="action-btn" onclick="showReportsView()">
+                    <div class="action-icon">📊</div>
+                    <div class="action-title">View Reports</div>
+                    <div class="action-description">View all submitted reports and details</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            FG Operations Waste/Disposal Reporting System v1.0
+        </div>
+    </div>
+    
+    <!-- Submit Form Page (Initially Hidden) -->
+    <div id="submitFormPage" class="form-container" style="display: none;">
+        <div class="header">
+            <button class="back-btn" onclick="showLandingPage()">
+                ← Back to Home
+            </button>
+            <div class="header-text">
+                <h1>Submit Waste/Disposal Report</h1>
+                <div class="subtitle">Daily Report Form</div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <form id="fgForm" class="form" action="#" method="POST" onsubmit="event.preventDefault(); handleSubmit();">
+                <!-- Email -->
+                <div class="question">
+                    <label for="email">Email <span class="required">*</span></label>
+                    <input type="email" id="email" name="email" required placeholder="name@example.com">
+                </div>
+
+                <!-- Store -->
+                <div class="question">
+                    <label for="store">Name of Store <span class="required">*</span></label>
+                    <select id="store" name="store" required>
+                        <option value="" disabled selected>Select store location</option>
+                        <option>FG Express IROSIN</option>
+                        <option>FG Express LIGAO</option>
+                        <option>FG Express POLANGUI</option>
+                        <option>FG Express MASBATE</option>
+                        <option>FG Express DARAGA</option>
+                        <option>FG Express BAAO</option>
+                        <option>FG Express PIODURAN</option>
+                        <option>FG Express RIZAL</option>
+                        <option>FG to go TABACO</option>
+                        <option>FG to go LEGAZPI</option>
+                        <option>FG LEGAZPI</option>
+                        <option>FG NAGA</option>
+                    </select>
+                </div>
+
+                <!-- Personnel -->
+                <div class="question">
+                    <label for="personnel">Name of Personnel filling out the form <span class="required">*</span></label>
+                    <input type="text" id="personnel" name="personnel" required placeholder="Enter your full name">
+                    <span class="note">Please indicate your complete name</span>
+                </div>
+
+                <!-- Report Date -->
+                <div class="question">
+                    <label for="reportDate">Disposal Report Date <span class="required">*</span></label>
+                    <input type="date" id="reportDate" name="reportDate" required>
+                </div>
+
+                <!-- Disposal Type -->
+                <div class="question">
+                    <label>Type of Food Disposal <span class="required">*</span></label>
+                    <div class="note">Please choose the correct disposal type</div>
+                    
+                    <div class="disposal-options">
+                        <div class="disposal-option">
+                            <input type="radio" id="expired" name="disposalType" value="expired" required onchange="toggleDynamicFields()">
+                            <label for="expired" class="disposal-label">
+                                <div class="disposal-icon">🗑️</div>
+                                <div class="disposal-name">Expired Items</div>
+                                <div class="disposal-desc">Food products past expiration date</div>
+                            </label>
+                        </div>
+                        
+                        <div class="disposal-option">
+                            <input type="radio" id="waste" name="disposalType" value="waste" required onchange="toggleDynamicFields()">
+                            <label for="waste" class="disposal-label">
+                                <div class="disposal-icon">🚮</div>
+                                <div class="disposal-name">Waste</div>
+                                <div class="disposal-desc">Food spoilage or preparation waste</div>
+                            </label>
+                        </div>
+                        
+                        <div class="disposal-option">
+                            <input type="radio" id="noWaste" name="disposalType" value="noWaste" required onchange="toggleDynamicFields()">
+                            <label for="noWaste" class="disposal-label">
+                                <div class="disposal-icon">✅</div>
+                                <div class="disposal-name">No Waste</div>
+                                <div class="disposal-desc">No disposal required this period</div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expired Items Container -->
+                <div id="expiredContainer" class="dynamic-container">
+                    <h3>Expired Items Details</h3>
+                    <div class="note">Add each expired item individually. Documentation is required per item.</div>
+                    
+                    <div id="expiredFields" class="dynamic-fields">
+                        <!-- Expired items will be added here dynamically -->
+                    </div>
+                    
+                    <button type="button" class="add-btn" onclick="addExpiredItem()">
+                        + Add Expired Item
+                    </button>
+                </div>
+
+                <!-- Waste Container -->
+                <div id="wasteContainer" class="dynamic-container">
+                    <h3>Waste Details</h3>
+                    <div class="note">Add each waste item individually. Documentation is required per item.</div>
+                    
+                    <div id="wasteFields" class="dynamic-fields">
+                        <!-- Waste items will be added here dynamically -->
+                    </div>
+                    
+                    <button type="button" class="add-btn" onclick="addWasteItem()">
+                        + Add Waste Item
+                    </button>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="submit-btn">Submit Report</button>
+            </form>
+        </div>
+        
+        <div class="footer">
+            This form was created as a standalone HTML version with Firebase backend. Never submit sensitive information on demo forms.
+        </div>
+    </div>
+    
+    <!-- Reports View Page (Initially Hidden) -->
+    <div id="reportsViewPage" class="reports-container" style="display: none;">
+        <div class="header">
+            <button class="back-btn" onclick="showLandingPage()">
+                ← Back to Home
+            </button>
+            <div class="header-text">
+                <h1>View Submitted Reports</h1>
+                <div class="subtitle">All Waste/Disposal Reports</div>
+            </div>
+        </div>
+        
+        <div class="reports-header">
+            <h1>Submitted Reports</h1>
+            
+            <div class="filters">
+                <div class="filter-group">
+                    <label for="filterStore">Filter by Store</label>
+                    <select id="filterStore" onchange="loadReports()">
+                        <option value="">All Stores</option>
+                        <option>FG Express IROSIN</option>
+                        <option>FG Express LIGAO</option>
+                        <option>FG Express POLANGUI</option>
+                        <option>FG Express MASBATE</option>
+                        <option>FG Express DARAGA</option>
+                        <option>FG Express BAAO</option>
+                        <option>FG Express PIODURAN</option>
+                        <option>FG Express RIZAL</option>
+                        <option>FG to go TABACO</option>
+                        <option>FG to go LEGAZPI</option>
+                        <option>FG LEGAZPI</option>
+                        <option>FG NAGA</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="filterType">Filter by Type</label>
+                    <select id="filterType" onchange="loadReports()">
+                        <option value="">All Types</option>
+                        <option value="expired">Expired Items</option>
+                        <option value="waste">Waste</option>
+                        <option value="noWaste">No Waste</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="filterDate">Filter by Date</label>
+                    <input type="date" id="filterDate" onchange="loadReports()">
+                </div>
+                
+                <div class="filter-group">
+                    <label for="searchEmail">Search Email</label>
+                    <input type="text" id="searchEmail" placeholder="Search by email" oninput="loadReports()">
+                </div>
+            </div>
+        </div>
+        
+        <div class="reports-table-container">
+            <table class="reports-table" id="reportsTable">
+                <thead>
+                    <tr>
+                        <th>Report ID</th>
+                        <th>Store</th>
+                        <th>Personnel</th>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Email</th>
+                        <th>Submitted</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="reportsTableBody">
+                    <!-- Reports will be loaded here -->
+                </tbody>
+            </table>
+            
+            <div class="page-navigation">
+                <div class="page-info" id="pageInfo">Showing 0 reports</div>
+                <div class="page-buttons">
+                    <button class="page-btn" id="prevPageBtn" onclick="changePage(-1)" disabled>Previous</button>
+                    <button class="page-btn" id="nextPageBtn" onclick="changePage(1)" disabled>Next</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            FG Operations Waste/Disposal Reporting System - Reports View
+        </div>
+    </div>
+    
+    <!-- Report Details Modal (Initially Hidden) -->
+    <div id="detailsModal" class="details-modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeDetailsModal()">×</button>
+            <div id="modalContent">
+                <!-- Report details will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================================
+        // FIREBASE CONFIGURATION
+        // ================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyAyp2f1b6cG4E_Dx9eako31LgTDuZrZ8_E",
+            authDomain: "disposal-e6b83.firebaseapp.com",
+            projectId: "disposal-e6b83",
+            storageBucket: "disposal-e6b83.firebasestorage.app",
+            messagingSenderId: "1050986320678",
+            appId: "1:1050986320678:web:deb5f4c58c3ef0cbc6a7e7",
+            measurementId: "G-3Q7705T5FE"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // ================================
+        // GLOBAL VARIABLES
+        // ================================
+        let currentPage = 1;
+        const pageSize = 10;
+        let lastVisibleDoc = null;
+        let firstVisibleDoc = null;
+        let reportsData = [];
+
+        // ================================
+        // PAGE NAVIGATION FUNCTIONS
+        // ================================
+        function showLandingPage() {
+            document.getElementById('landingPage').style.display = 'block';
+            document.getElementById('submitFormPage').style.display = 'none';
+            document.getElementById('reportsViewPage').style.display = 'none';
+            document.getElementById('detailsModal').style.display = 'none';
+        }
+        
+        function showSubmitForm() {
+            document.getElementById('landingPage').style.display = 'none';
+            document.getElementById('submitFormPage').style.display = 'block';
+            document.getElementById('reportsViewPage').style.display = 'none';
+            
+            // Set default date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('reportDate').value = today;
+        }
+        
+        function showReportsView() {
+            document.getElementById('landingPage').style.display = 'none';
+            document.getElementById('submitFormPage').style.display = 'none';
+            document.getElementById('reportsViewPage').style.display = 'block';
+            
+            // Load reports when showing the view
+            currentPage = 1;
+            lastVisibleDoc = null;
+            firstVisibleDoc = null;
+            loadReports();
+        }
+        
+        function closeDetailsModal() {
+            document.getElementById('detailsModal').style.display = 'none';
+        }
+
+        // ================================
+        // HELPER FUNCTIONS
+        // ================================
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type}`;
+            
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 5000);
+        }
+        
+        function showLoading(show) {
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.style.display = show ? 'flex' : 'none';
+        }
+        
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+        
+        function formatDateTime(timestamp) {
+            if (!timestamp) return 'N/A';
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return date.toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+        
+        function getDisposalTypeBadge(type) {
+            switch(type) {
+                case 'expired': return '<span class="type-badge type-expired">Expired Items</span>';
+                case 'waste': return '<span class="type-badge type-waste">Waste</span>';
+                case 'noWaste': return '<span class="type-badge type-noWaste">No Waste</span>';
+                default: return '<span class="type-badge">Unknown</span>';
+            }
+        }
+
+        // ================================
+        // FORM FUNCTIONS (From your existing code)
+        // ================================
+        
+        // Toggle dynamic fields
+        function toggleDynamicFields() {
+            const disposalType = document.querySelector('input[name="disposalType"]:checked');
+            const expiredContainer = document.getElementById('expiredContainer');
+            const wasteContainer = document.getElementById('wasteContainer');
+            
+            // Hide both containers
+            expiredContainer.classList.remove('show');
+            wasteContainer.classList.remove('show');
+            
+            // Clear fields
+            document.getElementById('expiredFields').innerHTML = '';
+            document.getElementById('wasteFields').innerHTML = '';
+            
+            // Show appropriate container
+            if (disposalType.value === 'expired') {
+                expiredContainer.classList.add('show');
+                if (document.querySelectorAll('#expiredFields .field-group').length === 0) {
+                    addExpiredItem();
+                }
+            } else if (disposalType.value === 'waste') {
+                wasteContainer.classList.add('show');
+                if (document.querySelectorAll('#wasteFields .field-group').length === 0) {
+                    addWasteItem();
+                }
+            }
+        }
+        
+        // Convert file to Base64
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve({
+                    name: file.name,
+                    type: file.type,
+                    size: file.size,
+                    base64: reader.result.split(',')[1], // Remove data:image/...;base64, prefix
+                    dataUrl: reader.result // Full data URL
+                });
+                reader.onerror = error => reject(error);
+            });
+        }
+        
+        // Create file preview
+        function createFilePreview(fileInput, previewContainerId) {
+            const files = fileInput.files;
+            const previewContainer = document.getElementById(previewContainerId);
+            
+            if (!previewContainer) return;
+            
+            // Clear existing preview
+            previewContainer.innerHTML = '';
+            
+            // Create preview for each file
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const previewItem = document.createElement('div');
+                previewItem.className = 'file-preview-item';
+                previewItem.dataset.index = i;
+                
+                if (file.type.startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(file);
+                    previewItem.appendChild(img);
+                } else if (file.type === 'application/pdf') {
+                    previewItem.className += ' pdf-file';
+                    previewItem.innerHTML = '📄 PDF';
+                } else {
+                    previewItem.className += ' pdf-file';
+                    previewItem.innerHTML = '📄 Doc';
+                }
+                
+                // Add remove button
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-file';
+                removeBtn.innerHTML = '×';
+                removeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    removeFileFromInput(fileInput, i);
+                };
+                previewItem.appendChild(removeBtn);
+                
+                previewContainer.appendChild(previewItem);
+            }
+            
+            // Show file info
+            if (files.length > 0) {
+                const totalSize = Array.from(files).reduce((total, file) => total + file.size, 0);
+                const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+                const info = document.createElement('div');
+                info.className = 'file-info';
+                info.textContent = `${files.length} file(s), ${sizeMB} MB total`;
+                previewContainer.appendChild(info);
+            }
+        }
+        
+        // Remove file from input
+        function removeFileFromInput(fileInput, index) {
+            const files = Array.from(fileInput.files);
+            files.splice(index, 1);
+            
+            // Create new FileList
+            const dataTransfer = new DataTransfer();
+            files.forEach(file => dataTransfer.items.add(file));
+            fileInput.files = dataTransfer.files;
+            
+            // Update preview
+            const previewContainerId = fileInput.id + '-preview';
+            createFilePreview(fileInput, previewContainerId);
+            
+            // Trigger change event
+            fileInput.dispatchEvent(new Event('change'));
+        }
+        
+        // Add expired item fields
+        function addExpiredItem() {
+            const expiredFields = document.getElementById('expiredFields');
+            const itemId = Date.now() + Math.random().toString(36).substr(2, 9);
+            
+            const fieldGroup = document.createElement('div');
+            fieldGroup.className = 'field-group';
+            fieldGroup.id = `expired-${itemId}`;
+            
+            fieldGroup.innerHTML = `
+                <div class="field-header">
+                    <div class="field-title">Expired Item</div>
+                    <button type="button" class="remove-btn" onclick="removeField('expired-${itemId}')">×</button>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="expiredItem-${itemId}">Item Name <span class="required">*</span></label>
+                        <input type="text" id="expiredItem-${itemId}" name="expiredItems[${itemId}][item]" required placeholder="Enter item name">
+                    </div>
+                    <div class="form-group">
+                        <label for="deliveredDate-${itemId}">Delivered Date <span class="required">*</span></label>
+                        <input type="date" id="deliveredDate-${itemId}" name="expiredItems[${itemId}][deliveredDate]" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="manufacturedDate-${itemId}">Manufactured Date <span class="required">*</span></label>
+                        <input type="date" id="manufacturedDate-${itemId}" name="expiredItems[${itemId}][manufacturedDate]" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="expirationDate-${itemId}">Expiration Date <span class="required">*</span></label>
+                        <input type="date" id="expirationDate-${itemId}" name="expiredItems[${itemId}][expirationDate]" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="quantity-${itemId}">Quantity <span class="required">*</span></label>
+                        <input type="number" id="quantity-${itemId}" name="expiredItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="unit-${itemId}">Unit of Measure <span class="required">*</span></label>
+                        <select id="unit-${itemId}" name="expiredItems[${itemId}][unit]" required>
+                            <option value="" disabled selected>Select unit</option>
+                            <option value="pcs">Pieces (pcs)</option>
+                            <option value="kg">Kilograms (kg)</option>
+                            <option value="g">Grams (g)</option>
+                            <option value="L">Liters (L)</option>
+                            <option value="ml">Milliliters (ml)</option>
+                            <option value="boxes">Boxes</option>
+                            <option value="packs">Packs</option>
+                            <option value="cans">Cans</option>
+                            <option value="bottles">Bottles</option>
+                            <option value="bags">Bags</option>
+                        </select>
+                    </div>
+                    <div class="form-group file-upload-container">
+                        <label for="documentation-${itemId}">Documentation <span class="required">*</span></label>
+                        <input type="file" id="documentation-${itemId}" name="expiredItems[${itemId}][documentation]" 
+                               required accept="image/*,.pdf" multiple 
+                               onchange="createFilePreview(this, 'documentation-${itemId}-preview')">
+                        <div id="documentation-${itemId}-preview" class="file-preview"></div>
+                        <span class="note">Upload photos or PDFs for this item (Max 5MB per file, 10 files max)</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="notes-${itemId}">Additional Notes</label>
+                        <textarea id="notes-${itemId}" name="expiredItems[${itemId}][notes]" rows="2" placeholder="Any additional information about this item"></textarea>
+                    </div>
+                </div>
+            `;
+            
+            expiredFields.appendChild(fieldGroup);
+            
+            // Set today's date for delivered date
+            const today = new Date().toISOString().split('T')[0];
+            const deliveredDateInput = document.getElementById(`deliveredDate-${itemId}`);
+            if (deliveredDateInput) {
+                deliveredDateInput.value = today;
+            }
+        }
+        
+        // Add waste item fields
+        function addWasteItem() {
+            const wasteFields = document.getElementById('wasteFields');
+            const itemId = Date.now() + Math.random().toString(36).substr(2, 9);
+            
+            const fieldGroup = document.createElement('div');
+            fieldGroup.className = 'field-group';
+            fieldGroup.id = `waste-${itemId}`;
+            
+            fieldGroup.innerHTML = `
+                <div class="field-header">
+                    <div class="field-title">Waste Item</div>
+                    <button type="button" class="remove-btn" onclick="removeField('waste-${itemId}')">×</button>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="wasteItem-${itemId}">Item/Description <span class="required">*</span></label>
+                        <input type="text" id="wasteItem-${itemId}" name="wasteItems[${itemId}][item]" required placeholder="Enter item or description">
+                    </div>
+                    <div class="form-group">
+                        <label for="reason-${itemId}">Reason for Waste <span class="required">*</span></label>
+                        <select id="reason-${itemId}" name="wasteItems[${itemId}][reason]" required>
+                            <option value="" disabled selected>Select reason</option>
+                            <option value="spoilage">Spoilage</option>
+                            <option value="preparation_waste">Preparation Waste</option>
+                            <option value="damaged">Damaged Packaging</option>
+                            <option value="overproduction">Overproduction</option>
+                            <option value="customer_return">Customer Return</option>
+                            <option value="quality_issue">Quality Issue</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="wasteQuantity-${itemId}">Quantity <span class="required">*</span></label>
+                        <input type="number" id="wasteQuantity-${itemId}" name="wasteItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="wasteUnit-${itemId}">Unit of Measure <span class="required">*</span></label>
+                        <select id="wasteUnit-${itemId}" name="wasteItems[${itemId}][unit]" required>
+                            <option value="" disabled selected>Select unit</option>
+                            <option value="pcs">Pieces (pcs)</option>
+                            <option value="kg">Kilograms (kg)</option>
+                            <option value="g">Grams (g)</option>
+                            <option value="L">Liters (L)</option>
+                            <option value="ml">Milliliters (ml)</option>
+                            <option value="boxes">Boxes</option>
+                            <option value="packs">Packs</option>
+                            <option value="cans">Cans</option>
+                            <option value="bottles">Bottles</option>
+                            <option value="bags">Bags</option>
+                        </select>
+                    </div>
+                    <div class="form-group file-upload-container">
+                        <label for="wasteDocumentation-${itemId}">Documentation <span class="required">*</span></label>
+                        <input type="file" id="wasteDocumentation-${itemId}" name="wasteItems[${itemId}][documentation]" 
+                               required accept="image/*,.pdf" multiple 
+                               onchange="createFilePreview(this, 'wasteDocumentation-${itemId}-preview')">
+                        <div id="wasteDocumentation-${itemId}-preview" class="file-preview"></div>
+                        <span class="note">Upload photos or PDFs for this waste item (Max 5MB per file, 10 files max)</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="wasteNotes-${itemId}">Additional Notes</label>
+                        <textarea id="wasteNotes-${itemId}" name="wasteItems[${itemId}][notes]" rows="2" placeholder="Any additional information about this waste"></textarea>
+                    </div>
+                </div>
+            `;
+            
+            wasteFields.appendChild(fieldGroup);
+        }
+        
+        // Remove field group
+        function removeField(fieldId) {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.remove();
+            }
+        }
+        
+        // Validate file size and count
+        function validateFiles(fileInput) {
+            const maxSize = 5 * 1024 * 1024; // 5MB
+            const maxFiles = 10;
+            
+            if (fileInput.files.length > maxFiles) {
+                return `Maximum ${maxFiles} files allowed`;
+            }
+            
+            for (let file of fileInput.files) {
+                if (file.size > maxSize) {
+                    return `File "${file.name}" exceeds 5MB limit`;
+                }
+            }
+            
+            return null;
+        }
+        
+        // Form validation for dynamic fields
+        function validateDynamicFields() {
+            const disposalType = document.querySelector('input[name="disposalType"]:checked').value;
+            
+            if (disposalType === 'expired') {
+                const expiredItems = document.querySelectorAll('#expiredFields .field-group');
+                if (expiredItems.length === 0) {
+                    showNotification('Please add at least one expired item.', 'error');
+                    return false;
+                }
+                
+                for (let item of expiredItems) {
+                    const requiredFields = item.querySelectorAll('input[required], select[required]');
+                    const fileInput = item.querySelector('input[type="file"]');
+                    
+                    // Validate required fields
+                    for (let field of requiredFields) {
+                        if (!field.value.trim()) {
+                            showNotification('Please fill in all required fields for expired items.', 'error');
+                            return false;
+                        }
+                    }
+                    
+                    // Validate files
+                    if (fileInput) {
+                        if (fileInput.files.length === 0) {
+                            showNotification('Please upload documentation for all expired items.', 'error');
+                            return false;
+                        }
+                        
+                        const fileError = validateFiles(fileInput);
+                        if (fileError) {
+                            showNotification(fileError, 'error');
+                            return false;
+                        }
+                    }
+                }
+            } else if (disposalType === 'waste') {
+                const wasteItems = document.querySelectorAll('#wasteFields .field-group');
+                if (wasteItems.length === 0) {
+                    showNotification('Please add at least one waste item.', 'error');
+                    return false;
+                }
+                
+                for (let item of wasteItems) {
+                    const requiredFields = item.querySelectorAll('input[required], select[required]');
+                    const fileInput = item.querySelector('input[type="file"]');
+                    
+                    // Validate required fields
+                    for (let field of requiredFields) {
+                        if (!field.value.trim()) {
+                            showNotification('Please fill in all required fields for waste items.', 'error');
+                            return false;
+                        }
+                    }
+                    
+                    // Validate files
+                    if (fileInput) {
+                        if (fileInput.files.length === 0) {
+                            showNotification('Please upload documentation for all waste items.', 'error');
+                            return false;
+                        }
+                        
+                        const fileError = validateFiles(fileInput);
+                        if (fileError) {
+                            showNotification(fileError, 'error');
+                            return false;
+                        }
+                    }
+                }
+            }
+            
+            return true;
+        }
+
+        // ================================
+        // FORM SUBMISSION HANDLER
+        // ================================
+        async function handleSubmit() {
+            const submitBtn = document.querySelector('.submit-btn');
+            const originalText = submitBtn.textContent;
+            
+            // Basic validation
+            const requiredFields = ['email', 'store', 'personnel', 'reportDate'];
+            for (let field of requiredFields) {
+                if (!document.getElementById(field).value.trim()) {
+                    showNotification(`Please fill in the ${field} field.`, 'error');
+                    return;
+                }
+            }
+            
+            if (!document.querySelector('input[name="disposalType"]:checked')) {
+                showNotification('Please select a disposal type.', 'error');
+                return;
+            }
+            
+            // Validate dynamic fields
+            if (!validateDynamicFields()) {
+                return;
+            }
+            
+            // Show loading state
+            submitBtn.textContent = 'Submitting...';
+            submitBtn.disabled = true;
+            showLoading(true);
+            
+            try {
+                // Generate report ID
+                const reportId = Date.now().toString();
+                const disposalType = document.querySelector('input[name="disposalType"]:checked').value;
+                
+                // Collect form data
+                const reportData = {
+                    email: document.getElementById('email').value.trim(),
+                    store: document.getElementById('store').value,
+                    personnel: document.getElementById('personnel').value.trim(),
+                    reportDate: document.getElementById('reportDate').value,
+                    disposalType: disposalType,
+                    submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    reportId: reportId,
+                    status: 'submitted',
+                    createdAt: new Date().toISOString()
+                };
+                
+                // Process based on disposal type
+                if (disposalType === 'expired') {
+                    const expiredItems = [];
+                    const expiredFields = document.querySelectorAll('#expiredFields .field-group');
+                    
+                    for (let field of expiredFields) {
+                        const itemId = field.id.split('-')[1];
+                        const fileInput = document.getElementById(`documentation-${itemId}`);
+                        
+                        // Convert files to Base64
+                        const filesBase64 = [];
+                        for (let file of fileInput.files) {
+                            const fileData = await fileToBase64(file);
+                            filesBase64.push(fileData);
+                        }
+                        
+                        expiredItems.push({
+                            item: document.getElementById(`expiredItem-${itemId}`).value.trim(),
+                            deliveredDate: document.getElementById(`deliveredDate-${itemId}`).value,
+                            manufacturedDate: document.getElementById(`manufacturedDate-${itemId}`).value,
+                            expirationDate: document.getElementById(`expirationDate-${itemId}`).value,
+                            quantity: parseFloat(document.getElementById(`quantity-${itemId}`).value),
+                            unit: document.getElementById(`unit-${itemId}`).value,
+                            documentation: filesBase64, // Store Base64 data directly
+                            notes: document.getElementById(`notes-${itemId}`).value.trim() || '',
+                            itemId: itemId,
+                            totalFiles: fileInput.files.length,
+                            totalSize: Array.from(fileInput.files).reduce((sum, file) => sum + file.size, 0)
+                        });
+                    }
+                    
+                    reportData.expiredItems = expiredItems;
+                    reportData.totalExpiredItems = expiredItems.length;
+                    
+                } else if (disposalType === 'waste') {
+                    const wasteItems = [];
+                    const wasteFields = document.querySelectorAll('#wasteFields .field-group');
+                    
+                    for (let field of wasteFields) {
+                        const itemId = field.id.split('-')[1];
+                        const fileInput = document.getElementById(`wasteDocumentation-${itemId}`);
+                        
+                        // Convert files to Base64
+                        const filesBase64 = [];
+                        for (let file of fileInput.files) {
+                            const fileData = await fileToBase64(file);
+                            filesBase64.push(fileData);
+                        }
+                        
+                        wasteItems.push({
+                            item: document.getElementById(`wasteItem-${itemId}`).value.trim(),
+                            reason: document.getElementById(`reason-${itemId}`).value,
+                            quantity: parseFloat(document.getElementById(`wasteQuantity-${itemId}`).value),
+                            unit: document.getElementById(`wasteUnit-${itemId}`).value,
+                            documentation: filesBase64, // Store Base64 data directly
+                            notes: document.getElementById(`wasteNotes-${itemId}`).value.trim() || '',
+                            itemId: itemId,
+                            totalFiles: fileInput.files.length,
+                            totalSize: Array.from(fileInput.files).reduce((sum, file) => sum + file.size, 0)
+                        });
+                    }
+                    
+                    reportData.wasteItems = wasteItems;
+                    reportData.totalWasteItems = wasteItems.length;
+                } else if (disposalType === 'noWaste') {
+                    reportData.noWaste = true;
+                    reportData.notes = "No waste or expired items to report for this period";
+                }
+                
+                // Calculate total data size (for monitoring)
+                const reportSize = new TextEncoder().encode(JSON.stringify(reportData)).length;
+                reportData.reportSizeKB = Math.round(reportSize / 1024);
+                
+                // Save to Firestore
+                console.log('Saving to Firestore:', reportData);
+                await db.collection('wasteReports').doc(reportId).set(reportData);
+                
+                // Verify the save
+                const savedDoc = await db.collection('wasteReports').doc(reportId).get();
+                if (savedDoc.exists) {
+                    showNotification('Report submitted successfully!', 'success');
+                    console.log('✅ Report saved with ID:', reportId);
+                    
+                    // Reset form
+                    document.getElementById('fgForm').reset();
+                    document.getElementById('reportDate').value = new Date().toISOString().split('T')[0];
+                    document.getElementById('expiredFields').innerHTML = '';
+                    document.getElementById('wasteFields').innerHTML = '';
+                    document.getElementById('expiredContainer').classList.remove('show');
+                    document.getElementById('wasteContainer').classList.remove('show');
+                    
+                    // Show success message and option to view reports
+                    setTimeout(() => {
+                        if (confirm('Report submitted successfully! Would you like to view all reports?')) {
+                            showReportsView();
+                        }
+                    }, 500);
+                } else {
+                    throw new Error('Failed to verify save');
+                }
+                
+            } catch (error) {
+                console.error('Error submitting report:', error);
+                showNotification('Error submitting report: ' + error.message, 'error');
+            } finally {
+                // Reset button
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+                showLoading(false);
+            }
+        }
+
+        // ================================
+        // REPORTS VIEW FUNCTIONS
+        // ================================
+        async function loadReports() {
+            showLoading(true);
+            
+            try {
+                let query = db.collection('wasteReports');
+                
+                // Apply filters
+                const storeFilter = document.getElementById('filterStore').value;
+                const typeFilter = document.getElementById('filterType').value;
+                const dateFilter = document.getElementById('filterDate').value;
+                const searchEmail = document.getElementById('searchEmail').value.toLowerCase();
+                
+                if (storeFilter) {
+                    query = query.where('store', '==', storeFilter);
+                }
+                
+                if (typeFilter) {
+                    query = query.where('disposalType', '==', typeFilter);
+                }
+                
+                if (dateFilter) {
+                    query = query.where('reportDate', '==', dateFilter);
+                }
+                
+                // Order by submission date (newest first)
+                query = query.orderBy('submittedAt', 'desc');
+                
+                // Apply pagination
+                if (currentPage > 1 && lastVisibleDoc) {
+                    query = query.startAfter(lastVisibleDoc);
+                }
+                
+                // Get limited results
+                query = query.limit(pageSize);
+                
+                const snapshot = await query.get();
+                
+                // Update pagination markers
+                if (!snapshot.empty) {
+                    firstVisibleDoc = snapshot.docs[0];
+                    lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
+                } else {
+                    firstVisibleDoc = null;
+                    lastVisibleDoc = null;
+                }
+                
+                // Clear existing data
+                reportsData = [];
+                const tableBody = document.getElementById('reportsTableBody');
+                tableBody.innerHTML = '';
+                
+                if (snapshot.empty) {
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 40px; color: var(--color-gray);">
+                                No reports found. Try changing your filters or submit a new report.
+                            </td>
+                        </tr>
+                    `;
+                    updatePageInfo(0);
+                    updatePaginationButtons(false, false);
+                    return;
+                }
+                
+                // Process and display reports
+                snapshot.forEach(doc => {
+                    const report = { id: doc.id, ...doc.data() };
+                    
+                    // Apply email search filter
+                    if (searchEmail && !report.email.toLowerCase().includes(searchEmail)) {
+                        return;
+                    }
+                    
+                    reportsData.push(report);
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${report.reportId ? report.reportId.substring(0, 8) + '...' : 'N/A'}</td>
+                        <td>${report.store || 'N/A'}</td>
+                        <td>${report.personnel || 'N/A'}</td>
+                        <td>${formatDate(report.reportDate)}</td>
+                        <td>${getDisposalTypeBadge(report.disposalType)}</td>
+                        <td>${report.email || 'N/A'}</td>
+                        <td>${formatDateTime(report.submittedAt)}</td>
+                        <td><span class="status-badge status-submitted">Submitted</span></td>
+                        <td>
+                            <button class="view-details-btn" onclick="viewReportDetails('${report.id}')">
+                                View Details
+                            </button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+                
+                updatePageInfo(reportsData.length);
+                updatePaginationButtons(currentPage > 1, snapshot.docs.length === pageSize);
+                
+            } catch (error) {
+                console.error('Error loading reports:', error);
+                showNotification('Error loading reports: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function changePage(direction) {
+            currentPage += direction;
+            loadReports();
+        }
+        
+        function updatePageInfo(count) {
+            const start = (currentPage - 1) * pageSize + 1;
+            const end = start + count - 1;
+            document.getElementById('pageInfo').textContent = 
+                `Showing ${start}-${end} of reports`;
+        }
+        
+        function updatePaginationButtons(hasPrev, hasNext) {
+            document.getElementById('prevPageBtn').disabled = !hasPrev;
+            document.getElementById('nextPageBtn').disabled = !hasNext;
+        }
+        
+        async function viewReportDetails(reportId) {
+            showLoading(true);
+            
+            try {
+                const doc = await db.collection('wasteReports').doc(reportId).get();
+                
+                if (!doc.exists) {
+                    showNotification('Report not found', 'error');
+                    return;
+                }
+                
+                const report = { id: doc.id, ...doc.data() };
+                
+                // Build modal content
+                let modalContent = `
+                    <div class="details-section">
+                        <h3>Report Information</h3>
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Report ID</div>
+                                <div class="detail-value">${report.reportId || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Store</div>
+                                <div class="detail-value">${report.store || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Personnel</div>
+                                <div class="detail-value">${report.personnel || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Report Date</div>
+                                <div class="detail-value">${formatDate(report.reportDate)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Disposal Type</div>
+                                <div class="detail-value">${getDisposalTypeBadge(report.disposalType)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Email</div>
+                                <div class="detail-value">${report.email || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Submitted At</div>
+                                <div class="detail-value">${formatDateTime(report.submittedAt)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Status</div>
+                                <div class="detail-value"><span class="status-badge status-submitted">${report.status || 'Submitted'}</span></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Add items based on disposal type
+                if (report.disposalType === 'expired' && report.expiredItems) {
+                    modalContent += `
+                        <div class="details-section">
+                            <h3>Expired Items (${report.expiredItems.length})</h3>
+                            <div class="item-list">
+                    `;
+                    
+                    report.expiredItems.forEach((item, index) => {
+                        modalContent += `
+                            <div class="item-list-item">
+                                <div class="detail-item">
+                                    <div class="detail-label">Item Name</div>
+                                    <div class="detail-value">${item.item}</div>
+                                </div>
+                                <div class="details-grid">
+                                    <div class="detail-item">
+                                        <div class="detail-label">Delivered Date</div>
+                                        <div class="detail-value">${formatDate(item.deliveredDate)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Manufactured Date</div>
+                                        <div class="detail-value">${formatDate(item.manufacturedDate)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Expiration Date</div>
+                                        <div class="detail-value">${formatDate(item.expirationDate)}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Quantity</div>
+                                        <div class="detail-value">${item.quantity} ${item.unit}</div>
+                                    </div>
+                                </div>
+                                ${item.notes ? `
+                                    <div class="detail-item">
+                                        <div class="detail-label">Notes</div>
+                                        <div class="detail-value">${item.notes}</div>
+                                    </div>
+                                ` : ''}
+                        `;
+                        
+                        // Add documentation if available
+                        if (item.documentation && item.documentation.length > 0) {
+                            modalContent += `
+                                <div class="detail-item">
+                                    <div class="detail-label">Documentation (${item.documentation.length} files)</div>
+                                    <div class="image-gallery">
+                            `;
+                            
+                            item.documentation.forEach((file, fileIndex) => {
+                                if (file.type && file.type.startsWith('image/')) {
+                                    modalContent += `
+                                        <img src="data:${file.type};base64,${file.base64}" 
+                                             alt="${file.name}" 
+                                             class="image-thumbnail"
+                                             onclick="viewImage('data:${file.type};base64,${file.base64}')">
+                                    `;
+                                } else {
+                                    modalContent += `
+                                        <div class="image-thumbnail" style="display: flex; align-items: center; justify-content: center; background: #f0f0f0;">
+                                            📄 ${file.name}
+                                        </div>
+                                    `;
+                                }
+                            });
+                            
+                            modalContent += `
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        
+                        modalContent += `</div>`;
+                    });
+                    
+                    modalContent += `
+                            </div>
+                        </div>
+                    `;
+                } else if (report.disposalType === 'waste' && report.wasteItems) {
+                    modalContent += `
+                        <div class="details-section">
+                            <h3>Waste Items (${report.wasteItems.length})</h3>
+                            <div class="item-list">
+                    `;
+                    
+                    report.wasteItems.forEach((item, index) => {
+                        modalContent += `
+                            <div class="item-list-item">
+                                <div class="detail-item">
+                                    <div class="detail-label">Item Description</div>
+                                    <div class="detail-value">${item.item}</div>
+                                </div>
+                                <div class="details-grid">
+                                    <div class="detail-item">
+                                        <div class="detail-label">Reason</div>
+                                        <div class="detail-value">${item.reason}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Quantity</div>
+                                        <div class="detail-value">${item.quantity} ${item.unit}</div>
+                                    </div>
+                                </div>
+                                ${item.notes ? `
+                                    <div class="detail-item">
+                                        <div class="detail-label">Notes</div>
+                                        <div class="detail-value">${item.notes}</div>
+                                    </div>
+                                ` : ''}
+                        `;
+                        
+                        // Add documentation if available
+                        if (item.documentation && item.documentation.length > 0) {
+                            modalContent += `
+                                <div class="detail-item">
+                                    <div class="detail-label">Documentation (${item.documentation.length} files)</div>
+                                    <div class="image-gallery">
+                            `;
+                            
+                            item.documentation.forEach((file, fileIndex) => {
+                                if (file.type && file.type.startsWith('image/')) {
+                                    modalContent += `
+                                        <img src="data:${file.type};base64,${file.base64}" 
+                                             alt="${file.name}" 
+                                             class="image-thumbnail"
+                                             onclick="viewImage('data:${file.type};base64,${file.base64}')">
+                                    `;
+                                } else {
+                                    modalContent += `
+                                        <div class="image-thumbnail" style="display: flex; align-items: center; justify-content: center; background: #f0f0f0;">
+                                            📄 ${file.name}
+                                        </div>
+                                    `;
+                                }
+                            });
+                            
+                            modalContent += `
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        
+                        modalContent += `</div>`;
+                    });
+                    
+                    modalContent += `
+                            </div>
+                        </div>
+                    `;
+                } else if (report.disposalType === 'noWaste') {
+                    modalContent += `
+                        <div class="details-section">
+                            <h3>No Waste Report</h3>
+                            <div class="detail-item">
+                                <div class="detail-value" style="color: var(--color-success); font-weight: 500;">
+                                    ✅ No waste or expired items to report for this period
+                                </div>
+                            </div>
+                            ${report.notes ? `
+                                <div class="detail-item">
+                                    <div class="detail-label">Notes</div>
+                                    <div class="detail-value">${report.notes}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+                
+                // Add report metadata
+                modalContent += `
+                    <div class="details-section">
+                        <h3>Report Metadata</h3>
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Created At</div>
+                                <div class="detail-value">${formatDateTime(report.createdAt)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Report Size</div>
+                                <div class="detail-value">${report.reportSizeKB || 'Unknown'} KB</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Total Items</div>
+                                <div class="detail-value">${report.totalExpiredItems || report.totalWasteItems || 0}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Set modal content and show
+                document.getElementById('modalContent').innerHTML = modalContent;
+                document.getElementById('detailsModal').style.display = 'flex';
+                
+            } catch (error) {
+                console.error('Error loading report details:', error);
+                showNotification('Error loading report details: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function viewImage(src) {
+            // Open image in new tab for full view
+            window.open(src, '_blank');
+        }
+
+        // ================================
+        // INITIALIZATION
+        // ================================
+        document.addEventListener('DOMContentLoaded', function() {
+            // Show landing page by default
+            showLandingPage();
+            
+            // Test Firebase connection
+            testFirebaseConnection();
+        });
+        
+        // Test Firebase connection
+        async function testFirebaseConnection() {
+            try {
+                // Try to write a test document
+                await db.collection('_test').doc('connection').set({
+                    test: true,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                // Clean up test document
+                await db.collection('_test').doc('connection').delete();
+                
+                console.log('✅ Firebase connection successful!');
+            } catch (error) {
+                console.error('❌ Firebase connection failed:', error);
+                showNotification('Warning: Firebase connection issue. Please check your configuration.', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
