@@ -8,6 +8,386 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Add EmailJS -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <style>
+        /* Password Protection Styles */
+        .password-section {
+            min-height: calc(100vh - 200px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-2xl) var(--spacing-md);
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .password-container {
+            background: var(--color-white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            padding: var(--spacing-2xl);
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            border: var(--border-base);
+            transition: transform 0.3s ease;
+        }
+
+        .password-container:hover {
+            transform: translateY(-2px);
+        }
+
+        .password-header {
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .password-header h1 {
+            color: var(--color-primary);
+            margin-bottom: var(--spacing-sm);
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-sm);
+        }
+
+        .password-header p {
+            color: var(--color-gray);
+            font-size: var(--font-size-sm);
+        }
+
+        .password-form {
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .password-form .form-group {
+            margin-bottom: var(--spacing-lg);
+            text-align: left;
+        }
+
+        .password-form .form-group label {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            font-weight: 500;
+            color: var(--color-black);
+            margin-bottom: var(--spacing-xs);
+            font-size: var(--font-size-sm);
+        }
+
+        .password-form .form-group input {
+            width: 100%;
+            padding: var(--spacing-md);
+            border: var(--border-base);
+            border-radius: var(--border-radius);
+            font-size: var(--font-size-base);
+            font-family: var(--font-primary);
+            transition: all var(--transition-fast);
+            background: var(--color-white);
+        }
+
+        .password-form .form-group input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 2px rgba(42, 89, 52, 0.1);
+        }
+
+        .password-form .form-actions {
+            display: flex;
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-xl);
+        }
+
+        .password-form .form-actions .btn {
+            flex: 1;
+            padding: var(--spacing-md);
+            font-size: var(--font-size-base);
+        }
+
+        .password-footer {
+            border-top: var(--border-thin);
+            padding-top: var(--spacing-lg);
+            margin-top: var(--spacing-lg);
+        }
+
+        .password-footer p {
+            color: var(--color-gray);
+            font-size: var(--font-size-xs);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-xs);
+        }
+
+        /* Enhanced lock button */
+        .lock-btn {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
+            color: white;
+            border: none;
+            padding: var(--spacing-sm) var(--spacing-lg);
+            border-radius: 20px;
+            font-size: var(--font-size-sm);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            box-shadow: 0 2px 8px rgba(42, 89, 52, 0.15);
+        }
+
+        .lock-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(42, 89, 52, 0.25);
+        }
+
+        .lock-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Item approval styles */
+        .item-approval-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-approved {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-rejected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .approval-actions {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+        }
+
+        .approve-btn, .reject-btn {
+            padding: 2px 8px;
+            font-size: 10px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .approve-btn {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .approve-btn:hover {
+            background: #c3e6cb;
+        }
+
+        .reject-btn {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .reject-btn:hover {
+            background: #f5c6cb;
+        }
+
+        .rejection-reason {
+            font-size: 10px;
+            color: #721c24;
+            margin-top: 4px;
+            padding: 4px;
+            background: #f8d7da;
+            border-radius: 4px;
+            border-left: 3px solid #721c24;
+        }
+
+        /* Approval summary */
+        .approval-summary {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            font-size: 11px;
+        }
+
+        .approval-count {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .approved-count {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .rejected-count {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .pending-count {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        /* Bulk approval section */
+        .bulk-approval-section {
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--color-offwhite);
+            border-radius: var(--border-radius);
+            border: var(--border-base);
+        }
+
+        .bulk-approval-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .bulk-approval-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            border-radius: var(--border-radius);
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .bulk-approve-btn {
+            background: var(--color-success);
+            color: white;
+        }
+
+        .bulk-approve-btn:hover {
+            background: #28a745;
+        }
+
+        .bulk-reject-btn {
+            background: var(--color-danger);
+            color: white;
+        }
+
+        .bulk-reject-btn:hover {
+            background: #dc3545;
+        }
+
+        /* Report level status */
+        .report-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: var(--border-radius);
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .status-partial {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status-complete {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--color-gray);
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            color: var(--color-lightgray);
+        }
+
+        .empty-state h3 {
+            font-size: var(--font-size-md);
+            margin-bottom: 8px;
+            color: var(--color-darkgray);
+        }
+
+        .empty-state p {
+            font-size: var(--font-size-sm);
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .password-container {
+                padding: var(--spacing-xl) var(--spacing-lg);
+            }
+            
+            .password-header h1 {
+                font-size: var(--font-size-lg);
+            }
+            
+            .password-form .form-actions {
+                flex-direction: column;
+            }
+
+            .approval-actions {
+                flex-direction: column;
+            }
+
+            .bulk-approval-actions {
+                flex-direction: column;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .password-container {
+                padding: var(--spacing-lg);
+            }
+            
+            .password-header h1 {
+                font-size: var(--font-size-md);
+            }
+            
+            .password-form .form-actions .btn {
+                width: 100%;
+            }
+        }
+
+        /* Shake animation for wrong password */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+    </style>
 </head>
 <body>
     <!-- Loading Overlay -->
@@ -37,23 +417,65 @@
             </div>
         </nav>
 
+        <!-- Password Protection Section -->
+        <section id="passwordSection" class="password-section">
+            <div class="password-container">
+                <div class="password-header">
+                    <h1><i class="fas fa-lock"></i> Secure Access</h1>
+                    <p>Enter password to view waste reports</p>
+                </div>
+                
+                <div class="password-form">
+                    <div class="form-group">
+                        <label for="password">
+                            <i class="fas fa-key"></i> Password <span class="required">*</span>
+                        </label>
+                        <input type="password" id="password" name="password" required 
+                               placeholder="Enter your password" 
+                               autocomplete="current-password">
+                        <span class="note">Contact your administrator for access credentials</span>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button class="btn btn-secondary" onclick="window.location.href='index.html'">
+                            <i class="fas fa-home"></i> Back to Home
+                        </button>
+                        <button class="btn btn-primary" id="accessButton">
+                            <i class="fas fa-unlock"></i> Access Reports
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="password-footer">
+                    <p><i class="fas fa-shield-alt"></i> Protected area. Unauthorized access is strictly prohibited.</p>
+                </div>
+            </div>
+        </section>
+
         <!-- Reports Table Section -->
-        <section class="reports-section">
+        <section id="reportsSection" class="reports-section" style="display: none;">
             <div class="section-header">
-                <h1><i class="fas fa-list"></i> Submitted Reports</h1>
-                <p>All Waste/Disposal Reports</p>
+                <div class="header-title">
+                    <h1><i class="fas fa-list-alt"></i> Submitted Reports</h1>
+                    <p>Waste & Disposal Reports Database</p>
+                </div>
+                <div class="header-actions">
+                    <button class="lock-btn" id="lockButton">
+                        <i class="fas fa-lock"></i> Lock Session
+                    </button>
+                </div>
             </div>
 
             <!-- Filters -->
             <div class="table-controls">
                 <div class="search-box">
                     <i class="fas fa-search"></i>
-                    <input type="text" id="searchEmail" placeholder="Search by email..." oninput="loadReports()">
+                    <input type="text" id="searchEmail" placeholder="Search by email...">
                 </div>
                 <div class="filter-controls">
                     <div class="filter-group">
                         <label for="filterStore">Store:</label>
-                        <select id="filterStore" class="filter-select" onchange="loadReports()">
+                        <select id="filterStore" class="filter-select">
                             <option value="">All Stores</option>
                             <option>FG Express IROSIN</option>
                             <option>FG Express LIGAO</option>
@@ -71,7 +493,7 @@
                     </div>
                     <div class="filter-group">
                         <label for="filterType">Type:</label>
-                        <select id="filterType" class="filter-select" onchange="loadReports()">
+                        <select id="filterType" class="filter-select">
                             <option value="">All Types</option>
                             <option value="expired">Expired Items</option>
                             <option value="waste">Waste</option>
@@ -80,25 +502,34 @@
                     </div>
                     <div class="filter-group">
                         <label for="filterDate">Date:</label>
-                        <input type="date" id="filterDate" class="filter-select" onchange="loadReports()">
+                        <input type="date" id="filterDate" class="filter-select">
                     </div>
                     <div class="filter-group">
-                        <button class="btn btn-secondary" onclick="clearFilters()">
-                            <i class="fas fa-redo"></i> Clear
+                        <label for="filterStatus">Approval:</label>
+                        <select id="filterStatus" class="filter-select">
+                            <option value="">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="partial">Partially Approved</option>
+                            <option value="complete">Fully Approved</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <button class="btn btn-secondary" id="clearFilters">
+                            <i class="fas fa-filter-circle-xmark"></i> Clear Filters
                         </button>
                         <div class="export-dropdown">
-                            <button class="btn btn-primary export-toggle" onclick="exportReports()">
-                                <i class="fas fa-download"></i> Export
+                            <button class="btn btn-primary export-toggle" id="exportButton">
+                                <i class="fas fa-file-export"></i> Export
                             </button>
                             <div class="export-options">
-                                <button class="export-option" onclick="exportReports('all')">
-                                    <i class="fas fa-download"></i> Export All Reports
+                                <button class="export-option" data-type="all">
+                                    <i class="fas fa-database"></i> Export All Reports
                                 </button>
-                                <button class="export-option" onclick="exportReports('current')">
+                                <button class="export-option" data-type="current">
                                     <i class="fas fa-filter"></i> Export Filtered Reports
                                 </button>
-                                <button class="export-option" onclick="exportReports('date')">
-                                    <i class="fas fa-calendar"></i> Export by Date
+                                <button class="export-option" data-type="date">
+                                    <i class="fas fa-calendar-day"></i> Export by Date
                                 </button>
                             </div>
                         </div>
@@ -106,15 +537,15 @@
                 </div>
             </div>
 
-            <!-- Export Date Selector (hidden by default) -->
+            <!-- Export Date Selector -->
             <div id="exportDateContainer" class="export-date-container" style="display: none;">
                 <div class="filter-group">
                     <label for="exportDate">Select Date:</label>
                     <input type="date" id="exportDate" class="filter-select">
-                    <button class="btn btn-primary" onclick="exportReports('date')">
+                    <button class="btn btn-primary" id="exportDateButton">
                         <i class="fas fa-download"></i> Export
                     </button>
-                    <button class="btn btn-secondary" onclick="hideExportDate()">
+                    <button class="btn btn-secondary" id="cancelExportDate">
                         <i class="fas fa-times"></i> Cancel
                     </button>
                 </div>
@@ -132,7 +563,9 @@
                             <th>Type</th>
                             <th>Email</th>
                             <th>Submitted</th>
+                            <th>Items</th>
                             <th>Status</th>
+                            <th>Approval</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -148,11 +581,11 @@
                     Showing <span id="showingCount">0</span> reports
                 </div>
                 <div class="page-navigation">
-                    <button class="page-btn" id="prevPageBtn" onclick="changePage(-1)" disabled>
+                    <button class="page-btn" id="prevPageBtn" disabled>
                         <i class="fas fa-chevron-left"></i> Previous
                     </button>
                     <div class="page-info" id="pageInfo">Page 1</div>
-                    <button class="page-btn" id="nextPageBtn" onclick="changePage(1)" disabled>
+                    <button class="page-btn" id="nextPageBtn" disabled>
                         Next <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
@@ -160,8 +593,8 @@
         </section>
 
         <!-- Statistics -->
-        <section class="statistics-section">
-            <h2><i class="fas fa-chart-pie"></i> Report Statistics</h2>
+        <section id="statisticsSection" class="statistics-section" style="display: none;">
+            <h2><i class="fas fa-chart-line"></i> Report Statistics</h2>
             <div class="stats-cards">
                 <div class="stat-card">
                     <div class="stat-icon total-reports">
@@ -199,6 +632,15 @@
                         <p>No Waste</p>
                     </div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-icon pending">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="pendingApprovalCount">0</h3>
+                        <p>Pending Approval</p>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -214,6 +656,7 @@
                     <a href="submit_waste_report.html">Submit Report</a>
                     <a href="waste_report_table.html">View Reports</a>
                 </div>
+                <p class="copyright"><i class="fas fa-shield-alt"></i> Access is restricted to authorized personnel only.</p>
             </div>
         </footer>
     </div>
@@ -223,13 +666,13 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-file-alt"></i> Report Details</h3>
-                <span class="close-modal" onclick="closeDetailsModal()">&times;</span>
+                <span class="close-modal" id="closeDetailsModal">&times;</span>
             </div>
             <div class="modal-body" id="modalContent">
                 <!-- Report details will be loaded here -->
             </div>
             <div class="modal-actions">
-                <button class="btn btn-primary" onclick="closeDetailsModal()">
+                <button class="btn btn-primary" id="closeModalButton">
                     <i class="fas fa-times"></i> Close
                 </button>
             </div>
@@ -241,16 +684,75 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-image"></i> Image Preview</h3>
-                <span class="close-modal" onclick="closeImageModal()">&times;</span>
+                <span class="close-modal" id="closeImageModal">&times;</span>
             </div>
             <div class="modal-body">
                 <img id="modalImage" src="" alt="Preview" style="width: 100%; max-height: 70vh; object-fit: contain;">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="closeImageModalButton">
+                    <i class="fas fa-times"></i> Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rejection Reason Modal -->
+    <div id="rejectionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-times-circle"></i> Reject Item</h3>
+                <span class="close-modal" id="closeRejectionModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="rejectionReason">Reason for Rejection *</label>
+                    <textarea id="rejectionReason" rows="4" placeholder="Please provide a reason for rejecting this item..." required></textarea>
+                    <div class="char-count" id="rejectionCharCount">0/500 characters</div>
+                </div>
+                <div id="rejectionItemInfo" style="font-size: 12px; color: var(--color-gray); margin-top: 10px;"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelRejectionButton">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button class="btn btn-danger" id="confirmRejectionButton">
+                    <i class="fas fa-check"></i> Confirm Rejection
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Rejection Modal -->
+    <div id="bulkRejectionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-times-circle"></i> Reject Multiple Items</h3>
+                <span class="close-modal" id="closeBulkRejectionModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="bulkRejectionReason">Reason for Rejection *</label>
+                    <textarea id="bulkRejectionReason" rows="4" placeholder="Please provide a reason for rejecting these items..." required></textarea>
+                    <div class="char-count" id="bulkRejectionCharCount">0/500 characters</div>
+                </div>
+                <div id="bulkRejectionItemsInfo" style="font-size: 12px; color: var(--color-gray); margin-top: 10px;">
+                    <p>You are about to reject <span id="bulkItemsCount">0</span> items from report: <strong id="bulkReportId"></strong></p>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelBulkRejectionButton">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button class="btn btn-danger" id="confirmBulkRejectionButton">
+                    <i class="fas fa-check"></i> Confirm Rejection
+                </button>
             </div>
         </div>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="script.js"></script>
+    <script src="waste_report_table.js"></script>
 </body>
 </html>

@@ -37,6 +37,115 @@ let cacheTimestamp = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
 
 // ================================
+// IMAGE COMPRESSION FUNCTIONS
+// ================================
+function compressImage(file, quality = 0.5, maxWidth = 800) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        
+        reader.onload = function(event) {
+            const img = new Image();
+            img.src = event.target.result;
+            
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                // Calculate new dimensions maintaining aspect ratio
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Convert to compressed JPEG (always use JPEG for compression)
+                canvas.toBlob(
+                    (blob) => {
+                        const compressedFile = new File([blob], file.name, {
+                            type: 'image/jpeg',
+                            lastModified: Date.now()
+                        });
+                        resolve(compressedFile);
+                    },
+                    'image/jpeg',
+                    quality
+                );
+            };
+            
+            img.onerror = function() {
+                reject(new Error('Failed to load image'));
+            };
+        };
+        
+        reader.onerror = function() {
+            reject(new Error('Failed to read file'));
+        };
+    });
+}
+
+// Convert file to Base64 with compression for images
+async function fileToBase64(file) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            let fileToProcess = file;
+            let isCompressed = false;
+            let originalSize = file.size;
+            
+            // Only compress images (not PDFs)
+            if (file.type.startsWith('image/')) {
+                console.log(`Compressing image: ${file.name} (${Math.round(file.size / 1024)} KB)`);
+                
+                // Check if image needs compression (over 150KB)
+                if (file.size > 150 * 1024) {
+                    // More aggressive compression for large files
+                    let quality = 0.6;
+                    let maxWidth = 600;
+                    
+                    if (file.size > 500 * 1024) {
+                        quality = 0.5;
+                        maxWidth = 500;
+                    }
+                    if (file.size > 1000 * 1024) {
+                        quality = 0.4;
+                        maxWidth = 400;
+                    }
+                    
+                    fileToProcess = await compressImage(file, quality, maxWidth);
+                    isCompressed = true;
+                    console.log(`Compressed from ${Math.round(file.size / 1024)}KB to ${Math.round(fileToProcess.size / 1024)}KB`);
+                }
+            }
+            
+            const reader = new FileReader();
+            reader.readAsDataURL(fileToProcess);
+            
+            reader.onload = () => resolve({
+                name: file.name,
+                type: fileToProcess.type,
+                size: fileToProcess.size,
+                base64: reader.result.split(',')[1],
+                dataUrl: reader.result,
+                originalSize: originalSize,
+                isCompressed: isCompressed,
+                compressionRatio: isCompressed ? Math.round((fileToProcess.size / originalSize) * 100) : 100
+            });
+            
+            reader.onerror = error => reject(error);
+            
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// ================================
 // HELPER FUNCTIONS
 // ================================
 function showNotification(message, type = 'success') {
@@ -90,6 +199,11 @@ function getDisposalTypeBadge(type) {
     }
 }
 
+// Calculate size of object in bytes
+function calculateObjectSize(obj) {
+    return new TextEncoder().encode(JSON.stringify(obj)).length;
+}
+
 // ================================
 // FORM FUNCTIONS
 // ================================
@@ -128,22 +242,6 @@ function toggleDynamicFields() {
     }
 }
 
-// Convert file to Base64
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve({
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            base64: reader.result.split(',')[1],
-            dataUrl: reader.result
-        });
-        reader.onerror = error => reject(error);
-    });
-}
-
 // Create file preview
 function createFilePreview(fileInput, previewContainerId) {
     const files = fileInput.files;
@@ -173,6 +271,12 @@ function createFilePreview(fileInput, previewContainerId) {
             previewItem.innerHTML = '📄 Doc';
         }
         
+        // Add file size info
+        const sizeInfo = document.createElement('div');
+        sizeInfo.className = 'file-size';
+        sizeInfo.textContent = formatFileSize(file.size);
+        previewItem.appendChild(sizeInfo);
+        
         // Add remove button
         const removeBtn = document.createElement('button');
         removeBtn.className = 'remove-file';
@@ -189,12 +293,19 @@ function createFilePreview(fileInput, previewContainerId) {
     // Show file info
     if (files.length > 0) {
         const totalSize = Array.from(files).reduce((total, file) => total + file.size, 0);
-        const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
         const info = document.createElement('div');
         info.className = 'file-info';
-        info.textContent = `${files.length} file(s), ${sizeMB} MB total`;
+        info.textContent = `${files.length} file(s), ${formatFileSize(totalSize)} total`;
         previewContainer.appendChild(info);
     }
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 // Remove file from input
@@ -277,7 +388,7 @@ function addExpiredItem() {
                        required accept="image/*,.pdf" multiple 
                        onchange="createFilePreview(this, 'documentation-${itemId}-preview')">
                 <div id="documentation-${itemId}-preview" class="file-preview"></div>
-                <span class="note">Upload photos or PDFs for this item (Max 5MB per file, 10 files max)</span>
+                <span class="note">Upload photos or PDFs for this item (Max 1MB per file, 3 files max. Images will be automatically compressed)</span>
             </div>
             <div class="form-group">
                 <label for="notes-${itemId}">Additional Notes</label>
@@ -349,7 +460,7 @@ function addWasteItem() {
                        required accept="image/*,.pdf" multiple 
                        onchange="createFilePreview(this, 'wasteDocumentation-${itemId}-preview')">
                 <div id="wasteDocumentation-${itemId}-preview" class="file-preview"></div>
-                <span class="note">Upload photos or PDFs for this waste item (Max 5MB per file, 10 files max)</span>
+                <span class="note">Upload photos or PDFs for this waste item (Max 1MB per file, 3 files max. Images will be automatically compressed)</span>
             </div>
             <div class="form-group">
                 <label for="wasteNotes-${itemId}">Additional Notes</label>
@@ -371,8 +482,8 @@ function removeField(fieldId) {
 
 // Validate file size and count
 function validateFiles(fileInput) {
-    const maxSize = 5 * 1024 * 1024; // 5MB
-    const maxFiles = 10;
+    const maxSize = 1 * 1024 * 1024; // 1MB (reduced from 2MB)
+    const maxFiles = 3; // Reduced from 5
     
     if (fileInput.files.length > maxFiles) {
         return `Maximum ${maxFiles} files allowed`;
@@ -380,11 +491,24 @@ function validateFiles(fileInput) {
     
     for (let file of fileInput.files) {
         if (file.size > maxSize) {
-            return `File "${file.name}" exceeds 5MB limit`;
+            return `File "${file.name}" exceeds 1MB limit (${formatFileSize(file.size)})`;
         }
     }
     
     return null;
+}
+
+// Calculate total size of files before compression
+function calculateTotalFileSize(fileInputs) {
+    let totalSize = 0;
+    fileInputs.forEach(input => {
+        if (input && input.files) {
+            Array.from(input.files).forEach(file => {
+                totalSize += file.size;
+            });
+        }
+    });
+    return totalSize;
 }
 
 // Form validation for dynamic fields
@@ -401,6 +525,10 @@ function validateDynamicFields() {
             showNotification('Please add at least one expired item.', 'error');
             return false;
         }
+        
+        // Calculate total file size estimate
+        let totalFileSize = 0;
+        const fileInputs = [];
         
         for (let item of expiredItems) {
             const requiredFields = item.querySelectorAll('input[required], select[required]');
@@ -426,14 +554,32 @@ function validateDynamicFields() {
                     showNotification(fileError, 'error');
                     return false;
                 }
+                
+                fileInputs.push(fileInput);
             }
         }
+        
+        // Estimate compressed size (assume 70% compression for images)
+        totalFileSize = calculateTotalFileSize(fileInputs);
+        const estimatedCompressedSize = totalFileSize * 0.3; // Assume 70% reduction
+        
+        if (estimatedCompressedSize > 700 * 1024) { // 700KB warning
+            const proceed = confirm(`Warning: The total file size after compression will be approximately ${formatFileSize(estimatedCompressedSize)}. Large reports will be split into multiple documents. Do you want to continue?`);
+            if (!proceed) {
+                return false;
+            }
+        }
+        
     } else if (disposalType.value === 'waste') {
         const wasteItems = document.querySelectorAll('#wasteFields .field-group');
         if (wasteItems.length === 0) {
             showNotification('Please add at least one waste item.', 'error');
             return false;
         }
+        
+        // Calculate total file size estimate
+        let totalFileSize = 0;
+        const fileInputs = [];
         
         for (let item of wasteItems) {
             const requiredFields = item.querySelectorAll('input[required], select[required]');
@@ -459,6 +605,19 @@ function validateDynamicFields() {
                     showNotification(fileError, 'error');
                     return false;
                 }
+                
+                fileInputs.push(fileInput);
+            }
+        }
+        
+        // Estimate compressed size
+        totalFileSize = calculateTotalFileSize(fileInputs);
+        const estimatedCompressedSize = totalFileSize * 0.3; // Assume 70% reduction
+        
+        if (estimatedCompressedSize > 700 * 1024) { // 700KB warning
+            const proceed = confirm(`Warning: The total file size after compression will be approximately ${formatFileSize(estimatedCompressedSize)}. Large reports will be split into multiple documents. Do you want to continue?`);
+            if (!proceed) {
+                return false;
             }
         }
     }
@@ -467,15 +626,92 @@ function validateDynamicFields() {
 }
 
 // ================================
+// BATCH PROCESSING FUNCTIONS
+// ================================
+function splitIntoBatches(items, maxBatchSize = 800 * 1024) { // 800KB per batch
+    const batches = [];
+    let currentBatch = [];
+    let currentBatchSize = 0;
+    
+    for (const item of items) {
+        const itemSize = calculateObjectSize(item);
+        
+        // If adding this item would exceed batch size, start a new batch
+        if (currentBatchSize + itemSize > maxBatchSize && currentBatch.length > 0) {
+            batches.push([...currentBatch]);
+            currentBatch = [item];
+            currentBatchSize = itemSize;
+        } else {
+            currentBatch.push(item);
+            currentBatchSize += itemSize;
+        }
+    }
+    
+    // Add the last batch
+    if (currentBatch.length > 0) {
+        batches.push(currentBatch);
+    }
+    
+    return batches;
+}
+
+async function saveReportInBatches(mainReportId, baseReportData, items, batchNumber = 1) {
+    const batches = splitIntoBatches(items);
+    const totalBatches = batches.length;
+    
+    console.log(`Splitting report into ${totalBatches} batches`);
+    
+    // Save each batch
+    for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        const batchReportId = `${mainReportId}_BATCH${i + 1}`;
+        
+        // Create batch document
+        const batchReport = {
+            ...baseReportData,
+            reportId: batchReportId,
+            batchNumber: i + 1,
+            totalBatches: totalBatches,
+            mainReportId: mainReportId,
+            itemCount: batch.length
+        };
+        
+        // Add items based on disposal type
+        if (baseReportData.disposalType === 'expired') {
+            batchReport.expiredItems = batch;
+            batchReport.totalExpiredItems = batch.length;
+        } else if (baseReportData.disposalType === 'waste') {
+            batchReport.wasteItems = batch;
+            batchReport.totalWasteItems = batch.length;
+        }
+        
+        // Calculate size
+        const batchSize = calculateObjectSize(batchReport);
+        batchReport.reportSizeKB = Math.round(batchSize / 1024);
+        
+        console.log(`Saving batch ${i + 1}/${totalBatches}: ${batchReport.reportSizeKB}KB, ${batch.length} items`);
+        
+        // Save to Firestore
+        const docRef = db.collection('wasteReports').doc(batchReportId);
+        await docRef.set(batchReport);
+        
+        console.log(`✅ Batch ${i + 1} saved with ID: ${batchReportId}`);
+    }
+    
+    return totalBatches;
+}
+
+// ================================
 // FORM SUBMISSION HANDLER
 // ================================
 async function handleSubmit(event) {
+    console.log('Form submission started...');
+    
+    // Prevent default form submission
     if (event) {
         event.preventDefault();
         event.stopPropagation();
     }
-    
-    console.log('Form submission started...');
     
     // Check if Firebase is initialized
     if (!db) {
@@ -521,28 +757,32 @@ async function handleSubmit(event) {
     submitBtn.disabled = true;
     showLoading(true);
     
+    // Initialize base report data
+    const baseReportData = {
+        email: document.getElementById('email').value.trim(),
+        store: document.getElementById('store').value,
+        personnel: document.getElementById('personnel').value.trim(),
+        reportDate: document.getElementById('reportDate').value,
+        disposalType: disposalType.value,
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        status: 'submitted',
+        createdAt: new Date().toISOString()
+    };
+    
     try {
-        // Generate report ID
-        const reportId = 'REPORT-' + Date.now().toString();
+        // Generate main report ID
+        const mainReportId = 'REPORT-' + Date.now().toString();
+        baseReportData.reportId = mainReportId;
         
-        // Collect form data
-        const reportData = {
-            email: document.getElementById('email').value.trim(),
-            store: document.getElementById('store').value,
-            personnel: document.getElementById('personnel').value.trim(),
-            reportDate: document.getElementById('reportDate').value,
-            disposalType: disposalType.value,
-            submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            reportId: reportId,
-            status: 'submitted',
-            createdAt: new Date().toISOString()
-        };
+        console.log('Processing report data for ID:', mainReportId);
         
-        console.log('Processing report data:', reportData);
+        // Track total size
+        let totalOriginalSize = 0;
+        let totalCompressedSize = 0;
+        let allItems = [];
         
         // Process based on disposal type
         if (disposalType.value === 'expired') {
-            const expiredItems = [];
             const expiredFields = document.querySelectorAll('#expiredFields .field-group');
             
             console.log(`Found ${expiredFields.length} expired items`);
@@ -553,17 +793,24 @@ async function handleSubmit(event) {
                 
                 console.log(`Processing expired item ${itemId} with ${fileInput.files.length} files`);
                 
-                // Convert files to Base64
+                // Convert files to Base64 with compression
                 const filesBase64 = [];
                 if (fileInput && fileInput.files.length > 0) {
                     for (let i = 0; i < fileInput.files.length; i++) {
                         try {
                             const file = fileInput.files[i];
+                            totalOriginalSize += file.size;
+                            
+                            console.log(`Processing file ${i + 1}/${fileInput.files.length}: ${file.name} (${formatFileSize(file.size)})`);
+                            
                             const fileData = await fileToBase64(file);
                             filesBase64.push(fileData);
-                            console.log(`Converted file ${i + 1}/${fileInput.files.length}: ${file.name}`);
+                            totalCompressedSize += fileData.size;
+                            
+                            console.log(`File processed: ${fileData.isCompressed ? 'Compressed' : 'Original'} - ${formatFileSize(fileData.size)}`);
+                            
                         } catch (fileError) {
-                            console.error('Error converting file:', fileError);
+                            console.error('Error processing file:', fileError);
                         }
                     }
                 }
@@ -581,14 +828,14 @@ async function handleSubmit(event) {
                     totalFiles: fileInput ? fileInput.files.length : 0
                 };
                 
-                expiredItems.push(expiredItem);
+                allItems.push(expiredItem);
             }
             
-            reportData.expiredItems = expiredItems;
-            reportData.totalExpiredItems = expiredItems.length;
+            baseReportData.totalExpiredItems = allItems.length;
+            baseReportData.originalFileSize = totalOriginalSize;
+            baseReportData.compressedFileSize = totalCompressedSize;
             
         } else if (disposalType.value === 'waste') {
-            const wasteItems = [];
             const wasteFields = document.querySelectorAll('#wasteFields .field-group');
             
             console.log(`Found ${wasteFields.length} waste items`);
@@ -599,17 +846,24 @@ async function handleSubmit(event) {
                 
                 console.log(`Processing waste item ${itemId} with ${fileInput.files.length} files`);
                 
-                // Convert files to Base64
+                // Convert files to Base64 with compression
                 const filesBase64 = [];
                 if (fileInput && fileInput.files.length > 0) {
                     for (let i = 0; i < fileInput.files.length; i++) {
                         try {
                             const file = fileInput.files[i];
+                            totalOriginalSize += file.size;
+                            
+                            console.log(`Processing file ${i + 1}/${fileInput.files.length}: ${file.name} (${formatFileSize(file.size)})`);
+                            
                             const fileData = await fileToBase64(file);
                             filesBase64.push(fileData);
-                            console.log(`Converted file ${i + 1}/${fileInput.files.length}: ${file.name}`);
+                            totalCompressedSize += fileData.size;
+                            
+                            console.log(`File processed: ${fileData.isCompressed ? 'Compressed' : 'Original'} - ${formatFileSize(fileData.size)}`);
+                            
                         } catch (fileError) {
-                            console.error('Error converting file:', fileError);
+                            console.error('Error processing file:', fileError);
                         }
                     }
                 }
@@ -625,37 +879,68 @@ async function handleSubmit(event) {
                     totalFiles: fileInput ? fileInput.files.length : 0
                 };
                 
-                wasteItems.push(wasteItem);
+                allItems.push(wasteItem);
             }
             
-            reportData.wasteItems = wasteItems;
-            reportData.totalWasteItems = wasteItems.length;
+            baseReportData.totalWasteItems = allItems.length;
+            baseReportData.originalFileSize = totalOriginalSize;
+            baseReportData.compressedFileSize = totalCompressedSize;
         } else if (disposalType.value === 'noWaste') {
-            reportData.noWaste = true;
-            reportData.notes = "No waste or expired items to report for this period";
+            baseReportData.noWaste = true;
+            baseReportData.notes = "No waste or expired items to report for this period";
         }
         
-        // Calculate total data size (for monitoring)
-        const reportSize = new TextEncoder().encode(JSON.stringify(reportData)).length;
-        reportData.reportSizeKB = Math.round(reportSize / 1024);
+        console.log('Size summary:');
+        console.log('- Original files:', formatFileSize(totalOriginalSize));
+        console.log('- Compressed files:', formatFileSize(totalCompressedSize));
+        console.log('- Total items:', allItems.length);
         
-        console.log('Saving to Firestore:', {
-            ...reportData,
-            documentation: '[...file data hidden...]'
+        // Check if we need to split into batches
+        const estimatedReportSize = calculateObjectSize({
+            ...baseReportData,
+            items: allItems
         });
         
-        // Save to Firestore
-        const docRef = db.collection('wasteReports').doc(reportId);
-        await docRef.set(reportData);
+        console.log('Estimated report size:', formatFileSize(estimatedReportSize));
         
-        console.log('✅ Report saved to Firestore with ID:', reportId);
+        let totalBatches = 1;
+        
+        if (estimatedReportSize > 800 * 1024) { // 800KB threshold
+            console.log('Report is large, splitting into batches...');
+            
+            // Save in batches
+            totalBatches = await saveReportInBatches(mainReportId, baseReportData, allItems);
+            
+        } else {
+            // Save as single document
+            console.log('Report fits in single document, saving...');
+            
+            // Add items to report
+            if (disposalType.value === 'expired') {
+                baseReportData.expiredItems = allItems;
+            } else if (disposalType.value === 'waste') {
+                baseReportData.wasteItems = allItems;
+            }
+            
+            // Calculate final size
+            const finalSize = calculateObjectSize(baseReportData);
+            baseReportData.reportSizeKB = Math.round(finalSize / 1024);
+            
+            console.log('Final report size:', baseReportData.reportSizeKB, 'KB');
+            
+            // Save to Firestore
+            const docRef = db.collection('wasteReports').doc(mainReportId);
+            await docRef.set(baseReportData);
+            
+            console.log('✅ Report saved to Firestore with ID:', mainReportId);
+        }
         
         // Clear cache since we have new data
         allReportsCache = null;
         cacheTimestamp = null;
         
         // Show success message
-        showNotification('Report submitted successfully!', 'success');
+        showNotification(`Report submitted successfully! ${totalBatches > 1 ? `(${totalBatches} parts)` : ''}`, 'success');
         
         // Reset form
         const form = document.getElementById('wasteReportForm');
@@ -684,7 +969,7 @@ async function handleSubmit(event) {
         
         // Show success message and option to view reports
         setTimeout(() => {
-            if (confirm('Report submitted successfully! Would you like to view all reports?')) {
+            if (confirm(`Report submitted successfully! ${totalBatches > 1 ? `(Split into ${totalBatches} parts) ` : ''}Would you like to view all reports?`)) {
                 window.location.href = 'waste_report_table.html';
             }
         }, 1000);
@@ -698,6 +983,8 @@ async function handleSubmit(event) {
             errorMessage += 'Permission denied. Check Firebase rules.';
         } else if (error.code === 'unavailable') {
             errorMessage += 'Network error. Please check your connection.';
+        } else if (error.code === 'failed-precondition') {
+            errorMessage += 'Document too large even after compression. Please reduce file sizes or upload fewer files.';
         } else {
             errorMessage += error.message;
         }
@@ -708,7 +995,7 @@ async function handleSubmit(event) {
         try {
             const reports = JSON.parse(localStorage.getItem('wasteReports_backup') || '[]');
             reports.push({
-                ...reportData,
+                ...baseReportData,
                 savedLocally: true,
                 error: error.message,
                 timestamp: new Date().toISOString()
@@ -911,6 +1198,7 @@ async function exportReports(type = 'current') {
             itemData['Disposal Type'] = report.disposalType || 'N/A';
             itemData['Submitted'] = formatDateTime(report.submittedAt);
             itemData['Status'] = report.status || 'Submitted';
+            itemData['Report Size'] = report.reportSizeKB ? `${report.reportSizeKB} KB` : 'N/A';
             
             // Handle items based on type
             if (report.disposalType === 'expired' && report.expiredItems) {
@@ -918,19 +1206,30 @@ async function exportReports(type = 'current') {
                 itemData['Item Details'] = report.expiredItems.map(item => 
                     `${item.quantity} ${item.unit} of ${item.item} (Exp: ${formatDate(item.expirationDate)})`
                 ).join('; ');
+                itemData['Total Files'] = report.expiredItems.reduce((sum, item) => sum + (item.totalFiles || 0), 0);
             } else if (report.disposalType === 'waste' && report.wasteItems) {
                 itemData['Total Items'] = report.wasteItems.length;
                 itemData['Item Details'] = report.wasteItems.map(item => 
                     `${item.quantity} ${item.unit} of ${item.item} - ${item.reason}`
                 ).join('; ');
+                itemData['Total Files'] = report.wasteItems.reduce((sum, item) => sum + (item.totalFiles || 0), 0);
             } else if (report.disposalType === 'noWaste') {
                 itemData['Total Items'] = 0;
                 itemData['Item Details'] = 'No waste reported';
+                itemData['Total Files'] = 0;
             }
             
-            // Add metadata
-            itemData['Created At'] = formatDateTime(report.createdAt);
-            itemData['Report Size (KB)'] = report.reportSizeKB || 'N/A';
+            // Add file size info
+            if (report.originalFileSize) {
+                itemData['Original File Size'] = formatFileSize(report.originalFileSize);
+                itemData['Compressed File Size'] = formatFileSize(report.compressedFileSize);
+            }
+            
+            // Add batch info if applicable
+            if (report.batchNumber) {
+                itemData['Batch'] = `${report.batchNumber}/${report.totalBatches || 1}`;
+                itemData['Main Report ID'] = report.mainReportId || 'N/A';
+            }
             
             return itemData;
         });
@@ -950,10 +1249,14 @@ async function exportReports(type = 'current') {
             { wch: 15 }, // Disposal Type
             { wch: 18 }, // Submitted
             { wch: 10 }, // Status
+            { wch: 12 }, // Report Size
             { wch: 10 }, // Total Items
             { wch: 50 }, // Item Details
-            { wch: 18 }, // Created At
-            { wch: 15 }  // Report Size
+            { wch: 10 }, // Total Files
+            { wch: 18 }, // Original File Size
+            { wch: 18 }, // Compressed File Size
+            { wch: 10 }, // Batch
+            { wch: 12 }  // Main Report ID
         ];
         ws['!cols'] = wscols;
         
@@ -1107,21 +1410,45 @@ function generateExportSummary(reports) {
     let totalItems = 0;
     let totalExpired = 0;
     let totalWaste = 0;
+    let totalFiles = 0;
+    let totalOriginalSize = 0;
+    let totalCompressedSize = 0;
+    let batchReports = 0;
     
     reports.forEach(report => {
         if (report.disposalType === 'expired' && report.expiredItems) {
             totalExpired += report.expiredItems.length;
             totalItems += report.expiredItems.length;
+            totalFiles += report.expiredItems.reduce((sum, item) => sum + (item.totalFiles || 0), 0);
         } else if (report.disposalType === 'waste' && report.wasteItems) {
             totalWaste += report.wasteItems.length;
             totalItems += report.wasteItems.length;
+            totalFiles += report.wasteItems.reduce((sum, item) => sum + (item.totalFiles || 0), 0);
         }
+        
+        if (report.originalFileSize) totalOriginalSize += report.originalFileSize;
+        if (report.compressedFileSize) totalCompressedSize += report.compressedFileSize;
+        if (report.batchNumber) batchReports++;
     });
     
     summary.push({ 'Metric': '--- Items Summary ---', 'Value': '' });
     summary.push({ 'Metric': 'Total Items Reported', 'Value': totalItems });
     summary.push({ 'Metric': 'Expired Items', 'Value': totalExpired });
     summary.push({ 'Metric': 'Waste Items', 'Value': totalWaste });
+    summary.push({ 'Metric': 'Total Files Uploaded', 'Value': totalFiles });
+    
+    if (totalOriginalSize > 0) {
+        summary.push({ 'Metric': '--- File Size Summary ---', 'Value': '' });
+        summary.push({ 'Metric': 'Total Original Size', 'Value': formatFileSize(totalOriginalSize) });
+        summary.push({ 'Metric': 'Total Compressed Size', 'Value': formatFileSize(totalCompressedSize) });
+        const compressionRatio = totalOriginalSize > 0 ? Math.round((totalCompressedSize / totalOriginalSize) * 100) : 0;
+        summary.push({ 'Metric': 'Overall Compression Ratio', 'Value': `${compressionRatio}%` });
+    }
+    
+    if (batchReports > 0) {
+        summary.push({ 'Metric': '--- Batch Reports ---', 'Value': '' });
+        summary.push({ 'Metric': 'Reports Split into Batches', 'Value': batchReports });
+    }
     
     // Date range
     if (reports.length > 0) {
@@ -1211,6 +1538,9 @@ async function loadReports() {
             // Use Firestore queries for simple filtering
             let query = db.collection('wasteReports');
             
+            // Filter out batch documents (only show main or batch 1)
+            // We'll filter batches client-side
+            
             // Apply single filter if present
             if (hasStoreFilter) {
                 query = query.where('store', '==', storeFilter.value);
@@ -1229,7 +1559,7 @@ async function loadReports() {
             }
             
             // Get limited results
-            query = query.limit(pageSize);
+            query = query.limit(pageSize * 2); // Get more to account for batches
             
             const snapshot = await query.get();
             
@@ -1242,11 +1572,48 @@ async function loadReports() {
                 lastVisibleDoc = null;
             }
             
-            // Process results
+            // Process results and group batches
+            const reportsMap = new Map();
+            
             snapshot.forEach(doc => {
                 const report = { id: doc.id, ...doc.data() };
-                filteredReports.push(report);
+                
+                // Group batches by mainReportId
+                if (report.mainReportId) {
+                    // This is a batch document
+                    if (!reportsMap.has(report.mainReportId)) {
+                        reportsMap.set(report.mainReportId, {
+                            ...report,
+                            isBatch: true,
+                            batches: [report],
+                            totalItems: report.itemCount || 0
+                        });
+                    } else {
+                        const existing = reportsMap.get(report.mainReportId);
+                        existing.batches.push(report);
+                        existing.totalItems += report.itemCount || 0;
+                    }
+                } else {
+                    // This is a regular report
+                    reportsMap.set(report.reportId, {
+                        ...report,
+                        isBatch: false,
+                        batches: [report],
+                        totalItems: report.totalExpiredItems || report.totalWasteItems || 0
+                    });
+                }
             });
+            
+            // Convert map to array and filter for display
+            filteredReports = Array.from(reportsMap.values())
+                .filter(report => {
+                    // For batch reports, only show batch 1
+                    if (report.isBatch) {
+                        return report.batchNumber === 1 || !report.batchNumber;
+                    }
+                    return true;
+                })
+                .slice(0, pageSize); // Limit to page size
             
             totalFilteredCount = filteredReports.length;
             
@@ -1290,9 +1657,18 @@ async function loadReports() {
                 else if (report.disposalType === 'waste') wasteCount++;
                 else if (report.disposalType === 'noWaste') noWasteCount++;
                 
+                // Format display info
+                let displayId = report.reportId;
+                let itemCount = report.totalItems || report.totalExpiredItems || report.totalWasteItems || 0;
+                
+                if (report.isBatch && report.batches && report.batches.length > 1) {
+                    displayId = `${report.reportId.split('_')[0]}... (${report.batches.length} parts)`;
+                    itemCount = report.totalItems || 0;
+                }
+                
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${report.reportId ? report.reportId.substring(0, 8) + '...' : 'N/A'}</td>
+                    <td>${displayId}</td>
                     <td>${report.store || 'N/A'}</td>
                     <td>${report.personnel || 'N/A'}</td>
                     <td>${formatDate(report.reportDate)}</td>
@@ -1301,7 +1677,7 @@ async function loadReports() {
                     <td>${formatDateTime(report.submittedAt)}</td>
                     <td><span class="status-badge status-submitted">Submitted</span></td>
                     <td>
-                        <button class="view-details-btn" onclick="viewReportDetails('${report.id}')">
+                        <button class="view-details-btn" onclick="viewReportDetails('${report.id}', ${report.isBatch})">
                             <i class="fas fa-eye"></i> View
                         </button>
                     </td>
@@ -1388,7 +1764,7 @@ async function loadReportsClientSide() {
                     <td>${formatDateTime(report.submittedAt)}</td>
                     <td><span class="status-badge status-submitted">Submitted</span></td>
                     <td>
-                        <button class="view-details-btn" onclick="viewReportDetails('${report.id}')">
+                        <button class="view-details-btn" onclick="viewReportDetails('${report.id}', ${report.isBatch || false})">
                             <i class="fas fa-eye"></i> View
                         </button>
                     </td>
@@ -1486,255 +1862,52 @@ function updatePaginationButtons(totalFilteredCount) {
 // ================================
 // REPORT DETAILS FUNCTIONS
 // ================================
-async function viewReportDetails(reportId) {
+async function viewReportDetails(reportId, isBatch = false) {
     showLoading(true);
     
     try {
-        const doc = await db.collection('wasteReports').doc(reportId).get();
-        
-        if (!doc.exists) {
-            showNotification('Report not found', 'error');
-            return;
-        }
-        
-        const report = { id: doc.id, ...doc.data() };
-        
-        // Build modal content
-        let modalContent = `
-            <div class="details-section">
-                <h3><i class="fas fa-info-circle"></i> Report Information</h3>
-                <div class="details-grid">
-                    <div class="detail-item">
-                        <div class="detail-label">Report ID</div>
-                        <div class="detail-value">${report.reportId || 'N/A'}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Store</div>
-                        <div class="detail-value">${report.store || 'N/A'}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Personnel</div>
-                        <div class="detail-value">${report.personnel || 'N/A'}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Report Date</div>
-                        <div class="detail-value">${formatDate(report.reportDate)}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Disposal Type</div>
-                        <div class="detail-value">${getDisposalTypeBadge(report.disposalType)}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Email</div>
-                        <div class="detail-value">${report.email || 'N/A'}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Submitted At</div>
-                        <div class="detail-value">${formatDateTime(report.submittedAt)}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Status</div>
-                        <div class="detail-value"><span class="status-badge status-submitted">${report.status || 'Submitted'}</span></div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Add items based on disposal type
-        if (report.disposalType === 'expired' && report.expiredItems) {
-            modalContent += `
-                <div class="details-section">
-                    <h3><i class="fas fa-boxes"></i> Expired Items (${report.expiredItems.length})</h3>
-                    <div class="item-list">
-            `;
+        if (isBatch) {
+            // Load all batches for this report
+            const mainDoc = await db.collection('wasteReports').doc(reportId).get();
+            if (!mainDoc.exists) {
+                showNotification('Report not found', 'error');
+                return;
+            }
             
-            report.expiredItems.forEach((item, index) => {
-                modalContent += `
-                    <div class="item-list-item">
-                        <div class="detail-item">
-                            <div class="detail-label">Item Name</div>
-                            <div class="detail-value">${item.item}</div>
-                        </div>
-                        <div class="details-grid">
-                            <div class="detail-item">
-                                <div class="detail-label">Delivered Date</div>
-                                <div class="detail-value">${formatDate(item.deliveredDate)}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Manufactured Date</div>
-                                <div class="detail-value">${formatDate(item.manufacturedDate)}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Expiration Date</div>
-                                <div class="detail-value">${formatDate(item.expirationDate)}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Quantity</div>
-                                <div class="detail-value">${item.quantity} ${item.unit}</div>
-                            </div>
-                        </div>
-                        ${item.notes ? `
-                            <div class="detail-item">
-                                <div class="detail-label">Notes</div>
-                                <div class="detail-value">${item.notes}</div>
-                            </div>
-                        ` : ''}
-                `;
-                
-                // Add documentation if available
-                if (item.documentation && item.documentation.length > 0) {
-                    modalContent += `
-                        <div class="detail-item">
-                            <div class="detail-label">Documentation (${item.documentation.length} files)</div>
-                            <div class="image-gallery">
-                    `;
-                    
-                    item.documentation.forEach((file, fileIndex) => {
-                        if (file.type && file.type.startsWith('image/')) {
-                            modalContent += `
-                                <img src="data:${file.type};base64,${file.base64}" 
-                                     alt="${file.name}" 
-                                     class="image-thumbnail"
-                                     onclick="viewImage('data:${file.type};base64,${file.base64}')">
-                            `;
-                        } else {
-                            modalContent += `
-                                <div class="image-thumbnail" style="display: flex; align-items: center; justify-content: center; background: #f0f0f0;">
-                                    <i class="fas fa-file-pdf"></i> ${file.name}
-                                </div>
-                            `;
-                        }
-                    });
-                    
-                    modalContent += `
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                modalContent += `</div>`;
+            const mainReport = { id: mainDoc.id, ...mainDoc.data() };
+            const mainReportId = mainReport.mainReportId || mainReport.reportId;
+            
+            // Query all batches with this mainReportId
+            let query = db.collection('wasteReports')
+                .where('mainReportId', '==', mainReportId);
+            
+            const snapshot = await query.get();
+            
+            const allBatches = [];
+            snapshot.forEach(doc => {
+                allBatches.push({ id: doc.id, ...doc.data() });
             });
             
-            modalContent += `
-                    </div>
-                </div>
-            `;
-        } else if (report.disposalType === 'waste' && report.wasteItems) {
-            modalContent += `
-                <div class="details-section">
-                    <h3><i class="fas fa-trash"></i> Waste Items (${report.wasteItems.length})</h3>
-                    <div class="item-list">
-            `;
+            // Sort by batch number
+            allBatches.sort((a, b) => (a.batchNumber || 1) - (b.batchNumber || 1));
             
-            report.wasteItems.forEach((item, index) => {
-                modalContent += `
-                    <div class="item-list-item">
-                        <div class="detail-item">
-                            <div class="detail-label">Item Description</div>
-                            <div class="detail-value">${item.item}</div>
-                        </div>
-                        <div class="details-grid">
-                            <div class="detail-item">
-                                <div class="detail-label">Reason</div>
-                                <div class="detail-value">${item.reason}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Quantity</div>
-                                <div class="detail-value">${item.quantity} ${item.unit}</div>
-                            </div>
-                        </div>
-                        ${item.notes ? `
-                            <div class="detail-item">
-                                <div class="detail-label">Notes</div>
-                                <div class="detail-value">${item.notes}</div>
-                            </div>
-                        ` : ''}
-                `;
-                
-                // Add documentation if available
-                if (item.documentation && item.documentation.length > 0) {
-                    modalContent += `
-                        <div class="detail-item">
-                            <div class="detail-label">Documentation (${item.documentation.length} files)</div>
-                            <div class="image-gallery">
-                    `;
-                    
-                    item.documentation.forEach((file, fileIndex) => {
-                        if (file.type && file.type.startsWith('image/')) {
-                            modalContent += `
-                                <img src="data:${file.type};base64,${file.base64}" 
-                                     alt="${file.name}" 
-                                     class="image-thumbnail"
-                                     onclick="viewImage('data:${file.type};base64,${file.base64}')">
-                            `;
-                        } else {
-                            modalContent += `
-                                <div class="image-thumbnail" style="display: flex; align-items: center; justify-content: center; background: #f0f0f0;">
-                                    <i class="fas fa-file-pdf"></i> ${file.name}
-                                </div>
-                            `;
-                        }
-                    });
-                    
-                    modalContent += `
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                modalContent += `</div>`;
-            });
+            // Build combined modal content
+            await buildCombinedModalContent(allBatches);
             
-            modalContent += `
-                    </div>
-                </div>
-            `;
-        } else if (report.disposalType === 'noWaste') {
-            modalContent += `
-                <div class="details-section">
-                    <h3><i class="fas fa-check-circle"></i> No Waste Report</h3>
-                    <div class="detail-item">
-                        <div class="detail-value" style="color: var(--color-success); font-weight: 500;">
-                            ✅ No waste or expired items to report for this period
-                        </div>
-                    </div>
-                    ${report.notes ? `
-                        <div class="detail-item">
-                            <div class="detail-label">Notes</div>
-                            <div class="detail-value">${report.notes}</div>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
+        } else {
+            // Regular single report
+            const doc = await db.collection('wasteReports').doc(reportId).get();
+            
+            if (!doc.exists) {
+                showNotification('Report not found', 'error');
+                return;
+            }
+            
+            const report = { id: doc.id, ...doc.data() };
+            await buildSingleModalContent(report);
         }
         
-        // Add report metadata
-        modalContent += `
-            <div class="details-section">
-                <h3><i class="fas fa-database"></i> Report Metadata</h3>
-                <div class="details-grid">
-                    <div class="detail-item">
-                        <div class="detail-label">Created At</div>
-                        <div class="detail-value">${formatDateTime(report.createdAt)}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Report Size</div>
-                        <div class="detail-value">${report.reportSizeKB || 'Unknown'} KB</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Total Items</div>
-                        <div class="detail-value">${report.totalExpiredItems || report.totalWasteItems || 0}</div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Set modal content and show
-        const modalContentEl = document.getElementById('modalContent');
-        if (modalContentEl) {
-            modalContentEl.innerHTML = modalContent;
-        }
-        
+        // Show modal
         const detailsModal = document.getElementById('detailsModal');
         if (detailsModal) {
             detailsModal.style.display = 'flex';
@@ -1745,6 +1918,517 @@ async function viewReportDetails(reportId) {
         showNotification('Error loading report details: ' + error.message, 'error');
     } finally {
         showLoading(false);
+    }
+}
+
+async function buildCombinedModalContent(batches) {
+    if (!batches || batches.length === 0) return;
+    
+    const firstBatch = batches[0];
+    let modalContent = `
+        <div class="details-section">
+            <h3><i class="fas fa-info-circle"></i> Report Information (Combined from ${batches.length} parts)</h3>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Main Report ID</div>
+                    <div class="detail-value">${firstBatch.mainReportId || firstBatch.reportId}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Store</div>
+                    <div class="detail-value">${firstBatch.store || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Personnel</div>
+                    <div class="detail-value">${firstBatch.personnel || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Report Date</div>
+                    <div class="detail-value">${formatDate(firstBatch.reportDate)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Disposal Type</div>
+                    <div class="detail-value">${getDisposalTypeBadge(firstBatch.disposalType)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Email</div>
+                    <div class="detail-value">${firstBatch.email || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Submitted At</div>
+                    <div class="detail-value">${formatDateTime(firstBatch.submittedAt)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Status</div>
+                    <div class="detail-value"><span class="status-badge status-submitted">${firstBatch.status || 'Submitted'}</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Number of Parts</div>
+                    <div class="detail-value">${batches.length}</div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Combine all items
+    let allItems = [];
+    let totalOriginalSize = 0;
+    let totalCompressedSize = 0;
+    let totalReportSize = 0;
+    
+    batches.forEach(batch => {
+        if (batch.disposalType === 'expired' && batch.expiredItems) {
+            allItems = allItems.concat(batch.expiredItems);
+        } else if (batch.disposalType === 'waste' && batch.wasteItems) {
+            allItems = allItems.concat(batch.wasteItems);
+        }
+        
+        totalOriginalSize += batch.originalFileSize || 0;
+        totalCompressedSize += batch.compressedFileSize || 0;
+        totalReportSize += batch.reportSizeKB || 0;
+    });
+    
+    // Add items section
+    if (firstBatch.disposalType === 'expired') {
+        modalContent += `
+            <div class="details-section">
+                <h3><i class="fas fa-boxes"></i> Expired Items (${allItems.length} total)</h3>
+                <div class="item-list">
+        `;
+        
+        allItems.forEach((item, index) => {
+            modalContent += `
+                <div class="item-list-item">
+                    <div class="detail-item">
+                        <div class="detail-label">Item Name</div>
+                        <div class="detail-value">${item.item}</div>
+                    </div>
+                    <div class="details-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Delivered Date</div>
+                            <div class="detail-value">${formatDate(item.deliveredDate)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Manufactured Date</div>
+                            <div class="detail-value">${formatDate(item.manufacturedDate)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Expiration Date</div>
+                            <div class="detail-value">${formatDate(item.expirationDate)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Quantity</div>
+                            <div class="detail-value">${item.quantity} ${item.unit}</div>
+                        </div>
+                    </div>
+                    ${item.notes ? `
+                        <div class="detail-item">
+                            <div class="detail-label">Notes</div>
+                            <div class="detail-value">${item.notes}</div>
+                        </div>
+                    ` : ''}
+            `;
+            
+            // Add documentation if available
+            if (item.documentation && item.documentation.length > 0) {
+                modalContent += `
+                    <div class="detail-item">
+                        <div class="detail-label">Documentation (${item.documentation.length} files)</div>
+                        <div class="image-gallery">
+                `;
+                
+                item.documentation.forEach((file, fileIndex) => {
+                    if (file.type && file.type.startsWith('image/')) {
+                        modalContent += `
+                            <img src="data:${file.type};base64,${file.base64}" 
+                                 alt="${file.name}" 
+                                 class="image-thumbnail"
+                                 onclick="viewImage('data:${file.type};base64,${file.base64}')">
+                        `;
+                    } else {
+                        modalContent += `
+                            <div class="image-thumbnail" style="display: flex; align-items: center; justify-content: center; background: #f0f0f0;">
+                                <i class="fas fa-file-pdf"></i> ${file.name}
+                            </div>
+                        `;
+                    }
+                });
+                
+                modalContent += `
+                        </div>
+                    </div>
+                `;
+            }
+            
+            modalContent += `</div>`;
+        });
+        
+        modalContent += `
+                </div>
+            </div>
+        `;
+    } else if (firstBatch.disposalType === 'waste') {
+        modalContent += `
+            <div class="details-section">
+                <h3><i class="fas fa-trash"></i> Waste Items (${allItems.length} total)</h3>
+                <div class="item-list">
+        `;
+        
+        allItems.forEach((item, index) => {
+            modalContent += `
+                <div class="item-list-item">
+                    <div class="detail-item">
+                        <div class="detail-label">Item Description</div>
+                        <div class="detail-value">${item.item}</div>
+                    </div>
+                    <div class="details-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Reason</div>
+                            <div class="detail-value">${item.reason}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Quantity</div>
+                            <div class="detail-value">${item.quantity} ${item.unit}</div>
+                        </div>
+                    </div>
+                    ${item.notes ? `
+                        <div class="detail-item">
+                            <div class="detail-label">Notes</div>
+                            <div class="detail-value">${item.notes}</div>
+                        </div>
+                    ` : ''}
+            `;
+            
+            // Add documentation if available
+            if (item.documentation && item.documentation.length > 0) {
+                modalContent += `
+                    <div class="detail-item">
+                        <div class="detail-label">Documentation (${item.documentation.length} files)</div>
+                        <div class="image-gallery">
+                `;
+                
+                item.documentation.forEach((file, fileIndex) => {
+                    if (file.type && file.type.startsWith('image/')) {
+                        modalContent += `
+                            <img src="data:${file.type};base64,${file.base64}" 
+                                 alt="${file.name}" 
+                                 class="image-thumbnail"
+                                 onclick="viewImage('data:${file.type};base64,${file.base64}')">
+                        `;
+                    } else {
+                        modalContent += `
+                            <div class="image-thumbnail" style="display: flex; align-items: center; justify-content: center; background: #f0f0f0;">
+                                <i class="fas fa-file-pdf"></i> ${file.name}
+                            </div>
+                        `;
+                    }
+                });
+                
+                modalContent += `
+                        </div>
+                    </div>
+                `;
+            }
+            
+            modalContent += `</div>`;
+        });
+        
+        modalContent += `
+                </div>
+            </div>
+        `;
+    }
+    
+    // Add metadata
+    modalContent += `
+        <div class="details-section">
+            <h3><i class="fas fa-database"></i> Report Metadata</h3>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Created At</div>
+                    <div class="detail-value">${formatDateTime(firstBatch.createdAt)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Total Report Size</div>
+                    <div class="detail-value">${totalReportSize} KB (${batches.length} parts)</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Total Items</div>
+                    <div class="detail-value">${allItems.length}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Total Original File Size</div>
+                    <div class="detail-value">${formatFileSize(totalOriginalSize)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Total Compressed File Size</div>
+                    <div class="detail-value">${formatFileSize(totalCompressedSize)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Batch Information</div>
+                    <div class="detail-value">Report split into ${batches.length} parts due to size</div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Set modal content
+    const modalContentEl = document.getElementById('modalContent');
+    if (modalContentEl) {
+        modalContentEl.innerHTML = modalContent;
+    }
+}
+
+async function buildSingleModalContent(report) {
+    // Build modal content for single report
+    let modalContent = `
+        <div class="details-section">
+            <h3><i class="fas fa-info-circle"></i> Report Information</h3>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Report ID</div>
+                    <div class="detail-value">${report.reportId || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Store</div>
+                    <div class="detail-value">${report.store || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Personnel</div>
+                    <div class="detail-value">${report.personnel || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Report Date</div>
+                    <div class="detail-value">${formatDate(report.reportDate)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Disposal Type</div>
+                    <div class="detail-value">${getDisposalTypeBadge(report.disposalType)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Email</div>
+                    <div class="detail-value">${report.email || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Submitted At</div>
+                    <div class="detail-value">${formatDateTime(report.submittedAt)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Status</div>
+                    <div class="detail-value"><span class="status-badge status-submitted">${report.status || 'Submitted'}</span></div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add items based on disposal type
+    if (report.disposalType === 'expired' && report.expiredItems) {
+        modalContent += `
+            <div class="details-section">
+                <h3><i class="fas fa-boxes"></i> Expired Items (${report.expiredItems.length})</h3>
+                <div class="item-list">
+        `;
+        
+        report.expiredItems.forEach((item, index) => {
+            modalContent += `
+                <div class="item-list-item">
+                    <div class="detail-item">
+                        <div class="detail-label">Item Name</div>
+                        <div class="detail-value">${item.item}</div>
+                    </div>
+                    <div class="details-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Delivered Date</div>
+                            <div class="detail-value">${formatDate(item.deliveredDate)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Manufactured Date</div>
+                            <div class="detail-value">${formatDate(item.manufacturedDate)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Expiration Date</div>
+                            <div class="detail-value">${formatDate(item.expirationDate)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Quantity</div>
+                            <div class="detail-value">${item.quantity} ${item.unit}</div>
+                        </div>
+                    </div>
+                    ${item.notes ? `
+                        <div class="detail-item">
+                            <div class="detail-label">Notes</div>
+                            <div class="detail-value">${item.notes}</div>
+                        </div>
+                    ` : ''}
+            `;
+            
+            // Add documentation if available
+            if (item.documentation && item.documentation.length > 0) {
+                modalContent += `
+                    <div class="detail-item">
+                        <div class="detail-label">Documentation (${item.documentation.length} files)</div>
+                        <div class="image-gallery">
+                `;
+                
+                item.documentation.forEach((file, fileIndex) => {
+                    if (file.type && file.type.startsWith('image/')) {
+                        modalContent += `
+                            <img src="data:${file.type};base64,${file.base64}" 
+                                 alt="${file.name}" 
+                                 class="image-thumbnail"
+                                 onclick="viewImage('data:${file.type};base64,${file.base64}')">
+                        `;
+                    } else {
+                        modalContent += `
+                            <div class="image-thumbnail" style="display: flex; align-items: center; justify-content: center; background: #f0f0f0;">
+                                <i class="fas fa-file-pdf"></i> ${file.name}
+                            </div>
+                        `;
+                    }
+                });
+                
+                modalContent += `
+                        </div>
+                    </div>
+                `;
+            }
+            
+            modalContent += `</div>`;
+        });
+        
+        modalContent += `
+                </div>
+            </div>
+        `;
+    } else if (report.disposalType === 'waste' && report.wasteItems) {
+        modalContent += `
+            <div class="details-section">
+                <h3><i class="fas fa-trash"></i> Waste Items (${report.wasteItems.length})</h3>
+                <div class="item-list">
+        `;
+        
+        report.wasteItems.forEach((item, index) => {
+            modalContent += `
+                <div class="item-list-item">
+                    <div class="detail-item">
+                        <div class="detail-label">Item Description</div>
+                        <div class="detail-value">${item.item}</div>
+                    </div>
+                    <div class="details-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Reason</div>
+                            <div class="detail-value">${item.reason}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Quantity</div>
+                            <div class="detail-value">${item.quantity} ${item.unit}</div>
+                        </div>
+                    </div>
+                    ${item.notes ? `
+                        <div class="detail-item">
+                            <div class="detail-label">Notes</div>
+                            <div class="detail-value">${item.notes}</div>
+                        </div>
+                    ` : ''}
+            `;
+            
+            // Add documentation if available
+            if (item.documentation && item.documentation.length > 0) {
+                modalContent += `
+                    <div class="detail-item">
+                        <div class="detail-label">Documentation (${item.documentation.length} files)</div>
+                        <div class="image-gallery">
+                `;
+                
+                item.documentation.forEach((file, fileIndex) => {
+                    if (file.type && file.type.startsWith('image/')) {
+                        modalContent += `
+                            <img src="data:${file.type};base64,${file.base64}" 
+                                 alt="${file.name}" 
+                                 class="image-thumbnail"
+                                 onclick="viewImage('data:${file.type};base64,${file.base64}')">
+                        `;
+                    } else {
+                        modalContent += `
+                            <div class="image-thumbnail" style="display: flex; align-items: center; justify-content: center; background: #f0f0f0;">
+                                <i class="fas fa-file-pdf"></i> ${file.name}
+                            </div>
+                        `;
+                    }
+                });
+                
+                modalContent += `
+                        </div>
+                    </div>
+                `;
+            }
+            
+            modalContent += `</div>`;
+        });
+        
+        modalContent += `
+                </div>
+            </div>
+        `;
+    } else if (report.disposalType === 'noWaste') {
+        modalContent += `
+            <div class="details-section">
+                <h3><i class="fas fa-check-circle"></i> No Waste Report</h3>
+                <div class="detail-item">
+                    <div class="detail-value" style="color: var(--color-success); font-weight: 500;">
+                        ✅ No waste or expired items to report for this period
+                    </div>
+                </div>
+                ${report.notes ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Notes</div>
+                        <div class="detail-value">${report.notes}</div>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+    
+    // Add report metadata
+    modalContent += `
+        <div class="details-section">
+            <h3><i class="fas fa-database"></i> Report Metadata</h3>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Created At</div>
+                    <div class="detail-value">${formatDateTime(report.createdAt)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Report Size</div>
+                    <div class="detail-value">${report.reportSizeKB || 'Unknown'} KB</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Total Items</div>
+                    <div class="detail-value">${report.totalExpiredItems || report.totalWasteItems || 0}</div>
+                </div>
+    `;
+    
+    if (report.originalFileSize) {
+        modalContent += `
+                <div class="detail-item">
+                    <div class="detail-label">Original File Size</div>
+                    <div class="detail-value">${formatFileSize(report.originalFileSize)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Compressed File Size</div>
+                    <div class="detail-value">${formatFileSize(report.compressedFileSize)}</div>
+                </div>
+        `;
+    }
+    
+    modalContent += `
+            </div>
+        </div>
+    `;
+    
+    // Set modal content
+    const modalContentEl = document.getElementById('modalContent');
+    if (modalContentEl) {
+        modalContentEl.innerHTML = modalContent;
     }
 }
 
@@ -1790,19 +2474,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Setup form submission
     const form = document.getElementById('wasteReportForm');
     if (form) {
-        console.log('Form found, adding submit event listener');
-        form.addEventListener('submit', handleSubmit);
+        console.log('Form found:', form.id);
+        console.log('Form elements count:', form.elements.length);
         
-        // Also add click handler to submit button for extra safety
-        const submitBtn = form.querySelector('.submit-btn');
+        // Add submit event listener
+        form.addEventListener('submit', function(e) {
+            console.log('Form submit event triggered');
+            handleSubmit(e);
+        });
+        
+        // Also log the submit button
+        const submitBtn = form.querySelector('button[type="submit"]');
         if (submitBtn) {
-            submitBtn.addEventListener('click', function(e) {
-                if (form.checkValidity()) {
-                    handleSubmit(e);
-                } else {
-                    form.reportValidity();
-                }
-            });
+            console.log('Submit button found:', submitBtn.className);
         }
     }
     
