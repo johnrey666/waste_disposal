@@ -1,5 +1,25 @@
 {
   "dependencies": {
     "firebase": "^12.7.0"
-  }
+  },
+  "name": "mcbien",
+  "version": "1.0.0",
+  "description": "",
+  "main": "proxy-server.js",
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/johnrey666/waste_disposal.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/johnrey666/waste_disposal/issues"
+  },
+  "homepage": "https://github.com/johnrey666/waste_disposal#readme"
 }

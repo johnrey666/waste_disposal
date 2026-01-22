@@ -12,13 +12,12 @@ const firebaseConfig = {
 };
 
 // ================================
-// SENDGRID CONFIGURATION - USING YOUR API KEY
+// EMAILJS CONFIGURATION
 // ================================
-const SENDGRID_CONFIG = {
-    API_KEY: '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',
-    SENDER_EMAIL: 'fo.technicalsupport@lccgroup.com',
-    SENDER_NAME: 'FG Operations',
-    TEMPLATE_ID: null // Not using template, using inline HTML
+const EMAILJS_CONFIG = {
+    USER_ID: 'TwPt4meJ4Z2h_6ufb',
+    SERVICE_ID: 'service_txc1dw9',
+    TEMPLATE_ID: 'template_jnrgr6r'
 };
 
 // Initialize Firebase
@@ -32,6 +31,18 @@ try {
 } catch (error) {
     console.error('❌ Firebase initialization error:', error);
     showNotification('Firebase connection failed. Please check console.', 'error');
+}
+
+// Initialize EmailJS
+try {
+    if (EMAILJS_CONFIG.USER_ID) {
+        emailjs.init(EMAILJS_CONFIG.USER_ID);
+        console.log('✅ EmailJS initialized successfully');
+    } else {
+        console.warn('⚠️ EmailJS not initialized: USER_ID missing');
+    }
+} catch (error) {
+    console.error('❌ EmailJS initialization error:', error);
 }
 
 // ================================
@@ -195,19 +206,11 @@ async function fileToBase64(file) {
 }
 
 // ================================
-// SENDGRID EMAIL FUNCTION
+// EMAIL SENDING FUNCTION - FIXED TO MATCH TEMPLATE VARIABLES EXACTLY
 // ================================
 async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
     try {
-        console.log('Preparing SendGrid email...');
-        
-        if (!SENDGRID_CONFIG.API_KEY) {
-            console.error('❌ SendGrid API key not configured');
-            return {
-                success: false,
-                error: 'SendGrid API key not configured. Please check your configuration.'
-            };
-        }
+        console.log('Preparing email confirmation...');
         
         // Format the submission time
         const submissionTime = new Date().toLocaleString('en-US', {
@@ -218,309 +221,67 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
             minute: '2-digit'
         });
         
-        // Prepare report details
+        // Prepare report details (same as before)
         let reportDetails = 'Item details:\n\n';
         
-        if (reportData.disposalType === 'expired' && itemsDetails && itemsDetails.length > 0) {
-            itemsDetails.forEach((item, index) => {
+        if (reportData.disposalType === 'expired' && reportData.expiredItems) {
+            reportData.expiredItems.forEach((item, index) => {
                 reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''}\n`;
-                if (item.notes) {
-                    reportDetails += `   Notes: ${item.notes}\n`;
-                }
             });
-        } else if (reportData.disposalType === 'waste' && itemsDetails && itemsDetails.length > 0) {
-            itemsDetails.forEach((item, index) => {
-                reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'})\n`;
-                if (item.notes) {
-                    reportDetails += `   Notes: ${item.notes}\n`;
-                }
+        } else if (reportData.disposalType === 'waste' && reportData.wasteItems) {
+            reportData.wasteItems.forEach((item, index) => {
+                reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''}\n`;
             });
         } else if (reportData.disposalType === 'noWaste') {
             reportDetails = 'No waste or expired items to report for this period.';
         }
-        
-        // Create email data for SendGrid
-        const emailData = {
-            personalizations: [
-                {
-                    to: [
-                        {
-                            email: reportData.email,
-                            name: reportData.personnel || 'User'
-                        }
-                    ],
-                    dynamic_template_data: {
-                        reportId: reportId || 'N/A',
-                        submissionTime: submissionTime,
-                        store: reportData.store || 'N/A',
-                        personnel: reportData.personnel || 'N/A',
-                        reportDate: formatDate(reportData.reportDate) || 'N/A',
-                        disposalType: (reportData.disposalType || 'N/A').toUpperCase(),
-                        itemCount: itemsDetails ? itemsDetails.length : 0,
-                        totalBatches: reportData.totalBatches || 1,
-                        reportDetails: reportDetails
-                    }
-                }
-            ],
-            from: {
-                email: SENDGRID_CONFIG.SENDER_EMAIL,
-                name: SENDGRID_CONFIG.SENDER_NAME
-            },
-            reply_to: {
-                email: SENDGRID_CONFIG.SENDER_EMAIL,
-                name: SENDGRID_CONFIG.SENDER_NAME
-            },
-            subject: `Waste Report Confirmation - ${reportId}`,
-            content: [
-                {
-                    type: 'text/plain',
-                    value: `
-                    Waste Report Confirmation
-                    -------------------------
-                    Report ID: ${reportId}
-                    Store: ${reportData.store || 'N/A'}
-                    Personnel: ${reportData.personnel || 'N/A'}
-                    Report Date: ${formatDate(reportData.reportDate) || 'N/A'}
-                    Disposal Type: ${(reportData.disposalType || 'N/A').toUpperCase()}
-                    Submitted On: ${submissionTime}
-                    
-                    Report Details:
-                    ${reportDetails}
-                    
-                    This email serves as confirmation of your submission.
-                    FG Operations Waste Management System
-                    `
-                },
-                {
-                    type: 'text/html',
-                    value: `
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                        <title>Waste Report Confirmation</title>
-                        <style>
-                            body { 
-                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                                line-height: 1.6; 
-                                color: #333; 
-                                background-color: #f5f5f5;
-                                margin: 0;
-                                padding: 20px;
-                            }
-                            .container { 
-                                max-width: 600px; 
-                                margin: 0 auto; 
-                                background: white;
-                                border-radius: 10px;
-                                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                                overflow: hidden;
-                            }
-                            .header { 
-                                background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); 
-                                color: white; 
-                                padding: 30px 20px; 
-                                text-align: center; 
-                            }
-                            .header h1 {
-                                margin: 0;
-                                font-size: 24px;
-                                font-weight: 600;
-                            }
-                            .content { 
-                                padding: 30px; 
-                            }
-                            .footer { 
-                                margin-top: 30px; 
-                                text-align: center; 
-                                color: #666; 
-                                font-size: 12px; 
-                                padding: 20px;
-                                background: #f9f9f9;
-                                border-top: 1px solid #eee;
-                            }
-                            table { 
-                                width: 100%; 
-                                border-collapse: collapse; 
-                                margin: 20px 0; 
-                                font-size: 14px;
-                            }
-                            th, td { 
-                                padding: 12px 15px; 
-                                text-align: left; 
-                                border: 1px solid #ddd; 
-                            }
-                            th { 
-                                background-color: #f2f2f2; 
-                                font-weight: 600;
-                                width: 40%;
-                            }
-                            .highlight { 
-                                background-color: #e8f5e9; 
-                                padding: 15px; 
-                                border-left: 4px solid #4CAF50; 
-                                margin: 20px 0; 
-                                border-radius: 4px;
-                            }
-                            .report-details {
-                                background: #f9f9f9;
-                                padding: 15px;
-                                border-radius: 5px;
-                                border: 1px solid #eee;
-                                margin: 20px 0;
-                                white-space: pre-wrap;
-                                font-family: 'Courier New', monospace;
-                                font-size: 13px;
-                            }
-                            .logo {
-                                text-align: center;
-                                margin-bottom: 20px;
-                            }
-                            .logo img {
-                                max-width: 150px;
-                                height: auto;
-                            }
-                            .thank-you {
-                                background: #e3f2fd;
-                                padding: 15px;
-                                border-radius: 5px;
-                                border-left: 4px solid #2196F3;
-                                margin-top: 25px;
-                            }
-                            @media (max-width: 600px) {
-                                .content { padding: 20px; }
-                                th, td { padding: 10px; }
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header">
-                                <h1>📋 Waste Report Submission Confirmation</h1>
-                                <p style="margin-top: 10px; opacity: 0.9;">FG Operations Waste Management System</p>
-                            </div>
-                            <div class="content">
-                                <div class="logo">
-                                    <!-- Add your logo here if you want -->
-                                </div>
-                                
-                                <p>Hello <strong>${reportData.personnel || 'User'}</strong>,</p>
-                                <p>Your waste report has been successfully submitted. Here are the details:</p>
-                                
-                                <table>
-                                    <tr>
-                                        <th>Report ID:</th>
-                                        <td><strong>${reportId || 'N/A'}</strong></td>
-                                    </tr>
-                                    <tr>
-                                        <th>Store Location:</th>
-                                        <td>${reportData.store || 'N/A'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Submitted By:</th>
-                                        <td>${reportData.personnel || 'N/A'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Report Date:</th>
-                                        <td>${formatDate(reportData.reportDate) || 'N/A'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Disposal Type:</th>
-                                        <td><span style="background: #4CAF50; color: white; padding: 3px 8px; border-radius: 3px; font-size: 12px;">${(reportData.disposalType || 'N/A').toUpperCase()}</span></td>
-                                    </tr>
-                                    <tr>
-                                        <th>Number of Items:</th>
-                                        <td>${itemsDetails ? itemsDetails.length : 0}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Submission Time:</th>
-                                        <td>${submissionTime}</td>
-                                    </tr>
-                                </table>
-                                
-                                ${reportData.totalBatches && reportData.totalBatches > 1 ? `
-                                <div class="highlight">
-                                    <strong>📝 Note:</strong> This report was split into <strong>${reportData.totalBatches}</strong> parts due to large file attachments. All parts have been saved successfully.
-                                </div>
-                                ` : ''}
-                                
-                                <h3 style="color: #4CAF50; margin-top: 25px;">📄 Report Details:</h3>
-                                <div class="report-details">${reportDetails}</div>
-                                
-                                <div class="thank-you">
-                                    <p><strong>✅ Submission Confirmed</strong></p>
-                                    <p>This email serves as official confirmation of your submission. Please keep this information for your records.</p>
-                                </div>
-                                
-                                <p style="margin-top: 25px; color: #666;">
-                                    If you have any questions or need to modify this report, please contact your supervisor or the waste management department.
-                                </p>
-                            </div>
-                            <div class="footer">
-                                <p><strong>FG Operations Waste Management</strong></p>
-                                <p>This is an automated confirmation. Please do not reply to this email.</p>
-                                <p>© ${new Date().getFullYear()} FG Operations. All rights reserved.</p>
-                                <p style="font-size: 11px; color: #999; margin-top: 10px;">
-                                    <em>Never submit sensitive information on demo forms.</em>
-                                </p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                    `
-                }
-            ]
+
+        // CRITICAL FIX: Use exact variable names from your EmailJS template
+        const templateParams = {
+            to_email: reportData.email,  // Required by EmailJS service
+
+            reportId: reportId || 'N/A',                              // ← matches {{reportId}}
+            submissionTime: submissionTime || 'N/A',                  // ← matches {{submissionTime}}
+            store: reportData.store || 'N/A',                         // ← matches {{store}}
+            personnel: reportData.personnel || 'N/A',                 // ← matches {{personnel}}
+            reportDate: formatDate(reportData.reportDate) || 'N/A',   // ← matches {{reportDate}}
+            disposalType: (reportData.disposalType || 'N/A').toUpperCase(), // ← matches {{disposalType}}
+            itemCount: itemsDetails.length || 0,                      // ← matches {{itemCount}}
+            totalBatches: reportData.totalBatches || 1,               // ← matches {{#if totalBatches}} and {{totalBatches}}
+            reportDetails: reportDetails || 'No details provided'     // ← matches {{reportDetails}}
         };
         
-        console.log('Sending email via SendGrid...');
+        console.log('Email template parameters:', templateParams);
         
-        // Send email via SendGrid API
-        const response = await axios.post(
-            'https://api.sendgrid.com/v3/mail/send',
-            emailData,
-            {
-                headers: {
-                    'Authorization': `Bearer ${SENDGRID_CONFIG.API_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
+        // Send email using EmailJS
+        const response = await emailjs.send(
+            EMAILJS_CONFIG.SERVICE_ID,
+            EMAILJS_CONFIG.TEMPLATE_ID,
+            templateParams
         );
         
-        console.log('✅ Email sent successfully via SendGrid:', response.status);
-        return { success: true, response: response.data };
+        console.log('✅ Email sent successfully:', response);
+        return { success: true, response };
         
     } catch (error) {
-        console.error('❌ SendGrid email sending failed:', error);
+        console.error('❌ Email sending failed:', error);
         
-        let errorMessage = 'Email sending failed: ';
-        if (error.response) {
-            console.error('SendGrid response error:', error.response.status);
-            console.error('SendGrid error details:', error.response.data);
-            
-            if (error.response.status === 401) {
-                errorMessage += 'Invalid API key. Please check your SendGrid configuration.';
-            } else if (error.response.status === 403) {
-                errorMessage += 'Permission denied. Check API key permissions.';
-            } else if (error.response.status === 429) {
-                errorMessage += 'Rate limit exceeded. Please try again later.';
-            } else {
-                errorMessage += `Server error (${error.response.status}): ${JSON.stringify(error.response.data.errors || 'Unknown error')}`;
-            }
-        } else if (error.request) {
-            console.error('No response received:', error.request);
-            errorMessage += 'No response from email server. Check network connection.';
-        } else {
-            console.error('Request setup error:', error.message);
-            errorMessage += error.message;
+        if (error.text) {
+            console.error('EmailJS error text:', error.text);
+        }
+        if (error.message) {
+            console.error('Error message:', error.message);
         }
         
-        return { success: false, error: errorMessage };
+        return { 
+            success: false, 
+            error: error.text || error.message || 'Email sending failed' 
+        };
     }
 }
 
 // ================================
-// FORM FUNCTIONS
+// FORM FUNCTIONS (unchanged)
 // ================================
 function toggleDynamicFields() {
     const disposalType = document.querySelector('input[name="disposalType"]:checked');
@@ -874,7 +635,7 @@ function validateDynamicFields() {
 }
 
 // ================================
-// BATCH PROCESSING FUNCTIONS
+// BATCH PROCESSING FUNCTIONS (unchanged)
 // ================================
 function splitIntoBatches(items, maxBatchSize = 800 * 1024) {
     const batches = [];
@@ -943,7 +704,7 @@ async function saveReportInBatches(mainReportId, baseReportData, items) {
 }
 
 // ================================
-// FORM SUBMISSION HANDLER - UPDATED FOR SENDGRID
+// FORM SUBMISSION HANDLER (unchanged except passing totalBatches to email)
 // ================================
 async function handleSubmit(event) {
     console.log('Form submission started...');
@@ -1152,65 +913,71 @@ async function handleSubmit(event) {
         baseReportData.totalBatches = totalBatches;
 
         // ================================
-        // SEND EMAIL CONFIRMATION VIA SENDGRID
+        // SEND EMAIL CONFIRMATION
         // ================================
-        console.log('Attempting to send email confirmation via SendGrid...');
+        console.log('Attempting to send email confirmation...');
         
-        const itemsDetails = allItems.map(item => ({
-            type: disposalType.value,
-            ...item
-        }));
-        
-        const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, itemsDetails);
-        
-        if (emailResult.success) {
-            console.log('✅ SendGrid email confirmation sent successfully');
-            
-            try {
-                const updatePromises = savedReportIds.map(reportId => {
-                    const reportRef = db.collection('wasteReports').doc(reportId);
-                    return reportRef.update({
-                        emailSent: true,
-                        emailSentAt: new Date().toISOString(),
-                        emailStatus: 'sent',
-                        sendGridMessageId: emailResult.response?.id || 'unknown'
-                    });
-                });
-                
-                await Promise.all(updatePromises);
-                console.log('✅ Email status updated in database');
-            } catch (updateError) {
-                console.warn('Could not update email status in database:', updateError);
-            }
-            
+        if (!EMAILJS_CONFIG.USER_ID) {
+            console.warn('⚠️ EmailJS not configured: USER_ID missing');
             showNotification(
-                `✅ Report submitted successfully! Confirmation email sent to ${baseReportData.email}. ${totalBatches > 1 ? `(${totalBatches} parts)` : ''}`, 
-                'success'
-            );
-            
-        } else {
-            console.warn('⚠️ Report saved but SendGrid email failed:', emailResult.error);
-            
-            try {
-                const updatePromises = savedReportIds.map(reportId => {
-                    const reportRef = db.collection('wasteReports').doc(reportId);
-                    return reportRef.update({
-                        emailSent: false,
-                        emailError: emailResult.error,
-                        emailStatus: 'failed',
-                        lastEmailAttempt: new Date().toISOString()
-                    });
-                });
-                
-                await Promise.all(updatePromises);
-            } catch (updateError) {
-                console.warn('Could not update email error in database:', updateError);
-            }
-            
-            showNotification(
-                `⚠️ Report saved successfully! (Email failed: ${emailResult.error})`, 
+                `Report submitted successfully! (No email sent - EmailJS not configured) ${totalBatches > 1 ? `(${totalBatches} parts)` : ''}`, 
                 'warning'
             );
+        } else {
+            const itemsDetails = allItems.map(item => ({
+                type: disposalType.value,
+                ...item
+            }));
+            
+            const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, itemsDetails);
+            
+            if (emailResult.success) {
+                console.log('✅ Email confirmation sent successfully');
+                
+                try {
+                    const updatePromises = savedReportIds.map(reportId => {
+                        const reportRef = db.collection('wasteReports').doc(reportId);
+                        return reportRef.update({
+                            emailSent: true,
+                            emailSentAt: new Date().toISOString(),
+                            emailStatus: 'sent'
+                        });
+                    });
+                    
+                    await Promise.all(updatePromises);
+                    console.log('✅ Email status updated in database');
+                } catch (updateError) {
+                    console.warn('Could not update email status in database:', updateError);
+                }
+                
+                showNotification(
+                    `Report submitted successfully! Confirmation email sent to ${baseReportData.email}. ${totalBatches > 1 ? `(${totalBatches} parts)` : ''}`, 
+                    'success'
+                );
+                
+            } else {
+                console.warn('⚠️ Report saved but email failed:', emailResult.error);
+                
+                try {
+                    const updatePromises = savedReportIds.map(reportId => {
+                        const reportRef = db.collection('wasteReports').doc(reportId);
+                        return reportRef.update({
+                            emailSent: false,
+                            emailError: emailResult.error,
+                            emailStatus: 'failed'
+                        });
+                    });
+                    
+                    await Promise.all(updatePromises);
+                } catch (updateError) {
+                    console.warn('Could not update email error in database:', updateError);
+                }
+                
+                showNotification(
+                    `Report saved successfully! (Email failed: ${emailResult.error})`, 
+                    'warning'
+                );
+            }
         }
         
         // Reset form
@@ -1283,7 +1050,7 @@ async function handleSubmit(event) {
 }
 
 // ================================
-// MODAL FUNCTIONS
+// MODAL FUNCTIONS (unchanged)
 // ================================
 function closeDetailsModal() {
     const detailsModal = document.getElementById('detailsModal');
@@ -1293,7 +1060,7 @@ function closeDetailsModal() {
 }
 
 // ================================
-// INITIALIZATION
+// INITIALIZATION (unchanged)
 // ================================
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Document loaded, initializing form...');
@@ -1326,7 +1093,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     testFirebaseConnection();
-    checkSendGridConfig();
+    checkEmailJSConfig();
     
     window.addEventListener('click', function(event) {
         const detailsModal = document.getElementById('detailsModal');
@@ -1379,22 +1146,18 @@ async function testFirebaseConnection() {
     }
 }
 
-function checkSendGridConfig() {
-    console.log('SendGrid Configuration Check:');
-    console.log('- API_KEY:', SENDGRID_CONFIG.API_KEY ? 'Set ✓' : 'NOT SET ✗');
-    console.log('- SENDER_EMAIL:', SENDGRID_CONFIG.SENDER_EMAIL);
-    console.log('- SENDER_NAME:', SENDGRID_CONFIG.SENDER_NAME);
-    console.log('- TEMPLATE_ID:', SENDGRID_CONFIG.TEMPLATE_ID || 'Not using template');
+function checkEmailJSConfig() {
+    console.log('EmailJS Configuration Check:');
+    console.log('- USER_ID:', EMAILJS_CONFIG.USER_ID ? 'Set ✓' : 'NOT SET ✗');
+    console.log('- SERVICE_ID:', EMAILJS_CONFIG.SERVICE_ID);
+    console.log('- TEMPLATE_ID:', EMAILJS_CONFIG.TEMPLATE_ID);
     
-    if (!SENDGRID_CONFIG.API_KEY) {
-        console.warn('⚠️ WARNING: SendGrid API_KEY is not configured');
-        showNotification('SendGrid not configured. Emails will not be sent.', 'warning');
-    } else if (!SENDGRID_CONFIG.SENDER_EMAIL) {
-        console.warn('⚠️ WARNING: Sender email not configured');
+    if (!EMAILJS_CONFIG.USER_ID) {
+        console.warn('⚠️ WARNING: EmailJS USER_ID is not set');
+        showNotification('EmailJS not configured. Emails will not be sent.', 'warning');
     }
 }
 
-// Debug functions
 window.debugSubmit = handleSubmit;
 window.debugFirebase = () => {
     console.log('Firebase status:', {
@@ -1403,34 +1166,4 @@ window.debugFirebase = () => {
         config: firebaseConfig
     });
     testFirebaseConnection();
-};
-window.debugSendGrid = checkSendGridConfig;
-
-// Test SendGrid connection
-window.testSendGridEmail = async () => {
-    const testEmail = prompt('Enter email to test SendGrid:');
-    if (!testEmail) return;
-    
-    showLoading(true);
-    try {
-        const testData = {
-            email: testEmail,
-            store: 'Test Store',
-            personnel: 'Test User',
-            reportDate: new Date().toISOString().split('T')[0],
-            disposalType: 'noWaste'
-        };
-        
-        const result = await sendEmailConfirmation(testData, 'TEST-' + Date.now(), []);
-        
-        if (result.success) {
-            alert('✅ Test email sent successfully! Check your inbox.');
-        } else {
-            alert(`❌ Test email failed: ${result.error}`);
-        }
-    } catch (error) {
-        alert(`❌ Error: ${error.message}`);
-    } finally {
-        showLoading(false);
-    }
 };
