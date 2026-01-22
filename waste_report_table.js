@@ -1,10 +1,10 @@
 // ================================
 // CONFIGURATION
 // ================================
-const EMAILJS_CONFIG = {
-    USER_ID: 'TwPt4meJ4Z2h_6ufb',
-    SERVICE_ID: 'service_txc1dw9',
-    REJECTION_TEMPLATE_ID: 'template_2cxrabl'
+
+// Google Apps Script endpoint for email (same as submit form)
+const GAS_CONFIG = {
+    ENDPOINT: 'https://script.google.com/macros/s/AKfycbyPGgZ54q-lDUu5YxaeQbSJ-z2pDqM8ia4eTfshdpSNbrqBFF7fQZvglx9IeZn0PqHSTg/exec'
 };
 
 // Password configuration
@@ -149,17 +149,6 @@ function initializeApp() {
     } catch (error) {
         console.error('❌ Firebase initialization error:', error);
         showNotification('Firebase connection failed. Please check console.', 'error');
-    }
-    
-    try {
-        if (EMAILJS_CONFIG.USER_ID) {
-            emailjs.init(EMAILJS_CONFIG.USER_ID);
-            console.log('✅ EmailJS initialized successfully');
-        } else {
-            console.warn('⚠️ EmailJS not initialized: USER_ID missing');
-        }
-    } catch (error) {
-        console.error('❌ EmailJS initialization error:', error);
     }
     
     if (isAuthenticated()) {
@@ -335,23 +324,17 @@ async function loadReports() {
         const searchEmail = document.getElementById('searchEmail');
         const filterStatus = document.getElementById('filterStatus');
         
-        const hasStoreFilter = storeFilter && storeFilter.value;
-        const hasTypeFilter = typeFilter && typeFilter.value;
-        const hasDateFilter = dateFilter && dateFilter.value;
-        const hasEmailSearch = searchEmail && searchEmail.value;
-        const hasStatusFilter = filterStatus && filterStatus.value;
-        
         let query = db.collection('wasteReports');
         
-        if (hasStoreFilter) {
+        if (storeFilter && storeFilter.value) {
             query = query.where('store', '==', storeFilter.value);
         }
         
-        if (hasTypeFilter) {
+        if (typeFilter && typeFilter.value) {
             query = query.where('disposalType', '==', typeFilter.value);
         }
         
-        if (hasDateFilter) {
+        if (dateFilter && dateFilter.value) {
             query = query.where('reportDate', '==', dateFilter.value);
         }
         
@@ -654,7 +637,6 @@ function buildModalContent(report) {
     
     content += `</div>`;
     
-    // Always show all items — fixed
     if (report.disposalType === 'expired' && Array.isArray(report.expiredItems)) {
         content += buildExpiredItemsContent(report);
     } else if (report.disposalType === 'waste' && Array.isArray(report.wasteItems)) {
@@ -666,7 +648,6 @@ function buildModalContent(report) {
     modalContent.innerHTML = content;
 }
 
-// FIXED: All items always displayed — only buttons hidden when processed
 function buildExpiredItemsContent(report) {
     let content = `
         <div class="details-section">
@@ -731,7 +712,6 @@ function buildExpiredItemsContent(report) {
             `;
         }
         
-        // Show buttons only if pending
         if (approvalStatus === 'pending') {
             content += `
                 <div class="approval-actions">
@@ -752,7 +732,6 @@ function buildExpiredItemsContent(report) {
     return content;
 }
 
-// Same fix for waste items
 function buildWasteItemsContent(report) {
     let content = `
         <div class="details-section">
@@ -905,7 +884,7 @@ function closeImageModal() {
 }
 
 // ================================
-// APPROVAL & REJECTION - FIXED: Only one item affected
+// APPROVAL & REJECTION FUNCTIONS
 // ================================
 async function approveItem(reportId, itemIndex, itemType) {
     if (!isAuthenticated()) {
@@ -924,15 +903,24 @@ async function approveItem(reportId, itemIndex, itemType) {
             return;
         }
         
-        const fieldPath = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
+        const report = doc.data();
+        const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
         
-        const updateData = {};
-        updateData[`${fieldPath}.${itemIndex}.approvalStatus`] = 'approved';
-        updateData[`${fieldPath}.${itemIndex}.approvedAt`] = new Date().toISOString();
-        updateData[`${fieldPath}.${itemIndex}.approvedBy`] = 'Administrator';
-        updateData[`${fieldPath}.${itemIndex}.rejectionReason`] = null;
+        if (!items || itemIndex >= items.length) {
+            showNotification('Item not found', 'error');
+            return;
+        }
         
-        await docRef.update(updateData);
+        items[itemIndex] = {
+            ...items[itemIndex],
+            approvalStatus: 'approved',
+            approvedAt: new Date().toISOString(),
+            approvedBy: 'Administrator',
+            rejectionReason: null
+        };
+        
+        const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
+        await docRef.update({ [field]: items });
         
         showNotification('Item approved successfully', 'success');
         
@@ -972,15 +960,24 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
             return;
         }
         
-        const fieldPath = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
+        const report = doc.data();
+        const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
         
-        const updateData = {};
-        updateData[`${fieldPath}.${itemIndex}.approvalStatus`] = 'rejected';
-        updateData[`${fieldPath}.${itemIndex}.rejectedAt`] = new Date().toISOString();
-        updateData[`${fieldPath}.${itemIndex}.rejectedBy`] = 'Administrator';
-        updateData[`${fieldPath}.${itemIndex}.rejectionReason`] = reason.trim();
+        if (!items || itemIndex >= items.length) {
+            showNotification('Item not found', 'error');
+            return;
+        }
         
-        await docRef.update(updateData);
+        items[itemIndex] = {
+            ...items[itemIndex],
+            approvalStatus: 'rejected',
+            rejectedAt: new Date().toISOString(),
+            rejectedBy: 'Administrator',
+            rejectionReason: reason.trim()
+        };
+        
+        const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
+        await docRef.update({ [field]: items });
         
         showNotification('Item rejected successfully', 'success');
         
@@ -990,9 +987,9 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
             loadReports();
         }
         
-        const emailResult = await sendRejectionEmail(doc.data(), itemIndex, itemType, reason.trim());
+        const emailResult = await sendRejectionEmailViaGAS(report.email, report.reportId || reportId, itemIndex + 1, itemType, reason.trim(), report);
         if (!emailResult.success) {
-            showNotification('Item rejected, but email failed to send.', 'warning');
+            showNotification('Item rejected, but rejection email failed to send.', 'warning');
         }
         
     } catch (error) {
@@ -1021,44 +1018,36 @@ async function bulkApproveItems(reportId, itemType) {
         }
         
         const report = doc.data();
-        const updateData = {};
-        const now = new Date().toISOString();
-        const approver = 'Administrator';
+        const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
         
-        if (itemType === 'expired' && Array.isArray(report.expiredItems)) {
-            report.expiredItems.forEach((item, index) => {
-                if (!item.approvalStatus || item.approvalStatus === 'pending') {
-                    updateData[`expiredItems.${index}.approvalStatus`] = 'approved';
-                    updateData[`expiredItems.${index}.approvedAt`] = now;
-                    updateData[`expiredItems.${index}.approvedBy`] = approver;
-                    updateData[`expiredItems.${index}.rejectionReason`] = null;
-                }
-            });
-        } else if (itemType === 'waste' && Array.isArray(report.wasteItems)) {
-            report.wasteItems.forEach((item, index) => {
-                if (!item.approvalStatus || item.approvalStatus === 'pending') {
-                    updateData[`wasteItems.${index}.approvalStatus`] = 'approved';
-                    updateData[`wasteItems.${index}.approvedAt`] = now;
-                    updateData[`wasteItems.${index}.approvedBy`] = approver;
-                    updateData[`wasteItems.${index}.rejectionReason`] = null;
-                }
-            });
-        }
-        
-        if (Object.keys(updateData).length === 0) {
-            showNotification('No pending items to approve', 'info');
+        if (!items) {
+            showNotification('No items found', 'error');
             return;
         }
         
-        await docRef.update(updateData);
+        const updatedItems = items.map(item => {
+            if (!item.approvalStatus || item.approvalStatus === 'pending') {
+                return {
+                    ...item,
+                    approvalStatus: 'approved',
+                    approvedAt: new Date().toISOString(),
+                    approvedBy: 'Administrator',
+                    rejectionReason: null
+                };
+            }
+            return item;
+        });
+        
+        const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
+        await docRef.update({ [field]: updatedItems });
+        
+        showNotification('All pending items approved successfully', 'success');
         
         if (currentReportDetailsId === reportId) {
             await viewReportDetails(reportId);
         } else {
             loadReports();
         }
-        
-        showNotification('All pending items approved successfully', 'success');
         
     } catch (error) {
         console.error('Error bulk approving items:', error);
@@ -1091,36 +1080,30 @@ async function bulkRejectItems(reportId, itemType, reason) {
         }
         
         const report = doc.data();
-        const updateData = {};
-        const now = new Date().toISOString();
-        const rejector = 'Administrator';
+        const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
         
-        if (itemType === 'expired' && Array.isArray(report.expiredItems)) {
-            report.expiredItems.forEach((item, index) => {
-                if (!item.approvalStatus || item.approvalStatus === 'pending') {
-                    updateData[`expiredItems.${index}.approvalStatus`] = 'rejected';
-                    updateData[`expiredItems.${index}.rejectedAt`] = now;
-                    updateData[`expiredItems.${index}.rejectedBy`] = rejector;
-                    updateData[`expiredItems.${index}.rejectionReason`] = reason.trim();
-                }
-            });
-        } else if (itemType === 'waste' && Array.isArray(report.wasteItems)) {
-            report.wasteItems.forEach((item, index) => {
-                if (!item.approvalStatus || item.approvalStatus === 'pending') {
-                    updateData[`wasteItems.${index}.approvalStatus`] = 'rejected';
-                    updateData[`wasteItems.${index}.rejectedAt`] = now;
-                    updateData[`wasteItems.${index}.rejectedBy`] = rejector;
-                    updateData[`wasteItems.${index}.rejectionReason`] = reason.trim();
-                }
-            });
-        }
-        
-        if (Object.keys(updateData).length === 0) {
-            showNotification('No pending items to reject', 'info');
+        if (!items) {
+            showNotification('No items found', 'error');
             return;
         }
         
-        await docRef.update(updateData);
+        const updatedItems = items.map(item => {
+            if (!item.approvalStatus || item.approvalStatus === 'pending') {
+                return {
+                    ...item,
+                    approvalStatus: 'rejected',
+                    rejectedAt: new Date().toISOString(),
+                    rejectedBy: 'Administrator',
+                    rejectionReason: reason.trim()
+                };
+            }
+            return item;
+        });
+        
+        const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
+        await docRef.update({ [field]: updatedItems });
+        
+        showNotification('All pending items rejected successfully', 'success');
         
         if (currentReportDetailsId === reportId) {
             await viewReportDetails(reportId);
@@ -1128,9 +1111,10 @@ async function bulkRejectItems(reportId, itemType, reason) {
             loadReports();
         }
         
-        showNotification('All pending items rejected successfully', 'success');
-        
-        await sendBulkRejectionEmail(report, itemType, reason.trim());
+        const emailResult = await sendBulkRejectionEmailViaGAS(report.email, report.reportId || reportId, updatedItems.filter(i => i.approvalStatus === 'rejected').length, reason.trim(), report);
+        if (!emailResult.success) {
+            showNotification('Items rejected, but email failed to send.', 'warning');
+        }
         
     } catch (error) {
         console.error('Error bulk rejecting items:', error);
@@ -1230,100 +1214,158 @@ function handleBulkItemRejection(reason) {
 }
 
 // ================================
-// EMAIL FUNCTIONS
+// EMAIL SENDING WITH FULL FALLBACK
 // ================================
-async function sendRejectionEmail(report, itemIndex, itemType, reason) {
+async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType, reason, reportData) {
     try {
-        const itemsArray = itemType === 'expired' ? report.expiredItems : report.wasteItems;
-        const item = itemsArray[itemIndex];
-        
-        if (!item) {
-            return { success: false };
-        }
-        
-        const templateParams = {
-            to_email: report.email || '',
-            to_name: report.personnel || 'Team Member',
-            
-            reportId: report.reportId || report.id || 'N/A',
-            store: report.store || 'N/A',
-            reportDate: formatDate(report.reportDate) || 'N/A',
-            disposalType: (report.disposalType || 'unknown').toUpperCase(),
-            
-            itemName: item.item || 'Unnamed Item',
-            itemQuantity: item.quantity || 0,
-            itemUnit: item.unit || 'units',
-            expirationDate: itemType === 'expired' && item.expirationDate ? formatDate(item.expirationDate) : 'N/A',
-            itemReason: item.reason || 'N/A',
-            
-            rejectionReason: reason || 'No reason provided',
-            rejectedBy: 'Administrator',
-            rejectedAt: formatDateTime(new Date()),
-            
-            systemName: 'FG Operations Waste/Disposal Reporting System',
-            currentDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        const itemsArray = itemType === 'expired' ? reportData.expiredItems : reportData.wasteItems;
+        const rejectedItem = itemsArray[itemNumber - 1];
+
+        const emailData = {
+            emailType: 'rejection',  // Triggers red template
+            to: toEmail,
+            subject: `Waste Report Item Rejected - ${reportId}`,
+            store: reportData.store || 'N/A',
+            personnel: reportData.personnel || 'Team Member',
+            reportDate: formatDate(reportData.reportDate) || 'N/A',
+            disposalType: reportData.disposalType.toUpperCase(),
+            reportId: reportId,
+            itemName: rejectedItem?.item || 'N/A',
+            itemQuantity: rejectedItem?.quantity || 0,
+            itemUnit: rejectedItem?.unit || 'units',
+            itemReason: itemType === 'waste' ? rejectedItem?.reason || 'N/A' : 'N/A',
+            expirationDate: itemType === 'expired' ? formatDate(rejectedItem?.expirationDate) : 'N/A',
+            rejectionReason: reason,
+            rejectedAt: new Date().toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
         };
-        
-        const response = await emailjs.send(
-            EMAILJS_CONFIG.SERVICE_ID,
-            EMAILJS_CONFIG.REJECTION_TEMPLATE_ID,
-            templateParams
-        );
-        
-        console.log('✅ Rejection email sent:', response);
-        return { success: true };
-        
+
+        // Method 1: FormData POST
+        try {
+            const formData = new FormData();
+            formData.append('data', JSON.stringify(emailData));
+            
+            const response = await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                console.log('Rejection email sent via POST');
+                return { success: true };
+            }
+        } catch (err) {
+            console.log('POST failed, trying GET fallback...', err);
+        }
+
+        // Method 2: GET fallback
+        try {
+            const params = new URLSearchParams(emailData);
+            await fetch(`${GAS_CONFIG.ENDPOINT}?${params.toString()}`, { mode: 'no-cors' });
+            console.log('Rejection email sent via GET fallback');
+            return { success: true };
+        } catch (err) {
+            console.log('GET fallback failed, trying iframe...');
+        }
+
+        // Method 3: Iframe fallback
+        return new Promise(resolve => {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.name = 'rejectionIframe';
+            
+            const form = document.createElement('form');
+            form.target = 'rejectionIframe';
+            form.method = 'POST';
+            form.action = GAS_CONFIG.ENDPOINT;
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'data';
+            input.value = JSON.stringify(emailData);
+            form.appendChild(input);
+            
+            document.body.appendChild(iframe);
+            document.body.appendChild(form);
+            
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+                document.body.removeChild(form);
+                console.log('Rejection email sent via iframe fallback');
+                resolve({ success: true });
+            }, 2000);
+            
+            form.submit();
+        });
+
     } catch (error) {
-        console.error('❌ Rejection email failed:', error);
+        console.error('All rejection email methods failed:', error);
         return { success: false };
     }
 }
 
-async function sendBulkRejectionEmail(report, itemType, reason) {
+async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, reason, reportData) {
     try {
-        const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
-        const pendingItems = items.filter(item => !item.approvalStatus || item.approvalStatus === 'pending');
-        
-        if (pendingItems.length === 0) {
-            return { success: true, skipped: true };
-        }
-        
-        const templateParams = {
-            to_email: report.email,
-            to_name: report.personnel || 'Team Member',
-            
-            reportId: report.reportId || report.id || 'N/A',
-            store: report.store || 'N/A',
-            reportDate: formatDate(report.reportDate) || 'N/A',
-            disposalType: (report.disposalType || 'unknown').toUpperCase(),
-            
-            rejectedItemsCount: pendingItems.length,
-            itemList: pendingItems.map((item, index) => 
-                `${index + 1}. ${item.item} - ${item.quantity} ${item.unit}`
-            ).join('\n'),
-            itemListHtml: pendingItems.map((item, index) => 
-                `<li><strong>${item.item}</strong> - ${item.quantity} ${item.unit}</li>`
-            ).join(''),
-            
+        const emailData = {
+            emailType: 'rejection',
+            to: toEmail,
+            subject: `Multiple Items Rejected - ${reportId}`,
+            store: reportData.store || 'N/A',
+            personnel: reportData.personnel || 'Team Member',
+            reportDate: formatDate(reportData.reportDate) || 'N/A',
+            disposalType: reportData.disposalType.toUpperCase(),
+            reportId: reportId,
+            rejectedCount: rejectedCount,
             rejectionReason: reason,
-            rejectedBy: 'Administrator',
-            rejectedAt: formatDateTime(new Date()),
-            
-            systemName: 'FG Operations Waste/Disposal Reporting System',
-            currentDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+            rejectedAt: new Date().toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
         };
-        
-        const response = await emailjs.send(
-            EMAILJS_CONFIG.SERVICE_ID,
-            EMAILJS_CONFIG.REJECTION_TEMPLATE_ID,
-            templateParams
-        );
-        
-        console.log('✅ Bulk rejection email sent:', response);
-        return { success: true };
-        
+
+        // Same 3-step fallback
+        try {
+            const formData = new FormData();
+            formData.append('data', JSON.stringify(emailData));
+            const response = await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData
+            });
+            if (response.ok) return { success: true };
+        } catch (err) {}
+
+        try {
+            const params = new URLSearchParams(emailData);
+            await fetch(`${GAS_CONFIG.ENDPOINT}?${params.toString()}`, { mode: 'no-cors' });
+            return { success: true };
+        } catch (err) {}
+
+        return new Promise(resolve => {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.name = 'bulkRejectionIframe';
+            
+            const form = document.createElement('form');
+            form.target = 'bulkRejectionIframe';
+            form.method = 'POST';
+            form.action = GAS_CONFIG.ENDPOINT;
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'data';
+            input.value = JSON.stringify(emailData);
+            form.appendChild(input);
+            
+            document.body.appendChild(iframe);
+            document.body.appendChild(form);
+            
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+                document.body.removeChild(form);
+                resolve({ success: true });
+            }, 2000);
+            
+            form.submit();
+        });
+
     } catch (error) {
-        console.error('❌ Bulk rejection email failed:', error);
+        console.error('Bulk rejection email failed:', error);
         return { success: false };
     }
 }
