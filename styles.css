@@ -1317,3 +1317,84 @@ body {
     animation: rowSelect 300ms ease;
     background: var(--color-accent) !important;
 }
+/* Add to the end of your existing styles.css file */
+
+/* Select2 Custom Styling */
+.select2-container {
+    width: 100% !important;
+}
+
+.select2-container--default .select2-selection--single {
+    height: 38px;
+    border: var(--border-base);
+    border-radius: var(--border-radius);
+    background: var(--color-white);
+    transition: all var(--transition-fast);
+}
+
+.select2-container--default .select2-selection--single:hover {
+    border-color: var(--color-primary);
+}
+
+.select2-container--default .select2-selection--single:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(42, 89, 52, 0.1);
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: var(--color-black);
+    line-height: 38px;
+    padding-left: var(--spacing-md);
+    font-size: var(--font-size-base);
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 36px;
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background-color: var(--color-accent);
+    color: var(--color-primary);
+}
+
+.select2-container--default .select2-results__option[aria-selected=true] {
+    background-color: var(--color-primary-extra-light);
+    color: var(--color-primary);
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field {
+    border: var(--border-base);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-sm);
+}
+
+.select2-container--default .select2-dropdown {
+    border: var(--border-base);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-md);
+    background: var(--color-white);
+}
+
+.select2-search--dropdown {
+    padding: var(--spacing-sm);
+}
+
+.select2-results__option {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-sm);
+}
+
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+    color: var(--color-gray);
+}
+
+/* Ensure dropdown appears above other elements */
+.select2-container {
+    z-index: 9999;
+}
+
+/* Fix for form grid layout with Select2 */
+.form-grid .form-group .select2-container {
+    margin-top: 2px;
+}

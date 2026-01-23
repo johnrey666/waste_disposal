@@ -20,6 +20,247 @@ const GAS_CONFIG = {
     SENDER_NAME: 'FG Operations'
 };
 
+// ================================
+// ITEMS LIST FOR DROPDOWN
+// ================================
+const ITEMS_LIST = [
+    "7-UP bottled",
+    "7 UP IN CAN 330ML",
+    "Ampalaya w/ gata",
+    "Baked Macaroni per serving",
+    "Beef Mami w/ Empanada",
+    "Beef Mami w/ Steamed Siopao",
+    "Beef Nilaga",
+    "Bicol Express",
+    "Bihon",
+    "Blue Lemonade 12 oz.",
+    "Blue Lemonade 16 oz.",
+    "Boiled Egg",
+    "Bopis (pack)",
+    "Bossing Hotdog",
+    "Bread buns",
+    "Bread pocket",
+    "Breaded Porkchop per pc",
+    "Burger buns",
+    "Burger steak",
+    "Buttered Vegetable",
+    "C2 Solo",
+    "Carbonara per serving",
+    "Cheese sause",
+    "Cheese Waffle FP",
+    "Chick n Krunch 1 rice",
+    "Chick n Krunch Solo",
+    "Chicken BBQ",
+    "Chicken Chum",
+    "Chicken Empanada",
+    "Chicken Liver",
+    "Chicken Lumpia Shanghai PC",
+    "Chicken Nuggets Meal",
+    "Chicken nuggets PC",
+    "Chicken Sisig Empanada",
+    "Chicken Tinola",
+    "Chicken w/ gata",
+    "Chkn Cordon Balls pc",
+    "Chopsuey Guisado",
+    "Cordon Blue",
+    "Cucumber",
+    "Cucumber Lemonade 12oz.",
+    "Cucumber Lemonade 16 oz.",
+    "Dinuguan",
+    "Distilled Water 350ml i",
+    "Distilled Water 500ml i",
+    "Extra Gravy",
+    "Family Size Baked Macaroni JR.",
+    "Family size Bicol Express JR.",
+    "Family Size Buttered Chkn JR.",
+    "Family Size ChopsueyGuisado Jr.",
+    "Family Size Fish Curls w/ Sweetchili JR.",
+    "Family Size Fish Filletw/tartar JR.",
+    "Family Size Fish Sweet&Sour Jr.",
+    "Family Size Lechon Kawali JR.",
+    "Family Size LumpiaShanghai JR.",
+    "Family Size Mediterrenean Veg Jr.",
+    "Family Size Mixed veg Jr.",
+    "Family Size Pancit Guisado Jr.",
+    "Family Size Pork Steak CS JR.",
+    "Family Size SotanghonGisado JR.",
+    "Family Size Spaghetti JR.",
+    "Family Size Carbonara JR.",
+    "Family Size ChickenCordonBleu JR.",
+    "Family Size Crab Omellete JR.",
+    "Family Size Lumpia Shanghai (PIO)",
+    "Family Size Palabok Jr.",
+    "Family Size Pork Hongba Slice JR.",
+    "Family Size Sotanghon",
+    "Fish Bicol Express",
+    "Fish Fillet w/ Dressing",
+    "Fish Fillet with Soy Sauce(Tanguigue)",
+    "Fish Steak w/ Onion Rings",
+    "Fish Sweet N Sour",
+    "Fish w/ Tausi",
+    "Fork",
+    "Fresh Lumpia",
+    "Fried Bangus w/ Rice",
+    "Fried Fish w/ Soy Sauce",
+    "Fried VegetableLumpia",
+    "Fruit Salad (4-6pax)",
+    "FS CHICKEN TIM",
+    "FS PALABOK",
+    "FS Pancit Guisado",
+    "FS PORK SPARE RIBS",
+    "FTG Rice",
+    "GB Mineral Water 500ml",
+    "Ginataang Malunggay",
+    "Ginatan",
+    "Half Fried Rice",
+    "Half Rice",
+    "Halo-Halo Special",
+    "Ham & Cheese Fold",
+    "Hamburger",
+    "Hawaiian Pizza",
+    "Hotdog buns",
+    "Hotdog Sandwich",
+    "Hotdog waffle",
+    "Ice Tea 12oz",
+    "Ice Tea 16oz",
+    "Kare Kare",
+    "Laing",
+    "LC Pizza - Festival",
+    "Leche Flan",
+    "Lechon Kawali",
+    "Lechon Kawali w/ Rice",
+    "Lechon Paksiw",
+    "Lumpia per pc",
+    "Mais Con Yelo",
+    "Mais Con Yelo (PIO)",
+    "Mango Graham",
+    "MANGO GRAHAM SHAKE",
+    "Mango Graham Shake",
+    "Marinated Tuna Ala Pobre",
+    "Mealbox",
+    "Meatballs Swt&Sour (3pcs)",
+    "Medium thin crust",
+    "MM Chicken Mami w/Empanada",
+    "MM Pancit Guisado w/ Empanada",
+    "MM Sotanghon Asado",
+    "MM Sotanghon Bola-Bola",
+    "MM Sotanghon Chix Empanada",
+    "MM Sotanghon Pork Empanada",
+    "Mountain Dew bottled",
+    "Off Site Catering Package1",
+    "Off Site Catering Package2",
+    "Off Site Catering Package3",
+    "P/A Juice in-can",
+    "Palabok",
+    "Pancit Bato 200g",
+    "Party Size Bicol Express",
+    "Party Size Buko Pandan Salad",
+    "Party size Crab Omellete",
+    "Party Size Leche Flan 2llanera",
+    "Party Size Lumpia Shanghai",
+    "Party Size Mediterrenean Veg",
+    "Party Size Mixed Veg w/ Youngcorn",
+    "Party Size Pork BBQ",
+    "Party Size Pork Embutido",
+    "Party Size Pork Steak CS",
+    "Party Size PorkSpareribs Caldereta",
+    "Party Size Baked Macaroni",
+    "Party Size Buttered Chkn",
+    "Party Size Carbonara",
+    "Party Size Chicken Cordon Bleu w/ cocktail sauce",
+    "Party Size Chicken Tim",
+    "Party Size ChopsueyGuisado",
+    "Party Size Fish Fillet w/ Mustard sauce",
+    "Party Size Fish Fillet w/ Tartar sauce",
+    "Party Size Fishcurls w/ Sweetchili Salsa",
+    "Party Size Fruit Salad",
+    "Party Size Lechon Kawali",
+    "Party Size Macaroni Salad",
+    "Party Size Palabok",
+    "Party Size Pancit Guisado",
+    "Party Size Pork Hongba Slice",
+    "Party Size Seasoned Chicken w/ garlic",
+    "Party Size Sotanghon Guisado",
+    "Party Size Spaghetti",
+    "Party Size Tanigui Fish Finger w/ Tartar Sauce",
+    "PASALUBONG EMPANADA FROZEN1",
+    "PASALUBONG SIOPAO FROZEN2",
+    "Pasta",
+    "Pinakbet",
+    "Pizza crust",
+    "Pocket Hawaiian Pizza",
+    "Pocket Vegetarian Pizza",
+    "Pork Caldereta",
+    "Pork Empanada",
+    "Pork Hongba",
+    "Pork Hongba (pack)",
+    "Pork Lengua",
+    "Pork Sinigang",
+    "Pork Sisig",
+    "Pork Sisig (Regular)",
+    "Pork Teriyaki",
+    "Porksteak Chinese Style",
+    "PS BBQ",
+    "PS Pork BBQ",
+    "PT Chicken Mac Salad",
+    "PT Lechon Kawali",
+    "PT Ruby Fruit Salad",
+    "PT Sotanghon",
+    "Raw Bell pepper",
+    "Raw Egg",
+    "Rice FP",
+    "RTP Bicok Express 100g/pack",
+    "RTP Bopiz (Pio)",
+    "RTP Breaded Chicken w/ Drinks",
+    "RTP Breaded P-Chop",
+    "RTP Burger Steak",
+    "RTP Burger Steak (PIO)",
+    "RTP Chicken Adobo",
+    "RTP Chicken Afritada",
+    "RTP CHICKEN MEAT BALLS",
+    "RTP Chicken Pastil w/ Egg",
+    "RTP Chicken Shanghai (4 pcs)",
+    "Saba Con Yelo",
+    "SB Spag,Chkn Crnch w/ drink",
+    "SB Chckn,Lumpia, Rice&drink",
+    "SB Spag, Fries, w/ drink",
+    "SB Spag,Chkn Crnch,Fries w/ drink",
+    "SB Spag,Hamburger, w/ drink",
+    "Shrimp w/ Quail Egg",
+    "Sinigang na Bangus",
+    "Sinigang na Hipon",
+    "Siopao Asado",
+    "Siopao bola-bola FP",
+    "Sitaw sa Gata",
+    "Sotanghon",
+    "Sotanghon Soup",
+    "Spaghetti 150 gms",
+    "Spaghetti sauce",
+    "Spoon",
+    "sprouted",
+    "Sweet & Sour",
+    "Talong sa Gata",
+    "Tilapia pikadillo",
+    "Tilapia Sweet&Sour",
+    "Tortang talong",
+    "Tuna w/ tausi",
+    "VB Chicken Nuggets (10 pcs)",
+    "VB Chicken Nuggets (6pcs)",
+    "VM Chicken Chum",
+    "VM Cordon Bleu",
+    "VM Fish Fillet Sweet&Sour",
+    "VM Fish Fillet w/ dressing",
+    "VM Fried Rice",
+    "VM Lechon Kawali",
+    "VM Lechon Paksiw",
+    "VM Lumpia Shanghai",
+    "VM Pork BBQ",
+    "VM Pork BBQ FG",
+    "VM Pork Hongba",
+    "VM Pork Steak Chinese Style",
+    "Yong Chow Rice"
+];
+
 // Initialize Firebase
 let db;
 try {
@@ -334,7 +575,7 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
 }
 
 // ================================
-// FORM FUNCTIONS (unchanged)
+// FORM FUNCTIONS
 // ================================
 function toggleDynamicFields() {
     const disposalType = document.querySelector('input[name="disposalType"]:checked');
@@ -434,6 +675,19 @@ function removeFileFromInput(fileInput, index) {
     fileInput.dispatchEvent(new Event('change'));
 }
 
+// Function to initialize Select2 dropdown for a given element
+function initSelect2Dropdown(selectElementId) {
+    $(document).ready(function() {
+        $(`#${selectElementId}`).select2({
+            data: ITEMS_LIST.map(item => ({ id: item, text: item })),
+            placeholder: "Select or type to search...",
+            allowClear: false,
+            width: '100%',
+            dropdownParent: $(`#${selectElementId}`).parent()
+        });
+    });
+}
+
 function addExpiredItem() {
     const expiredFields = document.getElementById('expiredFields');
     if (!expiredFields) return;
@@ -453,7 +707,10 @@ function addExpiredItem() {
         <div class="form-grid">
             <div class="form-group">
                 <label for="expiredItem-${itemId}">Item Name <span class="required">*</span></label>
-                <input type="text" id="expiredItem-${itemId}" name="expiredItems[${itemId}][item]" required placeholder="Enter item name">
+                <select class="item-dropdown" id="expiredItem-${itemId}" name="expiredItems[${itemId}][item]" required>
+                    <option value="" disabled selected>Select or type to search...</option>
+                </select>
+                <span class="note">Type to search or select from dropdown</span>
             </div>
             <div class="form-group">
                 <label for="deliveredDate-${itemId}">Delivered Date <span class="required">*</span></label>
@@ -503,6 +760,11 @@ function addExpiredItem() {
     `;
     
     expiredFields.appendChild(fieldGroup);
+    
+    // Initialize Select2 for the newly created dropdown
+    setTimeout(() => {
+        initSelect2Dropdown(`expiredItem-${itemId}`);
+    }, 100);
 }
 
 function addWasteItem() {
@@ -523,7 +785,10 @@ function addWasteItem() {
         <div class="form-grid">
             <div class="form-group">
                 <label for="wasteItem-${itemId}">Item/Description <span class="required">*</span></label>
-                <input type="text" id="wasteItem-${itemId}" name="wasteItems[${itemId}][item]" required placeholder="Enter item or description">
+                <select class="item-dropdown" id="wasteItem-${itemId}" name="wasteItems[${itemId}][item]" required>
+                    <option value="" disabled selected>Select or type to search...</option>
+                </select>
+                <span class="note">Type to search or select from dropdown</span>
             </div>
             <div class="form-group">
                 <label for="reason-${itemId}">Reason for Waste <span class="required">*</span></label>
@@ -574,6 +839,11 @@ function addWasteItem() {
     `;
     
     wasteFields.appendChild(fieldGroup);
+    
+    // Initialize Select2 for the newly created dropdown
+    setTimeout(() => {
+        initSelect2Dropdown(`wasteItem-${itemId}`);
+    }, 100);
 }
 
 function removeField(fieldId) {
@@ -615,7 +885,7 @@ function validateDynamicFields() {
         }
         
         for (let item of expiredItems) {
-            const requiredFields = item.querySelectorAll('input[required], select[required]');
+            const requiredFields = item.querySelectorAll('select[required], input[required]');
             const fileInput = item.querySelector('input[type="file"]');
             
             for (let field of requiredFields) {
@@ -647,7 +917,7 @@ function validateDynamicFields() {
         }
         
         for (let item of wasteItems) {
-            const requiredFields = item.querySelectorAll('input[required], select[required]');
+            const requiredFields = item.querySelectorAll('select[required], input[required]');
             const fileInput = item.querySelector('input[type="file"]');
             
             for (let field of requiredFields) {
@@ -852,8 +1122,21 @@ async function handleSubmit(event) {
                     }
                 }
                 
+                // Get the selected value from Select2 dropdown
+                const dropdown = document.getElementById(`expiredItem-${itemId}`);
+                let selectedItem = '';
+                if (dropdown && dropdown.value) {
+                    selectedItem = dropdown.value;
+                } else {
+                    // Fallback to the text input if Select2 is not initialized
+                    const selectElement = $(`#expiredItem-${itemId}`);
+                    if (selectElement.length > 0) {
+                        selectedItem = selectElement.select2('data')[0]?.text || '';
+                    }
+                }
+                
                 const expiredItem = {
-                    item: document.getElementById(`expiredItem-${itemId}`).value.trim(),
+                    item: selectedItem || document.getElementById(`expiredItem-${itemId}`).value.trim(),
                     deliveredDate: document.getElementById(`deliveredDate-${itemId}`).value,
                     manufacturedDate: document.getElementById(`manufacturedDate-${itemId}`).value,
                     expirationDate: document.getElementById(`expirationDate-${itemId}`).value,
@@ -898,8 +1181,21 @@ async function handleSubmit(event) {
                     }
                 }
                 
+                // Get the selected value from Select2 dropdown
+                const dropdown = document.getElementById(`wasteItem-${itemId}`);
+                let selectedItem = '';
+                if (dropdown && dropdown.value) {
+                    selectedItem = dropdown.value;
+                } else {
+                    // Fallback to the text input if Select2 is not initialized
+                    const selectElement = $(`#wasteItem-${itemId}`);
+                    if (selectElement.length > 0) {
+                        selectedItem = selectElement.select2('data')[0]?.text || '';
+                    }
+                }
+                
                 const wasteItem = {
-                    item: document.getElementById(`wasteItem-${itemId}`).value.trim(),
+                    item: selectedItem || document.getElementById(`wasteItem-${itemId}`).value.trim(),
                     reason: document.getElementById(`reason-${itemId}`).value,
                     quantity: parseFloat(document.getElementById(`wasteQuantity-${itemId}`).value) || 0,
                     unit: document.getElementById(`wasteUnit-${itemId}`).value,
