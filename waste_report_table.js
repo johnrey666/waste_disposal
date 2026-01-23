@@ -42,6 +42,46 @@ let currentBulkRejectionData = null;
 let currentReportDetailsId = null;
 
 // ================================
+// ENHANCED NOTIFICATION SYSTEM
+// ================================
+function showNotification(message, type = 'success', duration = 5000) {
+    const notification = document.getElementById('notification');
+    if (!notification) return;
+    
+    // Clear any existing timeout
+    if (notification.timeoutId) {
+        clearTimeout(notification.timeoutId);
+    }
+    
+    notification.textContent = message;
+    notification.className = `notification ${type}`;
+    notification.style.display = 'block';
+    notification.style.animation = 'slideInRight 0.3s ease';
+    
+    // Remove any existing fadeOut animation
+    notification.style.animation = '';
+    
+    // Set new timeout for auto-hide
+    notification.timeoutId = setTimeout(() => {
+        notification.style.animation = 'fadeOut 0.3s ease';
+        setTimeout(() => {
+            notification.style.display = 'none';
+            notification.style.animation = '';
+        }, 300);
+    }, duration);
+    
+    // Return the notification element for manual control
+    return notification;
+}
+
+function showLoading(show) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlay.style.display = show ? 'flex' : 'none';
+    }
+}
+
+// ================================
 // AUTHENTICATION FUNCTIONS
 // ================================
 function authenticate(enteredPassword) {
@@ -185,26 +225,6 @@ function showReportsSection() {
 // ================================
 // UTILITY FUNCTIONS
 // ================================
-function showNotification(message, type = 'success') {
-    const notification = document.getElementById('notification');
-    if (!notification) return;
-    
-    notification.textContent = message;
-    notification.className = `notification ${type}`;
-    notification.style.display = 'block';
-    
-    setTimeout(() => {
-        notification.style.display = 'none';
-    }, 5000);
-}
-
-function showLoading(show) {
-    const overlay = document.getElementById('loadingOverlay');
-    if (overlay) {
-        overlay.style.display = show ? 'flex' : 'none';
-    }
-}
-
 function formatDate(dateString) {
     if (!dateString) return 'N/A';
     try {
@@ -922,6 +942,7 @@ async function approveItem(reportId, itemIndex, itemType) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: items });
         
+        // Show notification BEFORE closing modal
         showNotification('Item approved successfully', 'success');
         
         if (currentReportDetailsId === reportId) {
@@ -979,6 +1000,7 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: items });
         
+        // Show notification BEFORE closing modal
         showNotification('Item rejected successfully', 'success');
         
         if (currentReportDetailsId === reportId) {
@@ -1041,6 +1063,7 @@ async function bulkApproveItems(reportId, itemType) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: updatedItems });
         
+        // Show notification BEFORE closing modal
         showNotification('All pending items approved successfully', 'success');
         
         if (currentReportDetailsId === reportId) {
@@ -1103,6 +1126,7 @@ async function bulkRejectItems(reportId, itemType, reason) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: updatedItems });
         
+        // Show notification BEFORE closing modal
         showNotification('All pending items rejected successfully', 'success');
         
         if (currentReportDetailsId === reportId) {

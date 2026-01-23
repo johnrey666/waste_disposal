@@ -344,6 +344,70 @@
             margin: 0 auto;
         }
 
+        /* Notification Container - Enhanced */
+        #notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999; /* Increased to ensure it's on top of modals */
+            max-width: 350px;
+            min-width: 300px;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            font-size: 14px;
+            font-weight: 500;
+            display: none;
+            animation: slideInRight 0.3s ease, fadeOut 0.3s ease 4.7s;
+            border-left: 4px solid;
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        #notification.success {
+            color: #155724;
+            background: rgba(212, 237, 218, 0.95);
+            border-left-color: #28a745;
+        }
+
+        #notification.error {
+            color: #721c24;
+            background: rgba(248, 215, 218, 0.95);
+            border-left-color: #dc3545;
+        }
+
+        #notification.info {
+            color: #0c5460;
+            background: rgba(209, 236, 241, 0.95);
+            border-left-color: #17a2b8;
+        }
+
+        #notification.warning {
+            color: #856404;
+            background: rgba(255, 243, 205, 0.95);
+            border-left-color: #ffc107;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+            }
+            to {
+                opacity: 0;
+            }
+        }
+
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .password-container {
@@ -364,6 +428,13 @@
 
             .bulk-approval-actions {
                 flex-direction: column;
+            }
+
+            #notification {
+                left: 20px;
+                right: 20px;
+                max-width: calc(100% - 40px);
+                min-width: auto;
             }
         }
 
@@ -395,7 +466,7 @@
         <div class="loading-spinner"></div>
     </div>
     
-    <!-- Notification Container -->
+    <!-- Notification Container - Now with higher z-index -->
     <div id="notification" class="notification"></div>
     
     <div class="container">
