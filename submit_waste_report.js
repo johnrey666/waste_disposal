@@ -23,243 +23,8 @@ const GAS_CONFIG = {
 // ================================
 // ITEMS LIST FOR DROPDOWN
 // ================================
-const ITEMS_LIST = [
-    "7-UP bottled",
-    "7 UP IN CAN 330ML",
-    "Ampalaya w/ gata",
-    "Baked Macaroni per serving",
-    "Beef Mami w/ Empanada",
-    "Beef Mami w/ Steamed Siopao",
-    "Beef Nilaga",
-    "Bicol Express",
-    "Bihon",
-    "Blue Lemonade 12 oz.",
-    "Blue Lemonade 16 oz.",
-    "Boiled Egg",
-    "Bopis (pack)",
-    "Bossing Hotdog",
-    "Bread buns",
-    "Bread pocket",
-    "Breaded Porkchop per pc",
-    "Burger buns",
-    "Burger steak",
-    "Buttered Vegetable",
-    "C2 Solo",
-    "Carbonara per serving",
-    "Cheese sause",
-    "Cheese Waffle FP",
-    "Chick n Krunch 1 rice",
-    "Chick n Krunch Solo",
-    "Chicken BBQ",
-    "Chicken Chum",
-    "Chicken Empanada",
-    "Chicken Liver",
-    "Chicken Lumpia Shanghai PC",
-    "Chicken Nuggets Meal",
-    "Chicken nuggets PC",
-    "Chicken Sisig Empanada",
-    "Chicken Tinola",
-    "Chicken w/ gata",
-    "Chkn Cordon Balls pc",
-    "Chopsuey Guisado",
-    "Cordon Blue",
-    "Cucumber",
-    "Cucumber Lemonade 12oz.",
-    "Cucumber Lemonade 16 oz.",
-    "Dinuguan",
-    "Distilled Water 350ml i",
-    "Distilled Water 500ml i",
-    "Extra Gravy",
-    "Family Size Baked Macaroni JR.",
-    "Family size Bicol Express JR.",
-    "Family Size Buttered Chkn JR.",
-    "Family Size ChopsueyGuisado Jr.",
-    "Family Size Fish Curls w/ Sweetchili JR.",
-    "Family Size Fish Filletw/tartar JR.",
-    "Family Size Fish Sweet&Sour Jr.",
-    "Family Size Lechon Kawali JR.",
-    "Family Size LumpiaShanghai JR.",
-    "Family Size Mediterrenean Veg Jr.",
-    "Family Size Mixed veg Jr.",
-    "Family Size Pancit Guisado Jr.",
-    "Family Size Pork Steak CS JR.",
-    "Family Size SotanghonGisado JR.",
-    "Family Size Spaghetti JR.",
-    "Family Size Carbonara JR.",
-    "Family Size ChickenCordonBleu JR.",
-    "Family Size Crab Omellete JR.",
-    "Family Size Lumpia Shanghai (PIO)",
-    "Family Size Palabok Jr.",
-    "Family Size Pork Hongba Slice JR.",
-    "Family Size Sotanghon",
-    "Fish Bicol Express",
-    "Fish Fillet w/ Dressing",
-    "Fish Fillet with Soy Sauce(Tanguigue)",
-    "Fish Steak w/ Onion Rings",
-    "Fish Sweet N Sour",
-    "Fish w/ Tausi",
-    "Fork",
-    "Fresh Lumpia",
-    "Fried Bangus w/ Rice",
-    "Fried Fish w/ Soy Sauce",
-    "Fried VegetableLumpia",
-    "Fruit Salad (4-6pax)",
-    "FS CHICKEN TIM",
-    "FS PALABOK",
-    "FS Pancit Guisado",
-    "FS PORK SPARE RIBS",
-    "FTG Rice",
-    "GB Mineral Water 500ml",
-    "Ginataang Malunggay",
-    "Ginatan",
-    "Half Fried Rice",
-    "Half Rice",
-    "Halo-Halo Special",
-    "Ham & Cheese Fold",
-    "Hamburger",
-    "Hawaiian Pizza",
-    "Hotdog buns",
-    "Hotdog Sandwich",
-    "Hotdog waffle",
-    "Ice Tea 12oz",
-    "Ice Tea 16oz",
-    "Kare Kare",
-    "Laing",
-    "LC Pizza - Festival",
-    "Leche Flan",
-    "Lechon Kawali",
-    "Lechon Kawali w/ Rice",
-    "Lechon Paksiw",
-    "Lumpia per pc",
-    "Mais Con Yelo",
-    "Mais Con Yelo (PIO)",
-    "Mango Graham",
-    "MANGO GRAHAM SHAKE",
-    "Mango Graham Shake",
-    "Marinated Tuna Ala Pobre",
-    "Mealbox",
-    "Meatballs Swt&Sour (3pcs)",
-    "Medium thin crust",
-    "MM Chicken Mami w/Empanada",
-    "MM Pancit Guisado w/ Empanada",
-    "MM Sotanghon Asado",
-    "MM Sotanghon Bola-Bola",
-    "MM Sotanghon Chix Empanada",
-    "MM Sotanghon Pork Empanada",
-    "Mountain Dew bottled",
-    "Off Site Catering Package1",
-    "Off Site Catering Package2",
-    "Off Site Catering Package3",
-    "P/A Juice in-can",
-    "Palabok",
-    "Pancit Bato 200g",
-    "Party Size Bicol Express",
-    "Party Size Buko Pandan Salad",
-    "Party size Crab Omellete",
-    "Party Size Leche Flan 2llanera",
-    "Party Size Lumpia Shanghai",
-    "Party Size Mediterrenean Veg",
-    "Party Size Mixed Veg w/ Youngcorn",
-    "Party Size Pork BBQ",
-    "Party Size Pork Embutido",
-    "Party Size Pork Steak CS",
-    "Party Size PorkSpareribs Caldereta",
-    "Party Size Baked Macaroni",
-    "Party Size Buttered Chkn",
-    "Party Size Carbonara",
-    "Party Size Chicken Cordon Bleu w/ cocktail sauce",
-    "Party Size Chicken Tim",
-    "Party Size ChopsueyGuisado",
-    "Party Size Fish Fillet w/ Mustard sauce",
-    "Party Size Fish Fillet w/ Tartar sauce",
-    "Party Size Fishcurls w/ Sweetchili Salsa",
-    "Party Size Fruit Salad",
-    "Party Size Lechon Kawali",
-    "Party Size Macaroni Salad",
-    "Party Size Palabok",
-    "Party Size Pancit Guisado",
-    "Party Size Pork Hongba Slice",
-    "Party Size Seasoned Chicken w/ garlic",
-    "Party Size Sotanghon Guisado",
-    "Party Size Spaghetti",
-    "Party Size Tanigui Fish Finger w/ Tartar Sauce",
-    "PASALUBONG EMPANADA FROZEN1",
-    "PASALUBONG SIOPAO FROZEN2",
-    "Pasta",
-    "Pinakbet",
-    "Pizza crust",
-    "Pocket Hawaiian Pizza",
-    "Pocket Vegetarian Pizza",
-    "Pork Caldereta",
-    "Pork Empanada",
-    "Pork Hongba",
-    "Pork Hongba (pack)",
-    "Pork Lengua",
-    "Pork Sinigang",
-    "Pork Sisig",
-    "Pork Sisig (Regular)",
-    "Pork Teriyaki",
-    "Porksteak Chinese Style",
-    "PS BBQ",
-    "PS Pork BBQ",
-    "PT Chicken Mac Salad",
-    "PT Lechon Kawali",
-    "PT Ruby Fruit Salad",
-    "PT Sotanghon",
-    "Raw Bell pepper",
-    "Raw Egg",
-    "Rice FP",
-    "RTP Bicok Express 100g/pack",
-    "RTP Bopiz (Pio)",
-    "RTP Breaded Chicken w/ Drinks",
-    "RTP Breaded P-Chop",
-    "RTP Burger Steak",
-    "RTP Burger Steak (PIO)",
-    "RTP Chicken Adobo",
-    "RTP Chicken Afritada",
-    "RTP CHICKEN MEAT BALLS",
-    "RTP Chicken Pastil w/ Egg",
-    "RTP Chicken Shanghai (4 pcs)",
-    "Saba Con Yelo",
-    "SB Spag,Chkn Crnch w/ drink",
-    "SB Chckn,Lumpia, Rice&drink",
-    "SB Spag, Fries, w/ drink",
-    "SB Spag,Chkn Crnch,Fries w/ drink",
-    "SB Spag,Hamburger, w/ drink",
-    "Shrimp w/ Quail Egg",
-    "Sinigang na Bangus",
-    "Sinigang na Hipon",
-    "Siopao Asado",
-    "Siopao bola-bola FP",
-    "Sitaw sa Gata",
-    "Sotanghon",
-    "Sotanghon Soup",
-    "Spaghetti 150 gms",
-    "Spaghetti sauce",
-    "Spoon",
-    "sprouted",
-    "Sweet & Sour",
-    "Talong sa Gata",
-    "Tilapia pikadillo",
-    "Tilapia Sweet&Sour",
-    "Tortang talong",
-    "Tuna w/ tausi",
-    "VB Chicken Nuggets (10 pcs)",
-    "VB Chicken Nuggets (6pcs)",
-    "VM Chicken Chum",
-    "VM Cordon Bleu",
-    "VM Fish Fillet Sweet&Sour",
-    "VM Fish Fillet w/ dressing",
-    "VM Fried Rice",
-    "VM Lechon Kawali",
-    "VM Lechon Paksiw",
-    "VM Lumpia Shanghai",
-    "VM Pork BBQ",
-    "VM Pork BBQ FG",
-    "VM Pork Hongba",
-    "VM Pork Steak Chinese Style",
-    "Yong Chow Rice"
-];
+let ITEMS_LIST = [];
+let itemsLoaded = false;
 
 // Initialize Firebase
 let db;
@@ -329,6 +94,207 @@ function formatFileSize(bytes) {
 
 function calculateObjectSize(obj) {
     return new TextEncoder().encode(JSON.stringify(obj)).length;
+}
+
+// ================================
+// FETCH ITEMS FROM FIRESTORE
+// ================================
+async function fetchItemsFromFirestore() {
+    try {
+        if (!db) {
+            console.error('Firebase not initialized');
+            throw new Error('Firebase not initialized');
+        }
+        
+        console.log('Fetching items from Firestore...');
+        showLoading(true, 'Loading items...');
+        
+        const snapshot = await db.collection('items')
+            .orderBy('name', 'asc')
+            .get();
+        
+        ITEMS_LIST = [];
+        
+        snapshot.forEach(doc => {
+            const itemData = doc.data();
+            ITEMS_LIST.push(itemData.name);
+        });
+        
+        console.log(`✅ Loaded ${ITEMS_LIST.length} items from Firestore`);
+        itemsLoaded = true;
+        
+        initializeAllSelect2Dropdowns();
+        return ITEMS_LIST;
+        
+    } catch (error) {
+        console.error('❌ Error fetching items from Firestore:', error);
+        showNotification('Failed to load items from database. Please try again.', 'error');
+        throw error;
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ================================
+// GET ITEM COST FROM FIRESTORE
+// ================================
+async function getItemCost(itemName) {
+    try {
+        if (!itemName || !db) return 0;
+        
+        console.log(`Fetching cost for item: ${itemName}`);
+        
+        const query = await db.collection('items')
+            .where('name', '==', itemName)
+            .limit(1)
+            .get();
+        
+        if (!query.empty) {
+            const doc = query.docs[0];
+            const itemData = doc.data();
+            const cost = parseFloat(itemData.cost) || 0;
+            console.log(`Found cost for ${itemName}: ₱${cost.toFixed(2)}`);
+            return cost;
+        }
+        
+        console.log(`No cost found for ${itemName}, using 0`);
+        return 0;
+        
+    } catch (error) {
+        console.error('Error getting item cost:', error);
+        return 0;
+    }
+}
+
+function initializeAllSelect2Dropdowns() {
+    $('.item-dropdown').each(function() {
+        const selectId = $(this).attr('id');
+        if (selectId) {
+            initSelect2Dropdown(selectId);
+        }
+    });
+}
+
+// ================================
+// DISPOSAL TYPE TOGGLE FUNCTIONS
+// ================================
+function toggleDisposalType(checkboxId) {
+    const expiredCheckbox = document.getElementById('expired');
+    const wasteCheckbox = document.getElementById('waste');
+    const noWasteCheckbox = document.getElementById('noWaste');
+    
+    const expiredContainer = document.getElementById('expiredContainer');
+    const wasteContainer = document.getElementById('wasteContainer');
+    
+    const currentCheckbox = document.getElementById(checkboxId);
+    const isChecked = currentCheckbox.checked;
+    
+    if (checkboxId === 'noWaste' && isChecked) {
+        expiredCheckbox.checked = false;
+        wasteCheckbox.checked = false;
+        
+        if (expiredContainer) expiredContainer.classList.remove('show');
+        if (wasteContainer) wasteContainer.classList.remove('show');
+        
+        const expiredFields = document.getElementById('expiredFields');
+        const wasteFields = document.getElementById('wasteFields');
+        if (expiredFields) expiredFields.innerHTML = '';
+        if (wasteFields) wasteFields.innerHTML = '';
+    }
+    else if ((checkboxId === 'expired' || checkboxId === 'waste') && isChecked) {
+        noWasteCheckbox.checked = false;
+        
+        if (checkboxId === 'expired' && expiredCheckbox.checked) {
+            if (expiredContainer) expiredContainer.classList.add('show');
+            const expiredFields = document.getElementById('expiredFields');
+            if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0) {
+                addExpiredItem();
+            }
+        }
+        
+        if (checkboxId === 'waste' && wasteCheckbox.checked) {
+            if (wasteContainer) wasteContainer.classList.add('show');
+            const wasteFields = document.getElementById('wasteFields');
+            if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0) {
+                addWasteItem();
+            }
+        }
+    }
+    else if (!isChecked) {
+        if (checkboxId === 'expired') {
+            if (expiredContainer) expiredContainer.classList.remove('show');
+            const expiredFields = document.getElementById('expiredFields');
+            if (expiredFields) expiredFields.innerHTML = '';
+        }
+        else if (checkboxId === 'waste') {
+            if (wasteContainer) wasteContainer.classList.remove('show');
+            const wasteFields = document.getElementById('wasteFields');
+            if (wasteFields) wasteFields.innerHTML = '';
+        }
+        else if (checkboxId === 'noWaste') {
+            if (expiredCheckbox.checked && expiredContainer) {
+                expiredContainer.classList.add('show');
+                const expiredFields = document.getElementById('expiredFields');
+                if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0) {
+                    addExpiredItem();
+                }
+            }
+            if (wasteCheckbox.checked && wasteContainer) {
+                wasteContainer.classList.add('show');
+                const wasteFields = document.getElementById('wasteFields');
+                if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0) {
+                    addWasteItem();
+                }
+            }
+        }
+    }
+    
+    updateDisposalTypeHint();
+}
+
+function updateDisposalTypeHint() {
+    const expiredChecked = document.getElementById('expired').checked;
+    const wasteChecked = document.getElementById('waste').checked;
+    const noWasteChecked = document.getElementById('noWaste').checked;
+    const hint = document.getElementById('disposalTypeHint');
+    
+    if (!hint) return;
+    
+    const selected = [];
+    if (expiredChecked) selected.push('Expired Items');
+    if (wasteChecked) selected.push('Waste');
+    if (noWasteChecked) selected.push('No Waste');
+    
+    if (selected.length === 0) {
+        hint.textContent = 'Select at least one disposal type';
+        hint.style.color = '#dc3545';
+    } else if (selected.length === 1) {
+        hint.textContent = `Selected: ${selected[0]}`;
+        hint.style.color = '#28a745';
+    } else {
+        hint.textContent = `Selected: ${selected.join(', ')}`;
+        hint.style.color = '#28a745';
+    }
+}
+
+function validateDisposalTypeSelection() {
+    const expiredChecked = document.getElementById('expired').checked;
+    const wasteChecked = document.getElementById('waste').checked;
+    const noWasteChecked = document.getElementById('noWaste').checked;
+    
+    if (!expiredChecked && !wasteChecked && !noWasteChecked) {
+        showNotification('Please select at least one disposal type.', 'error');
+        return false;
+    }
+    
+    if (noWasteChecked && (expiredChecked || wasteChecked)) {
+        const confirmProceed = confirm('You have selected "No Waste" along with other disposal types. "No Waste" will override other selections. Do you want to continue?');
+        if (!confirmProceed) {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 // ================================
@@ -435,7 +401,7 @@ async function fileToBase64(file) {
 }
 
 // ================================
-// EMAIL FUNCTION USING GOOGLE APPS SCRIPT
+// EMAIL FUNCTION
 // ================================
 async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
     try {
@@ -456,29 +422,44 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
         let reportDetails = '';
         let htmlReportDetails = '';
         
-        if (reportData.disposalType === 'expired' && itemsDetails.length > 0) {
-            itemsDetails.forEach((item, index) => {
-                reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''}\n`;
-                htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''}`;
-                if (item.notes) {
-                    reportDetails += `   Notes: ${item.notes}\n`;
-                    htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
-                }
-                htmlReportDetails += '</li>';
-            });
-        } else if (reportData.disposalType === 'waste' && itemsDetails.length > 0) {
-            itemsDetails.forEach((item, index) => {
-                reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'})\n`;
-                htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'})`;
-                if (item.notes) {
-                    reportDetails += `   Notes: ${item.notes}\n`;
-                    htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
-                }
-                htmlReportDetails += '</li>';
-            });
-        } else if (reportData.disposalType === 'noWaste') {
+        const expiredItems = itemsDetails.filter(item => item.type === 'expired');
+        const wasteItems = itemsDetails.filter(item => item.type === 'waste');
+        
+        if (reportData.noWaste) {
             reportDetails = 'No waste or expired items to report for this period.';
             htmlReportDetails = '<li>No waste or expired items to report for this period.</li>';
+        } else {
+            if (expiredItems.length > 0) {
+                reportDetails += 'EXPIRED ITEMS:\n';
+                htmlReportDetails += '<h4>Expired Items:</h4><ul>';
+                expiredItems.forEach((item, index) => {
+                    const totalCost = (item.itemCost || 0) * (item.quantity || 0);
+                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Cost: ₱${totalCost.toFixed(2)})\n`;
+                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Cost: ₱${totalCost.toFixed(2)})`;
+                    if (item.notes) {
+                        reportDetails += `   Notes: ${item.notes}\n`;
+                        htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
+                    }
+                    htmlReportDetails += '</li>';
+                });
+                htmlReportDetails += '</ul>';
+            }
+            
+            if (wasteItems.length > 0) {
+                reportDetails += '\nWASTE ITEMS:\n';
+                htmlReportDetails += '<h4>Waste Items:</h4><ul>';
+                wasteItems.forEach((item, index) => {
+                    const totalCost = (item.itemCost || 0) * (item.quantity || 0);
+                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})\n`;
+                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})`;
+                    if (item.notes) {
+                        reportDetails += `   Notes: ${item.notes}\n`;
+                        htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
+                    }
+                    htmlReportDetails += '</li>';
+                });
+                htmlReportDetails += '</ul>';
+            }
         }
         
         const emailData = {
@@ -487,7 +468,7 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
             store: reportData.store || 'N/A',
             personnel: reportData.personnel || 'N/A',
             reportDate: formatDate(reportData.reportDate) || 'N/A',
-            disposalType: (reportData.disposalType || 'N/A').toUpperCase(),
+            disposalTypes: reportData.disposalTypes || ['N/A'],
             itemCount: itemsDetails.length,
             reportDetails: reportDetails,
             htmlReportDetails: htmlReportDetails,
@@ -499,7 +480,6 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
         
         console.log('📤 Sending email to:', emailData.to);
         
-        // Method 1: FormData POST
         try {
             const formData = new FormData();
             formData.append('data', JSON.stringify(emailData));
@@ -525,7 +505,6 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
             console.log('FormData failed, trying fallback methods...', err);
         }
         
-        // Method 2: GET with URL parameters
         try {
             const params = new URLSearchParams();
             Object.keys(emailData).forEach(key => params.append(key, emailData[key]));
@@ -538,7 +517,6 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
             console.log('GET fallback failed, trying iframe...');
         }
         
-        // Method 3: Iframe POST fallback
         return new Promise(resolve => {
             const iframe = document.createElement('iframe');
             iframe.style.display = 'none';
@@ -577,38 +555,6 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
 // ================================
 // FORM FUNCTIONS
 // ================================
-function toggleDynamicFields() {
-    const disposalType = document.querySelector('input[name="disposalType"]:checked');
-    if (!disposalType) return;
-    
-    const expiredContainer = document.getElementById('expiredContainer');
-    const wasteContainer = document.getElementById('wasteContainer');
-    
-    if (expiredContainer) expiredContainer.classList.remove('show');
-    if (wasteContainer) wasteContainer.classList.remove('show');
-    
-    const expiredFields = document.getElementById('expiredFields');
-    const wasteFields = document.getElementById('wasteFields');
-    if (expiredFields) expiredFields.innerHTML = '';
-    if (wasteFields) wasteFields.innerHTML = '';
-    
-    if (disposalType.value === 'expired') {
-        if (expiredContainer) {
-            expiredContainer.classList.add('show');
-            if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0) {
-                addExpiredItem();
-            }
-        }
-    } else if (disposalType.value === 'waste') {
-        if (wasteContainer) {
-            wasteContainer.classList.add('show');
-            if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0) {
-                addWasteItem();
-            }
-        }
-    }
-}
-
 function createFilePreview(fileInput, previewContainerId) {
     const files = fileInput.files;
     const previewContainer = document.getElementById(previewContainerId);
@@ -675,16 +621,19 @@ function removeFileFromInput(fileInput, index) {
     fileInput.dispatchEvent(new Event('change'));
 }
 
-// Function to initialize Select2 dropdown for a given element
 function initSelect2Dropdown(selectElementId) {
-    $(document).ready(function() {
-        $(`#${selectElementId}`).select2({
-            data: ITEMS_LIST.map(item => ({ id: item, text: item })),
-            placeholder: "Select or type to search...",
-            allowClear: false,
-            width: '100%',
-            dropdownParent: $(`#${selectElementId}`).parent()
-        });
+    if (ITEMS_LIST.length === 0) {
+        console.log('Items not loaded yet, delaying Select2 initialization for:', selectElementId);
+        return;
+    }
+    
+    // SIMPLE DROPDOWN WITHOUT COST DISPLAY
+    $(`#${selectElementId}`).select2({
+        data: ITEMS_LIST.map(item => ({ id: item, text: item })),
+        placeholder: "Select or type to search...",
+        allowClear: false,
+        width: '100%',
+        dropdownParent: $(`#${selectElementId}`).parent()
     });
 }
 
@@ -761,7 +710,6 @@ function addExpiredItem() {
     
     expiredFields.appendChild(fieldGroup);
     
-    // Initialize Select2 for the newly created dropdown
     setTimeout(() => {
         initSelect2Dropdown(`expiredItem-${itemId}`);
     }, 100);
@@ -780,7 +728,7 @@ function addWasteItem() {
     fieldGroup.innerHTML = `
         <div class="field-header">
             <div class="field-title">Waste Item</div>
-            <button type="button" class="remove-btn" onclick="removeField('waste-${itemId}')">×</button>
+                <button type="button" class="remove-btn" onclick="removeField('waste-${itemId}')">×</button>
         </div>
         <div class="form-grid">
             <div class="form-group">
@@ -840,7 +788,6 @@ function addWasteItem() {
     
     wasteFields.appendChild(fieldGroup);
     
-    // Initialize Select2 for the newly created dropdown
     setTimeout(() => {
         initSelect2Dropdown(`wasteItem-${itemId}`);
     }, 100);
@@ -871,13 +818,15 @@ function validateFiles(fileInput) {
 }
 
 function validateDynamicFields() {
-    const disposalType = document.querySelector('input[name="disposalType"]:checked');
-    if (!disposalType) {
-        showNotification('Please select a disposal type.', 'error');
-        return false;
-    }
+    const expiredChecked = document.getElementById('expired').checked;
+    const wasteChecked = document.getElementById('waste').checked;
+    const noWasteChecked = document.getElementById('noWaste').checked;
     
-    if (disposalType.value === 'expired') {
+    if (noWasteChecked) return true;
+    
+    let isValid = true;
+    
+    if (expiredChecked) {
         const expiredItems = document.querySelectorAll('#expiredFields .field-group');
         if (expiredItems.length === 0) {
             showNotification('Please add at least one expired item.', 'error');
@@ -908,8 +857,9 @@ function validateDynamicFields() {
                 }
             }
         }
-        
-    } else if (disposalType.value === 'waste') {
+    }
+    
+    if (wasteChecked) {
         const wasteItems = document.querySelectorAll('#wasteFields .field-group');
         if (wasteItems.length === 0) {
             showNotification('Please add at least one waste item.', 'error');
@@ -942,7 +892,7 @@ function validateDynamicFields() {
         }
     }
     
-    return true;
+    return isValid;
 }
 
 // ================================
@@ -992,12 +942,14 @@ async function saveReportInBatches(mainReportId, baseReportData, items) {
             itemCount: batch.length
         };
         
-        if (baseReportData.disposalType === 'expired') {
-            batchReport.expiredItems = batch;
-            batchReport.totalExpiredItems = batch.length;
-        } else if (baseReportData.disposalType === 'waste') {
-            batchReport.wasteItems = batch;
-            batchReport.totalWasteItems = batch.length;
+        const expiredBatch = batch.filter(item => item.type === 'expired');
+        const wasteBatch = batch.filter(item => item.type === 'waste');
+        
+        if (expiredBatch.length > 0) {
+            batchReport.expiredItems = expiredBatch;
+        }
+        if (wasteBatch.length > 0) {
+            batchReport.wasteItems = wasteBatch;
         }
         
         const batchSize = calculateObjectSize(batchReport);
@@ -1039,7 +991,11 @@ async function handleSubmit(event) {
     
     const originalText = submitBtn.textContent;
     
-    // Basic validation
+    if (!itemsLoaded || ITEMS_LIST.length === 0) {
+        showNotification('Please wait for items to load before submitting.', 'error');
+        return;
+    }
+    
     const requiredFields = ['email', 'store', 'personnel', 'reportDate'];
     for (let field of requiredFields) {
         const fieldElement = document.getElementById(field);
@@ -1050,10 +1006,8 @@ async function handleSubmit(event) {
         }
     }
     
-    const disposalType = document.querySelector('input[name="disposalType"]:checked');
-    if (!disposalType) {
-        showNotification('Please select a disposal type.', 'error');
-        console.error('No disposal type selected');
+    if (!validateDisposalTypeSelection()) {
+        console.error('Invalid disposal type selection');
         return;
     }
     
@@ -1062,18 +1016,22 @@ async function handleSubmit(event) {
         return;
     }
     
-    // Show loading state
     submitBtn.textContent = 'Submitting...';
     submitBtn.disabled = true;
     showLoading(true);
     
-    // Initialize base report data
+    const disposalTypes = [];
+    const disposalTypeCheckboxes = document.querySelectorAll('input[name="disposalType"]:checked');
+    disposalTypeCheckboxes.forEach(checkbox => {
+        disposalTypes.push(checkbox.value);
+    });
+    
     const baseReportData = {
         email: document.getElementById('email').value.trim(),
         store: document.getElementById('store').value,
         personnel: document.getElementById('personnel').value.trim(),
         reportDate: document.getElementById('reportDate').value,
-        disposalType: disposalType.value,
+        disposalTypes: disposalTypes,
         submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
         status: 'submitted',
         createdAt: new Date().toISOString(),
@@ -1082,8 +1040,12 @@ async function handleSubmit(event) {
         emailError: null
     };
     
+    if (disposalTypes.includes('noWaste')) {
+        baseReportData.noWaste = true;
+        baseReportData.notes = "No waste or expired items to report for this period";
+    }
+    
     try {
-        // Generate main report ID
         const mainReportId = 'REPORT-' + Date.now().toString();
         baseReportData.reportId = mainReportId;
         
@@ -1095,10 +1057,8 @@ async function handleSubmit(event) {
         let savedReportIds = [mainReportId];
         let totalBatches = 1;
         
-        // Process based on disposal type
-        if (disposalType.value === 'expired') {
+        if (disposalTypes.includes('expired')) {
             const expiredFields = document.querySelectorAll('#expiredFields .field-group');
-            
             console.log(`Found ${expiredFields.length} expired items`);
             
             for (let field of expiredFields) {
@@ -1122,21 +1082,24 @@ async function handleSubmit(event) {
                     }
                 }
                 
-                // Get the selected value from Select2 dropdown
                 const dropdown = document.getElementById(`expiredItem-${itemId}`);
                 let selectedItem = '';
                 if (dropdown && dropdown.value) {
                     selectedItem = dropdown.value;
                 } else {
-                    // Fallback to the text input if Select2 is not initialized
                     const selectElement = $(`#expiredItem-${itemId}`);
                     if (selectElement.length > 0) {
-                        selectedItem = selectElement.select2('data')[0]?.text || '';
+                        selectedItem = selectElement.select2('data')[0]?.id || '';
                     }
                 }
                 
+                // GET AND SAVE THE COST
+                const itemCost = await getItemCost(selectedItem);
+                console.log(`Item: ${selectedItem}, Cost: ₱${itemCost.toFixed(2)}`);
+                
                 const expiredItem = {
-                    item: selectedItem || document.getElementById(`expiredItem-${itemId}`).value.trim(),
+                    type: 'expired',
+                    item: selectedItem,
                     deliveredDate: document.getElementById(`deliveredDate-${itemId}`).value,
                     manufacturedDate: document.getElementById(`manufacturedDate-${itemId}`).value,
                     expirationDate: document.getElementById(`expirationDate-${itemId}`).value,
@@ -1145,19 +1108,19 @@ async function handleSubmit(event) {
                     documentation: filesBase64,
                     notes: document.getElementById(`notes-${itemId}`).value.trim() || '',
                     itemId: itemId,
-                    totalFiles: fileInput ? fileInput.files.length : 0
+                    totalFiles: fileInput ? fileInput.files.length : 0,
+                    // SAVE COST TO FIRESTORE
+                    itemCost: itemCost
                 };
                 
                 allItems.push(expiredItem);
             }
             
-            baseReportData.totalExpiredItems = allItems.length;
-            baseReportData.originalFileSize = totalOriginalSize;
-            baseReportData.compressedFileSize = totalCompressedSize;
-            
-        } else if (disposalType.value === 'waste') {
+            baseReportData.totalExpiredItems = allItems.filter(item => item.type === 'expired').length;
+        }
+        
+        if (disposalTypes.includes('waste')) {
             const wasteFields = document.querySelectorAll('#wasteFields .field-group');
-            
             console.log(`Found ${wasteFields.length} waste items`);
             
             for (let field of wasteFields) {
@@ -1181,39 +1144,44 @@ async function handleSubmit(event) {
                     }
                 }
                 
-                // Get the selected value from Select2 dropdown
                 const dropdown = document.getElementById(`wasteItem-${itemId}`);
                 let selectedItem = '';
                 if (dropdown && dropdown.value) {
                     selectedItem = dropdown.value;
                 } else {
-                    // Fallback to the text input if Select2 is not initialized
                     const selectElement = $(`#wasteItem-${itemId}`);
                     if (selectElement.length > 0) {
-                        selectedItem = selectElement.select2('data')[0]?.text || '';
+                        selectedItem = selectElement.select2('data')[0]?.id || '';
                     }
                 }
                 
+                // GET AND SAVE THE COST
+                const itemCost = await getItemCost(selectedItem);
+                console.log(`Item: ${selectedItem}, Cost: ₱${itemCost.toFixed(2)}`);
+                
                 const wasteItem = {
-                    item: selectedItem || document.getElementById(`wasteItem-${itemId}`).value.trim(),
+                    type: 'waste',
+                    item: selectedItem,
                     reason: document.getElementById(`reason-${itemId}`).value,
                     quantity: parseFloat(document.getElementById(`wasteQuantity-${itemId}`).value) || 0,
                     unit: document.getElementById(`wasteUnit-${itemId}`).value,
                     documentation: filesBase64,
                     notes: document.getElementById(`wasteNotes-${itemId}`).value.trim() || '',
                     itemId: itemId,
-                    totalFiles: fileInput ? fileInput.files.length : 0
+                    totalFiles: fileInput ? fileInput.files.length : 0,
+                    // SAVE COST TO FIRESTORE
+                    itemCost: itemCost
                 };
                 
                 allItems.push(wasteItem);
             }
             
-            baseReportData.totalWasteItems = allItems.length;
+            baseReportData.totalWasteItems = allItems.filter(item => item.type === 'waste').length;
+        }
+        
+        if (allItems.length > 0) {
             baseReportData.originalFileSize = totalOriginalSize;
             baseReportData.compressedFileSize = totalCompressedSize;
-        } else if (disposalType.value === 'noWaste') {
-            baseReportData.noWaste = true;
-            baseReportData.notes = "No waste or expired items to report for this period";
         }
         
         const estimatedReportSize = calculateObjectSize({
@@ -1231,10 +1199,14 @@ async function handleSubmit(event) {
         } else {
             console.log('Report fits in single document, saving...');
             
-            if (disposalType.value === 'expired') {
-                baseReportData.expiredItems = allItems;
-            } else if (disposalType.value === 'waste') {
-                baseReportData.wasteItems = allItems;
+            const expiredItems = allItems.filter(item => item.type === 'expired');
+            const wasteItems = allItems.filter(item => item.type === 'waste');
+            
+            if (expiredItems.length > 0) {
+                baseReportData.expiredItems = expiredItems;
+            }
+            if (wasteItems.length > 0) {
+                baseReportData.wasteItems = wasteItems;
             }
             
             const finalSize = calculateObjectSize(baseReportData);
@@ -1250,15 +1222,9 @@ async function handleSubmit(event) {
         
         baseReportData.totalBatches = totalBatches;
 
-        // SEND EMAIL CONFIRMATION
         console.log('Attempting to send email confirmation...');
         
-        const itemsDetails = allItems.map(item => ({
-            type: disposalType.value,
-            ...item
-        }));
-        
-        const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, itemsDetails);
+        const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems);
         
         if (emailResult.success) {
             console.log('✅ Email confirmation request submitted');
@@ -1310,7 +1276,6 @@ async function handleSubmit(event) {
             );
         }
         
-        // Reset form
         const form = document.getElementById('wasteReportForm');
         if (form) {
             form.reset();
@@ -1330,9 +1295,10 @@ async function handleSubmit(event) {
             const wasteContainer = document.getElementById('wasteContainer');
             if (expiredContainer) expiredContainer.classList.remove('show');
             if (wasteContainer) wasteContainer.classList.remove('show');
+            
+            updateDisposalTypeHint();
         }
         
-        // Show option to view reports
         setTimeout(() => {
             const viewReports = confirm(
                 `Report ${mainReportId} has been submitted. Would you like to view all reports?`
@@ -1392,7 +1358,7 @@ function closeDetailsModal() {
 // ================================
 // INITIALIZATION
 // ================================
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     console.log('Document loaded, initializing form...');
     
     const reportDateInput = document.getElementById('reportDate');
@@ -1417,10 +1383,21 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    const disposalTypeRadios = document.querySelectorAll('input[name="disposalType"]');
-    disposalTypeRadios.forEach(radio => {
-        radio.addEventListener('change', toggleDynamicFields);
+    const disposalTypeCheckboxes = document.querySelectorAll('input[name="disposalType"]');
+    disposalTypeCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            toggleDisposalType(this.id);
+        });
     });
+    
+    updateDisposalTypeHint();
+    
+    try {
+        await fetchItemsFromFirestore();
+    } catch (error) {
+        console.error('Failed to load items:', error);
+        showNotification('Failed to load items. Please refresh the page.', 'error');
+    }
     
     testFirebaseConnection();
     checkGASConfig();
@@ -1488,7 +1465,6 @@ function checkGASConfig() {
     }
 }
 
-// Test Google Apps Script connection
 window.testGASEmail = async () => {
     const testEmail = prompt('Enter email to test email service:');
     if (!testEmail) return;
@@ -1500,7 +1476,7 @@ window.testGASEmail = async () => {
             store: 'Test Store',
             personnel: 'Test User',
             reportDate: new Date().toISOString().split('T')[0],
-            disposalType: 'noWaste'
+            disposalTypes: ['noWaste']
         };
         
         const result = await sendEmailConfirmation(testData, 'TEST-' + Date.now(), []);
@@ -1517,7 +1493,6 @@ window.testGASEmail = async () => {
     }
 };
 
-// Debug functions
 window.debugSubmit = handleSubmit;
 window.debugFirebase = () => {
     console.log('Firebase status:', {
@@ -1528,3 +1503,13 @@ window.debugFirebase = () => {
     testFirebaseConnection();
 };
 window.debugGAS = checkGASConfig;
+
+window.refreshItems = async () => {
+    try {
+        showNotification('Refreshing items from database...', 'info');
+        await fetchItemsFromFirestore();
+        showNotification('Items refreshed successfully!', 'success');
+    } catch (error) {
+        showNotification('Failed to refresh items: ' + error.message, 'error');
+    }
+};

@@ -6,6 +6,8 @@
     <title>FG Operations Waste/Disposal Reporting</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <!-- Loading Overlay -->
@@ -50,12 +52,143 @@
                     </button>
                 </div>
             </div>
+        </section>
 
+        <!-- Charts Section with Enhanced UI -->
+        <section class="chart-section">
+            <div class="chart-header">
+                <h2><i class="fas fa-chart-bar"></i> Waste & Compliance Analytics</h2>
+                
+                <!-- Chart Type Selector -->
+                <div class="chart-type-selector">
+                    <button class="chart-type-btn active" data-chart="pie">
+                        <i class="fas fa-chart-pie"></i> Pie
+                    </button>
+                    <button class="chart-type-btn" data-chart="bar">
+                        <i class="fas fa-chart-bar"></i> Bar
+                    </button>
+                    <button class="chart-type-btn" data-chart="horizontalBar">
+                        <i class="fas fa-align-left"></i> Horizontal
+                    </button>
+                </div>
+            </div>
+
+            <!-- Chart Controls -->
+            <div class="chart-controls">
+                <div class="chart-control-group">
+                    <label for="chartMetric"><i class="fas fa-filter"></i> Metric:</label>
+                    <select id="chartMetric" class="chart-select">
+                        <option value="compliance">Compliance Rate</option>
+                        <option value="cost">Waste Cost Share</option>
+                    </select>
+                </div>
+                
+                <div class="chart-control-group">
+                    <label for="chartSort"><i class="fas fa-sort"></i> Sort:</label>
+                    <select id="chartSort" class="chart-select">
+                        <option value="desc">Highest First</option>
+                        <option value="asc">Lowest First</option>
+                    </select>
+                </div>
+                
+                <button id="refreshChart" class="btn">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+
+            <!-- Chart Container -->
+            <div class="chart-container">
+                <canvas id="mainChart"></canvas>
+            </div>
+
+            <!-- Chart Statistics -->
+            <div class="chart-stats">
+                <div class="chart-stat-card">
+                    <h4><i class="fas fa-store"></i> Top Store</h4>
+                    <div class="value" id="topStoreValue">-</div>
+                    <div class="subtext" id="topStoreMetric">Compliance</div>
+                </div>
+                
+                <div class="chart-stat-card">
+                    <h4><i class="fas fa-chart-line"></i> Average</h4>
+                    <div class="value" id="averageValue">0%</div>
+                    <div class="subtext" id="averageMetric">All Stores</div>
+                </div>
+                
+                <div class="chart-stat-card">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Lowest</h4>
+                    <div class="value" id="lowestValue">-</div>
+                    <div class="subtext" id="lowestMetric">Needs Attention</div>
+                </div>
+                
+                <div class="chart-stat-card">
+                    <h4><i class="fas fa-database"></i> Coverage</h4>
+                    <div class="value" id="coverageValue">0%</div>
+                    <div class="subtext" id="coverageMetric">Stores Reporting</div>
+                </div>
+            </div>
+            
+            <!-- Chart Footer -->
+            <div class="chart-footer">
+                <div class="chart-info">
+                    <i class="fas fa-info-circle"></i> Click on chart segments for details. Use buttons above to change chart type.
+                </div>
+            </div>
+        </section>
+
+        <!-- Quick Stats Section -->
+        <section class="quick-stats-section">
+            <h2><i class="fas fa-tachometer-alt"></i> Dashboard Overview</h2>
+            <div class="stat-grid">
+                <div class="quick-stat-card">
+                    <div class="stat-icon-mini">
+                        <i class="fas fa-store"></i>
+                    </div>
+                    <div class="stat-content-mini">
+                        <h4>Total Stores</h4>
+                        <div class="value-large">12</div>
+                        <div class="subtext">Active locations</div>
+                    </div>
+                </div>
+                
+                <div class="quick-stat-card">
+                    <div class="stat-icon-mini">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div class="stat-content-mini">
+                        <h4>Total Reports</h4>
+                        <div class="value-large" id="totalReports">0</div>
+                        <div class="subtext" id="totalStoresWithReports">0 stores</div>
+                    </div>
+                </div>
+                
+                <div class="quick-stat-card">
+                    <div class="stat-icon-mini">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="stat-content-mini">
+                        <h4>Needs Attention</h4>
+                        <div class="value-large" id="needsAttention">-</div>
+                        <div class="subtext" id="attentionReason">Low compliance</div>
+                    </div>
+                </div>
+                
+                <div class="quick-stat-card">
+                    <div class="stat-icon-mini">
+                        <i class="fas fa-sync-alt"></i>
+                    </div>
+                    <div class="stat-content-mini">
+                        <h4>Updated</h4>
+                        <div class="value-large" id="lastUpdatedTime">-</div>
+                        <div class="subtext">Just now</div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- Store Locations -->
         <section class="features">
-            <h2>Available Store Locations</h2>
+            <h2><i class="fas fa-map-marker-alt"></i> Available Store Locations</h2>
             <div class="store-grid">
                 <div class="store-card">
                     <h3>FG Express Stores</h3>
@@ -90,9 +223,9 @@
                     <span>FG Operations Waste/Disposal Reporting System v1.0</span>
                 </div>
                 <div class="footer-links">
-                    <a href="index.html">Home</a>
-                    <a href="submit_waste_report.html">Submit Report</a>
-                    <a href="waste_report_table.html">View Reports</a>
+                    <a href="index.html"><i class="fas fa-home"></i> Home</a>
+                    <a href="submit_waste_report.html"><i class="fas fa-file-alt"></i> Submit Report</a>
+                    <a href="waste_report_table.html"><i class="fas fa-list"></i> View Reports</a>
                 </div>
                 <p class="copyright">This form was created as a standalone HTML version with Firebase backend.</p>
             </div>
@@ -101,6 +234,1016 @@
 
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="script.js"></script>
+    <script>
+    // ================================
+    // CONFIGURATION
+    // ================================
+
+    // Firestore configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyAyp2f1b6cG4E_Dx9eako31LgTDuZrZ8_E",
+        authDomain: "disposal-e6b83.firebaseapp.com",
+        projectId: "disposal-e6b83",
+        storageBucket: "disposal-e6b83.firebasestorage.app",
+        messagingSenderId: "1050986320678",
+        appId: "1:1050986320678:web:deb5f4c58c3ef0cbc6a7e7",
+        measurementId: "G-3Q7705T5FE"
+    };
+
+    // ================================
+    // GLOBAL VARIABLES
+    // ================================
+    let db;
+    let mainChart = null;
+    let currentChartType = 'pie';
+    let currentMetric = 'compliance';
+    let currentData = null;
+
+    // Define all store names
+    const ALL_STORES = [
+        'FG Express IROSIN',
+        'FG Express LIGAO',
+        'FG Express POLANGUI',
+        'FG Express MASBATE',
+        'FG Express DARAGA',
+        'FG Express BAAO',
+        'FG Express PIODURAN',
+        'FG Express RIZAL',
+        'FG to go TABACO',
+        'FG to go LEGAZPI',
+        'FG LEGAZPI',
+        'FG NAGA'
+    ];
+
+    // Store display names for chart
+    const STORE_DISPLAY_NAMES = {
+        'FG Express IROSIN': 'IROSIN',
+        'FG Express LIGAO': 'LIGAO',
+        'FG Express POLANGUI': 'POLANGUI',
+        'FG Express MASBATE': 'MASBATE',
+        'FG Express DARAGA': 'DARAGA',
+        'FG Express BAAO': 'BAAO',
+        'FG Express PIODURAN': 'PIODURAN',
+        'FG Express RIZAL': 'RIZAL',
+        'FG to go TABACO': 'TABACO',
+        'FG to go LEGAZPI': 'LEGAZPI (to go)',
+        'FG LEGAZPI': 'LEGAZPI',
+        'FG NAGA': 'NAGA'
+    };
+
+    // Colors for charts
+    const CHART_COLORS = [
+        '#28a745', '#20c997', '#17a2b8', '#0dcaf0',
+        '#ffc107', '#fd7e14', '#dc3545', '#6c757d',
+        '#6610f2', '#6f42c1', '#d63384', '#198754'
+    ];
+
+    // ================================
+    // LOADING & NOTIFICATION
+    // ================================
+    function showNotification(message, type = 'success', duration = 3000) {
+        const notification = document.getElementById('notification');
+        if (!notification) return;
+        
+        if (notification.timeoutId) {
+            clearTimeout(notification.timeoutId);
+        }
+        
+        notification.textContent = message;
+        notification.className = `notification ${type}`;
+        notification.style.display = 'block';
+        notification.style.animation = 'slideInRight 0.3s ease';
+        
+        notification.timeoutId = setTimeout(() => {
+            notification.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => {
+                notification.style.display = 'none';
+                notification.style.animation = '';
+            }, 300);
+        }, duration);
+        
+        return notification;
+    }
+
+    function showLoading(show, message = 'Loading...') {
+        const overlay = document.getElementById('loadingOverlay');
+        if (!overlay) return;
+        
+        requestAnimationFrame(() => {
+            overlay.style.display = show ? 'flex' : 'none';
+            if (show && message !== 'Loading...') {
+                const spinner = overlay.querySelector('.loading-spinner');
+                if (spinner) {
+                    spinner.style.marginBottom = '15px';
+                    spinner.nextElementSibling?.remove();
+                    const text = document.createElement('p');
+                    text.textContent = message;
+                    text.style.cssText = 'color: white; margin: 0; font-size: 14px; text-align: center;';
+                    overlay.appendChild(text);
+                }
+            }
+        });
+    }
+
+    // ================================
+    // FIREBASE INITIALIZATION
+    // ================================
+    function initializeFirebase() {
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            db = firebase.firestore();
+            
+            // Enable offline persistence for better performance
+            db.enablePersistence()
+                .then(() => console.log('✅ Firebase persistence enabled'))
+                .catch(err => {
+                    if (err.code === 'failed-precondition') {
+                        console.log('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+                    } else if (err.code === 'unimplemented') {
+                        console.log('The current browser does not support persistence.');
+                    }
+                });
+            
+            // Load all data
+            loadAllData();
+            
+        } catch (error) {
+            console.error('❌ Firebase initialization error:', error);
+            showNotification('Firebase connection failed. Please check console.', 'error');
+        }
+    }
+
+    // ================================
+    // DATA LOADING FUNCTIONS
+    // ================================
+    async function loadAllData() {
+        showLoading(true, 'Loading store statistics...');
+        
+        try {
+            // Get all reports
+            const snapshot = await db.collection('wasteReports')
+                .orderBy('reportDate', 'desc')
+                .get();
+            
+            if (snapshot.empty) {
+                // No reports yet
+                createEmptyChart();
+                updateEmptyStats();
+                showLoading(false);
+                return;
+            }
+            
+            // Process all reports
+            const reports = [];
+            snapshot.forEach(doc => {
+                reports.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Calculate compliance data
+            const complianceData = calculateComplianceData(reports);
+            
+            // Calculate cost data
+            const costData = calculateCostData(reports);
+            
+            // Store data globally
+            currentData = {
+                compliance: complianceData,
+                cost: costData,
+                totalReports: reports.length
+            };
+            
+            // Update chart with current settings
+            updateChart();
+            
+            // Update statistics
+            updateStats();
+            
+        } catch (error) {
+            console.error('Error loading data:', error);
+            showNotification('Error loading data', 'error');
+            createEmptyChart();
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    function calculateComplianceData(reports) {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        const currentDay = now.getDate();
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        const daysSoFar = Math.min(currentDay, daysInMonth);
+        
+        // Initialize store data
+        const storeData = {};
+        ALL_STORES.forEach(store => {
+            storeData[store] = {
+                reportedDays: new Set(),
+                totalReports: 0
+            };
+        });
+        
+        // Process reports for current month
+        reports.forEach(report => {
+            const store = report.store;
+            const reportDate = new Date(report.reportDate);
+            
+            if (store && storeData[store]) {
+                storeData[store].totalReports++;
+                
+                // Check if report is from current month
+                if (reportDate.getFullYear() === currentYear && 
+                    reportDate.getMonth() === currentMonth &&
+                    reportDate.getDate() <= currentDay) {
+                    storeData[store].reportedDays.add(reportDate.getDate());
+                }
+            }
+        });
+        
+        // Calculate compliance percentages
+        const results = [];
+        let totalCompliance = 0;
+        let storeCount = 0;
+        let topStore = null;
+        let topValue = 0;
+        let lowestStore = null;
+        let lowestValue = 100;
+        
+        for (const [store, data] of Object.entries(storeData)) {
+            if (data.totalReports === 0) continue; // Skip stores with no reports at all
+            
+            const reportedDays = data.reportedDays.size;
+            const complianceRate = daysSoFar > 0 ? 
+                Math.round((reportedDays / daysSoFar) * 100) : 0;
+            
+            results.push({
+                store,
+                displayName: STORE_DISPLAY_NAMES[store] || store,
+                value: complianceRate,
+                reportedDays,
+                totalDays: daysSoFar,
+                label: `${complianceRate}%`,
+                description: `${reportedDays}/${daysSoFar} days`
+            });
+            
+            totalCompliance += complianceRate;
+            storeCount++;
+            
+            if (complianceRate > topValue) {
+                topValue = complianceRate;
+                topStore = store;
+            }
+            
+            if (complianceRate < lowestValue) {
+                lowestValue = complianceRate;
+                lowestStore = store;
+            }
+        }
+        
+        // Calculate overall average
+        const overallAverage = storeCount > 0 ? Math.round(totalCompliance / storeCount) : 0;
+        
+        // Calculate coverage (percentage of stores with any reports)
+        const coverage = Math.round((storeCount / ALL_STORES.length) * 100);
+        
+        return {
+            results,
+            overallAverage,
+            topStore,
+            topValue,
+            lowestStore,
+            lowestValue,
+            storeCount,
+            coverage,
+            metricName: 'Compliance Rate',
+            unit: '%',
+            tooltipLabel: 'compliance'
+        };
+    }
+
+    function calculateCostData(reports) {
+        // Calculate total cost per store
+        const storeCosts = {};
+        let totalCost = 0;
+        
+        ALL_STORES.forEach(store => {
+            storeCosts[store] = 0;
+        });
+        
+        reports.forEach(report => {
+            const store = report.store;
+            if (!store || !storeCosts.hasOwnProperty(store)) return;
+            
+            // Skip no-waste reports
+            if (report.disposalTypes?.includes('noWaste') || report.disposalType === 'noWaste') {
+                return;
+            }
+            
+            // Calculate cost from expired items
+            if (report.expiredItems) {
+                report.expiredItems.forEach(item => {
+                    const itemCost = item.itemCost || 0;
+                    const quantity = item.quantity || 0;
+                    storeCosts[store] += itemCost * quantity;
+                });
+            }
+            
+            // Calculate cost from waste items
+            if (report.wasteItems) {
+                report.wasteItems.forEach(item => {
+                    const itemCost = item.itemCost || 0;
+                    const quantity = item.quantity || 0;
+                    storeCosts[store] += itemCost * quantity;
+                });
+            }
+        });
+        
+        // Calculate total cost
+        totalCost = Object.values(storeCosts).reduce((sum, cost) => sum + cost, 0);
+        
+        // Calculate percentages and prepare data
+        const results = [];
+        let topStore = null;
+        let topValue = 0;
+        let lowestStore = null;
+        let lowestValue = 100;
+        let storeCount = 0;
+        let totalPercentage = 0;
+        
+        for (const [store, cost] of Object.entries(storeCosts)) {
+            if (cost === 0) continue;
+            
+            const percentage = totalCost > 0 ? Math.round((cost / totalCost) * 100) : 0;
+            
+            results.push({
+                store,
+                displayName: STORE_DISPLAY_NAMES[store] || store,
+                value: percentage,
+                cost: cost,
+                label: `${percentage}%`,
+                description: `₱${cost.toLocaleString()}`
+            });
+            
+            totalPercentage += percentage;
+            storeCount++;
+            
+            if (percentage > topValue) {
+                topValue = percentage;
+                topStore = store;
+            }
+            
+            if (percentage < lowestValue && percentage > 0) {
+                lowestValue = percentage;
+                lowestStore = store;
+            }
+        }
+        
+        // Calculate overall average
+        const overallAverage = storeCount > 0 ? Math.round(totalPercentage / storeCount) : 0;
+        
+        // Calculate coverage (percentage of stores with waste cost)
+        const coverage = Math.round((storeCount / ALL_STORES.length) * 100);
+        
+        return {
+            results,
+            overallAverage,
+            topStore,
+            topValue,
+            lowestStore,
+            lowestValue,
+            storeCount,
+            coverage,
+            metricName: 'Waste Cost Share',
+            unit: '%',
+            tooltipLabel: 'waste share'
+        };
+    }
+
+    // ================================
+    // CHART FUNCTIONS
+    // ================================
+    function updateChart() {
+        if (!currentData) return;
+        
+        const ctx = document.getElementById('mainChart');
+        
+        // Destroy existing chart
+        if (mainChart) {
+            mainChart.destroy();
+        }
+        
+        // Get current data
+        const data = currentData[currentMetric];
+        const sortOrder = document.getElementById('chartSort').value;
+        
+        // Sort data based on selected order
+        let sortedResults = [...data.results];
+        if (sortOrder === 'desc') {
+            sortedResults.sort((a, b) => b.value - a.value);
+        } else {
+            sortedResults.sort((a, b) => a.value - b.value);
+        }
+        
+        // Take top 8 stores for better visibility
+        const displayResults = sortedResults.slice(0, 8);
+        
+        if (displayResults.length === 0) {
+            createEmptyChart();
+            return;
+        }
+        
+        // Prepare data
+        const labels = displayResults.map(store => store.displayName);
+        const values = displayResults.map(store => store.value);
+        const colors = CHART_COLORS.slice(0, displayResults.length);
+        
+        // Create chart based on selected type
+        const chartConfig = getChartConfig(currentChartType, labels, values, colors, data);
+        
+        mainChart = new Chart(ctx, chartConfig);
+        
+        // Update chart statistics
+        updateChartStats(data);
+    }
+
+    function getChartConfig(type, labels, values, colors, data) {
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: type === 'pie' || type === 'doughnut',
+                    position: 'right',
+                    labels: {
+                        boxWidth: 12,
+                        font: { size: 11 },
+                        padding: 15
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                    titleFont: { size: 12 },
+                    bodyFont: { size: 11 },
+                    padding: 10,
+                    cornerRadius: 6,
+                    displayColors: type === 'pie' || type === 'doughnut',
+                    callbacks: {
+                        label: function(context) {
+                            const store = data.results.find(s => 
+                                s.displayName === context.label || 
+                                s.value === context.raw
+                            );
+                            if (store) {
+                                return `${data.metricName}: ${store.value}${data.unit}`;
+                            }
+                            return `${context.dataset.label}: ${context.raw}${data.unit}`;
+                        }
+                    }
+                }
+            },
+            animation: {
+                duration: 800
+            }
+        };
+
+        const datasets = [{
+            label: data.metricName,
+            data: values,
+            backgroundColor: colors,
+            borderColor: '#fff',
+            borderWidth: 1,
+            hoverOffset: 8
+        }];
+
+        switch(type) {
+            case 'bar':
+                return {
+                    type: 'bar',
+                    data: { labels, datasets },
+                    options: {
+                        ...commonOptions,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return value + data.unit;
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: data.metricName
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                };
+            
+            case 'horizontalBar':
+                return {
+                    type: 'bar',
+                    data: { labels, datasets },
+                    options: {
+                        ...commonOptions,
+                        indexAxis: 'y',
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return value + data.unit;
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: data.metricName
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                };
+            
+            case 'pie':
+            default:
+                return {
+                    type: 'pie',
+                    data: { labels, datasets },
+                    options: {
+                        ...commonOptions,
+                        cutout: '0%',
+                        radius: '90%'
+                    }
+                };
+        }
+    }
+
+    function createEmptyChart() {
+        const ctx = document.getElementById('mainChart');
+        if (mainChart) mainChart.destroy();
+        
+        mainChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['No Data Available'],
+                datasets: [{
+                    data: [1],
+                    backgroundColor: ['#e9ecef'],
+                    borderColor: '#fff',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                }
+            }
+        });
+        
+        // Update stats to show empty state
+        document.getElementById('topStoreValue').textContent = '-';
+        document.getElementById('topStoreMetric').textContent = 'No data';
+        document.getElementById('averageValue').textContent = '0%';
+        document.getElementById('averageMetric').textContent = 'No stores';
+        document.getElementById('lowestValue').textContent = '-';
+        document.getElementById('lowestMetric').textContent = 'No data';
+        document.getElementById('coverageValue').textContent = '0%';
+        document.getElementById('coverageMetric').textContent = 'No reports';
+    }
+
+    // ================================
+    // STATISTICS FUNCTIONS
+    // ================================
+    function updateChartStats(data) {
+        // Update top store
+        document.getElementById('topStoreValue').textContent = data.topStore ? 
+            STORE_DISPLAY_NAMES[data.topStore]?.split(' ')[0] || data.topStore : '-';
+        document.getElementById('topStoreMetric').textContent = `${data.topValue}${data.unit}`;
+        
+        // Update average
+        document.getElementById('averageValue').textContent = `${data.overallAverage}${data.unit}`;
+        document.getElementById('averageMetric').textContent = `${data.storeCount} stores`;
+        
+        // Update lowest
+        document.getElementById('lowestValue').textContent = data.lowestStore ? 
+            STORE_DISPLAY_NAMES[data.lowestStore]?.split(' ')[0] || data.lowestStore : '-';
+        document.getElementById('lowestMetric').textContent = `${data.lowestValue}${data.unit}`;
+        
+        // Update coverage
+        document.getElementById('coverageValue').textContent = `${data.coverage}%`;
+        document.getElementById('coverageMetric').textContent = 'Stores Reporting';
+    }
+
+    function updateStats() {
+        if (!currentData) return;
+        
+        const complianceData = currentData.compliance;
+        const costData = currentData.cost;
+        
+        // Update quick stats
+        document.getElementById('totalReports').textContent = currentData.totalReports;
+        document.getElementById('totalStoresWithReports').textContent = `${complianceData.storeCount} stores`;
+        
+        // Find store needing attention (lowest compliance with reports)
+        const storesWithReports = complianceData.results.filter(store => store.value > 0);
+        if (storesWithReports.length > 0) {
+            const needsAttentionStore = storesWithReports[storesWithReports.length - 1];
+            document.getElementById('needsAttention').textContent = 
+                STORE_DISPLAY_NAMES[needsAttentionStore.store]?.split(' ')[0] || needsAttentionStore.store;
+            document.getElementById('attentionReason').textContent = `${needsAttentionStore.value}% compliance`;
+        } else {
+            document.getElementById('needsAttention').textContent = '-';
+            document.getElementById('attentionReason').textContent = 'No reports';
+        }
+        
+        // Update time
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
+        document.getElementById('lastUpdatedTime').textContent = timeString;
+    }
+
+    function updateEmptyStats() {
+        document.getElementById('totalReports').textContent = '0';
+        document.getElementById('totalStoresWithReports').textContent = '0 stores';
+        document.getElementById('needsAttention').textContent = '-';
+        document.getElementById('attentionReason').textContent = 'No reports';
+        
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
+        document.getElementById('lastUpdatedTime').textContent = timeString;
+    }
+
+    // ================================
+    // EVENT HANDLERS
+    // ================================
+    function setupEventListeners() {
+        // Chart type buttons
+        document.querySelectorAll('.chart-type-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentChartType = this.dataset.chart;
+                updateChart();
+            });
+        });
+        
+        // Metric selector
+        document.getElementById('chartMetric').addEventListener('change', function() {
+            currentMetric = this.value;
+            updateChart();
+        });
+        
+        // Sort selector
+        document.getElementById('chartSort').addEventListener('change', function() {
+            updateChart();
+        });
+        
+        // Refresh button
+        document.getElementById('refreshChart').addEventListener('click', function() {
+            loadAllData();
+            showNotification('Chart data refreshed', 'info');
+        });
+    }
+
+    // ================================
+    // INITIALIZATION
+    // ================================
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('Home page loaded, initializing charts...');
+        initializeFirebase();
+        setupEventListeners();
+        
+        // Add CSS for enhanced UI
+        addEnhancedStyles();
+        
+        // Refresh data every 10 minutes
+        setInterval(loadAllData, 10 * 60 * 1000);
+    });
+
+    function addEnhancedStyles() {
+        // Check if styles already exist
+        if (document.getElementById('enhanced-styles')) return;
+        
+        // Add inline styles for enhanced UI
+        const style = document.createElement('style');
+        style.id = 'enhanced-styles';
+        style.textContent = `
+            /* Quick Stats Section */
+            .quick-stats-section {
+                margin: var(--spacing-xl) 0;
+                background: var(--color-white);
+                border-radius: var(--border-radius);
+                box-shadow: var(--shadow-sm);
+                padding: var(--spacing-lg);
+                border: var(--border-base);
+            }
+            
+            .quick-stats-section h2 {
+                color: var(--color-primary);
+                margin-bottom: var(--spacing-lg);
+                font-size: var(--font-size-lg);
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: var(--spacing-sm);
+            }
+            
+            .stat-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: var(--spacing-md);
+            }
+            
+            .quick-stat-card {
+                display: flex;
+                align-items: center;
+                gap: var(--spacing-md);
+                padding: var(--spacing-md);
+                background: var(--color-offwhite);
+                border-radius: var(--border-radius);
+                border: var(--border-thin);
+                transition: all var(--transition-fast);
+                position: relative;
+                overflow: hidden;
+                height: 100%;
+            }
+            
+            .quick-stat-card:hover {
+                transform: translateY(-2px);
+                box-shadow: var(--shadow-md);
+                border-color: var(--color-primary);
+            }
+            
+            .quick-stat-card::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 4px;
+                height: 100%;
+                background: var(--color-primary);
+                opacity: 0;
+                transition: opacity var(--transition-fast);
+            }
+            
+            .quick-stat-card:hover::before {
+                opacity: 1;
+            }
+            
+            .stat-icon-mini {
+                width: 40px;
+                height: 40px;
+                border-radius: var(--border-radius);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--color-white);
+                background: var(--color-primary);
+                font-size: var(--font-size-md);
+                flex-shrink: 0;
+                transition: transform var(--transition-fast);
+            }
+            
+            .quick-stat-card:hover .stat-icon-mini {
+                transform: scale(1.1);
+            }
+            
+            .stat-content-mini {
+                flex: 1;
+                min-width: 0;
+            }
+            
+            .stat-content-mini h4 {
+                font-size: var(--font-size-xs);
+                color: var(--color-gray);
+                margin-bottom: 4px;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            .value-large {
+                font-size: var(--font-size-xl);
+                font-weight: 700;
+                color: var(--color-primary);
+                margin-bottom: 2px;
+                line-height: 1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            .subtext {
+                font-size: var(--font-size-xs);
+                color: var(--color-gray);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            /* Enhanced Chart Controls */
+            .chart-controls {
+                background: var(--color-offwhite);
+                border-radius: var(--border-radius);
+                padding: var(--spacing-md);
+                margin-bottom: var(--spacing-md);
+                border: var(--border-thin);
+                display: flex;
+                flex-wrap: wrap;
+                gap: var(--spacing-md);
+                align-items: center;
+            }
+            
+            .chart-control-group {
+                display: flex;
+                align-items: center;
+                gap: var(--spacing-sm);
+                flex: 1;
+                min-width: 200px;
+            }
+            
+            .chart-control-group label {
+                font-weight: 500;
+                color: var(--color-darkgray);
+                font-size: var(--font-size-sm);
+                white-space: nowrap;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            
+            .chart-select {
+                padding: 6px 10px;
+                border: var(--border-thin);
+                border-radius: var(--border-radius);
+                font-size: var(--font-size-sm);
+                background: var(--color-white);
+                color: var(--color-black);
+                min-width: 120px;
+                flex: 1;
+                transition: all var(--transition-fast);
+                height: 32px;
+            }
+            
+            .chart-select:focus {
+                outline: none;
+                border-color: var(--color-primary);
+                box-shadow: 0 0 0 2px rgba(42, 89, 52, 0.1);
+            }
+            
+            #refreshChart {
+                background: var(--color-white);
+                border: var(--border-thin);
+                color: var(--color-darkgray);
+                padding: 6px 12px;
+                font-size: var(--font-size-sm);
+                height: 32px;
+                min-width: 80px;
+                transition: all var(--transition-fast);
+            }
+            
+            #refreshChart:hover {
+                background: var(--color-accent);
+                color: var(--color-primary);
+                border-color: var(--color-primary);
+                transform: rotate(90deg);
+            }
+            
+            /* Enhanced Chart Type Selector */
+            .chart-type-selector {
+                display: flex;
+                gap: var(--spacing-xs);
+                background: var(--color-offwhite);
+                border-radius: var(--border-radius);
+                padding: 3px;
+                border: var(--border-thin);
+            }
+            
+            .chart-type-btn {
+                padding: 6px 12px;
+                border: none;
+                background: transparent;
+                border-radius: var(--border-radius-sm);
+                cursor: pointer;
+                font-size: var(--font-size-sm);
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                color: var(--color-gray);
+                transition: all var(--transition-fast);
+                font-weight: 500;
+                min-width: 80px;
+                justify-content: center;
+            }
+            
+            .chart-type-btn:hover {
+                color: var(--color-primary);
+                background: rgba(42, 89, 52, 0.1);
+            }
+            
+            .chart-type-btn.active {
+                background: var(--color-primary);
+                color: white;
+                box-shadow: var(--shadow-sm);
+            }
+            
+            /* Chart Container Enhancement */
+            .chart-container {
+                position: relative;
+                height: 400px;
+                margin: var(--spacing-lg) 0;
+                background: var(--color-white);
+                border-radius: var(--border-radius);
+                padding: var(--spacing-lg);
+                border: var(--border-base);
+                box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+            }
+            
+            /* Mobile Responsive */
+            @media (max-width: 768px) {
+                .chart-container {
+                    height: 300px;
+                    padding: var(--spacing-md);
+                }
+                
+                .chart-controls {
+                    flex-direction: column;
+                    align-items: stretch;
+                    gap: var(--spacing-sm);
+                }
+                
+                .chart-control-group {
+                    min-width: 100%;
+                }
+                
+                .chart-type-selector {
+                    width: 100%;
+                    justify-content: center;
+                }
+                
+                .chart-type-btn {
+                    min-width: 70px;
+                    padding: 6px 8px;
+                    font-size: var(--font-size-xs);
+                }
+                
+                .stat-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: var(--spacing-sm);
+                }
+                
+                .quick-stat-card {
+                    padding: var(--spacing-sm);
+                    gap: var(--spacing-sm);
+                }
+                
+                .stat-icon-mini {
+                    width: 32px;
+                    height: 32px;
+                    font-size: var(--font-size-sm);
+                }
+                
+                .value-large {
+                    font-size: var(--font-size-lg);
+                }
+            }
+            
+            @media (max-width: 480px) {
+                .chart-container {
+                    height: 250px;
+                }
+                
+                .stat-grid {
+                    grid-template-columns: 1fr;
+                }
+                
+                .chart-type-btn {
+                    min-width: 60px;
+                    padding: 4px 6px;
+                    font-size: 10px;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    </script>
 </body>
 </html>

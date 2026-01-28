@@ -95,16 +95,16 @@
                     <input type="date" id="reportDate" name="reportDate" required>
                 </div>
 
-                <!-- Disposal Type -->
+                <!-- Disposal Type Selection (Now checkboxes for multiple selection) -->
                 <div class="form-group">
                     <label>
                         <i class="fas fa-trash"></i> Type of Food Disposal <span class="required">*</span>
                     </label>
-                    <span class="note">Please choose the correct disposal type</span>
+                    <span class="note">Select all that apply to your report</span>
                     
-                    <div class="disposal-options">
+                    <div class="disposal-options multiple">
                         <div class="disposal-option">
-                            <input type="radio" id="expired" name="disposalType" value="expired" required onchange="toggleDynamicFields()">
+                            <input type="checkbox" id="expired" name="disposalType" value="expired" onchange="toggleDisposalType('expired')">
                             <label for="expired" class="disposal-label">
                                 <div class="disposal-icon">
                                     <i class="fas fa-calendar-times"></i>
@@ -115,7 +115,7 @@
                         </div>
                         
                         <div class="disposal-option">
-                            <input type="radio" id="waste" name="disposalType" value="waste" required onchange="toggleDynamicFields()">
+                            <input type="checkbox" id="waste" name="disposalType" value="waste" onchange="toggleDisposalType('waste')">
                             <label for="waste" class="disposal-label">
                                 <div class="disposal-icon">
                                     <i class="fas fa-trash-alt"></i>
@@ -126,7 +126,7 @@
                         </div>
                         
                         <div class="disposal-option">
-                            <input type="radio" id="noWaste" name="disposalType" value="noWaste" required onchange="toggleDynamicFields()">
+                            <input type="checkbox" id="noWaste" name="disposalType" value="noWaste" onchange="toggleDisposalType('noWaste')">
                             <label for="noWaste" class="disposal-label">
                                 <div class="disposal-icon">
                                     <i class="fas fa-check-circle"></i>
@@ -136,6 +136,7 @@
                             </label>
                         </div>
                     </div>
+                    <div class="form-hint" id="disposalTypeHint">Select at least one disposal type</div>
                 </div>
 
                 <!-- Expired Items Container -->

@@ -8,457 +8,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Add Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Add EmailJS -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-    <style>
-        /* Password Protection Styles */
-        .password-section {
-            min-height: calc(100vh - 200px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: var(--spacing-2xl) var(--spacing-md);
-            animation: fadeIn 0.5s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .password-container {
-            background: var(--color-white);
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow-lg);
-            padding: var(--spacing-2xl);
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-            border: var(--border-base);
-            transition: transform 0.3s ease;
-        }
-
-        .password-container:hover {
-            transform: translateY(-2px);
-        }
-
-        .password-header {
-            margin-bottom: var(--spacing-xl);
-        }
-
-        .password-header h1 {
-            color: var(--color-primary);
-            margin-bottom: var(--spacing-sm);
-            font-size: var(--font-size-xl);
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: var(--spacing-sm);
-        }
-
-        .password-header p {
-            color: var(--color-gray);
-            font-size: var(--font-size-sm);
-        }
-
-        .password-form {
-            margin-bottom: var(--spacing-xl);
-        }
-
-        .password-form .form-group {
-            margin-bottom: var(--spacing-lg);
-            text-align: left;
-        }
-
-        .password-form .form-group label {
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-xs);
-            font-weight: 500;
-            color: var(--color-black);
-            margin-bottom: var(--spacing-xs);
-            font-size: var(--font-size-sm);
-        }
-
-        .password-form .form-group input {
-            width: 100%;
-            padding: var(--spacing-md);
-            border: var(--border-base);
-            border-radius: var(--border-radius);
-            font-size: var(--font-size-base);
-            font-family: var(--font-primary);
-            transition: all var(--transition-fast);
-            background: var(--color-white);
-        }
-
-        .password-form .form-group input:focus {
-            outline: none;
-            border-color: var(--color-primary);
-            box-shadow: 0 0 0 2px rgba(42, 89, 52, 0.1);
-        }
-
-        .password-form .form-actions {
-            display: flex;
-            gap: var(--spacing-md);
-            margin-top: var(--spacing-xl);
-        }
-
-        .password-form .form-actions .btn {
-            flex: 1;
-            padding: var(--spacing-md);
-            font-size: var(--font-size-base);
-        }
-
-        .password-footer {
-            border-top: var(--border-thin);
-            padding-top: var(--spacing-lg);
-            margin-top: var(--spacing-lg);
-        }
-
-        .password-footer p {
-            color: var(--color-gray);
-            font-size: var(--font-size-xs);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: var(--spacing-xs);
-        }
-
-        /* Enhanced lock button */
-        .lock-btn {
-            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
-            color: white;
-            border: none;
-            padding: var(--spacing-sm) var(--spacing-lg);
-            border-radius: 20px;
-            font-size: var(--font-size-sm);
-            font-weight: 500;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            display: inline-flex;
-            align-items: center;
-            gap: var(--spacing-xs);
-            box-shadow: 0 2px 8px rgba(42, 89, 52, 0.15);
-        }
-
-        .lock-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(42, 89, 52, 0.25);
-        }
-
-        .lock-btn:active {
-            transform: translateY(0);
-        }
-
-        /* Item approval styles */
-        .item-approval-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 500;
-        }
-
-        .status-pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .status-approved {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .status-rejected {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .approval-actions {
-            display: flex;
-            gap: 4px;
-            margin-top: 4px;
-        }
-
-        .approve-btn, .reject-btn {
-            padding: 2px 8px;
-            font-size: 10px;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .approve-btn {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .approve-btn:hover {
-            background: #c3e6cb;
-        }
-
-        .reject-btn {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .reject-btn:hover {
-            background: #f5c6cb;
-        }
-
-        .rejection-reason {
-            font-size: 10px;
-            color: #721c24;
-            margin-top: 4px;
-            padding: 4px;
-            background: #f8d7da;
-            border-radius: 4px;
-            border-left: 3px solid #721c24;
-        }
-
-        /* Approval summary */
-        .approval-summary {
-            display: flex;
-            gap: 8px;
-            margin-top: 8px;
-            font-size: 11px;
-        }
-
-        .approval-count {
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: 500;
-        }
-
-        .approved-count {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .rejected-count {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .pending-count {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        /* Bulk approval section */
-        .bulk-approval-section {
-            margin-top: 16px;
-            padding: 16px;
-            background: var(--color-offwhite);
-            border-radius: var(--border-radius);
-            border: var(--border-base);
-        }
-
-        .bulk-approval-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-
-        .bulk-approval-btn {
-            padding: 6px 12px;
-            font-size: 12px;
-            border-radius: var(--border-radius);
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .bulk-approve-btn {
-            background: var(--color-success);
-            color: white;
-        }
-
-        .bulk-approve-btn:hover {
-            background: #28a745;
-        }
-
-        .bulk-reject-btn {
-            background: var(--color-danger);
-            color: white;
-        }
-
-        .bulk-reject-btn:hover {
-            background: #dc3545;
-        }
-
-        /* Report level status */
-        .report-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 8px;
-            border-radius: var(--border-radius);
-            font-size: 11px;
-            font-weight: 500;
-        }
-
-        .status-partial {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
-        }
-
-        .status-complete {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        /* Empty state */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--color-gray);
-        }
-
-        .empty-state i {
-            font-size: 48px;
-            margin-bottom: 16px;
-            color: var(--color-lightgray);
-        }
-
-        .empty-state h3 {
-            font-size: var(--font-size-md);
-            margin-bottom: 8px;
-            color: var(--color-darkgray);
-        }
-
-        .empty-state p {
-            font-size: var(--font-size-sm);
-            max-width: 400px;
-            margin: 0 auto;
-        }
-
-        /* Notification Container - Enhanced */
-        #notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 9999; /* Increased to ensure it's on top of modals */
-            max-width: 350px;
-            min-width: 300px;
-            padding: 16px;
-            border-radius: 8px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-            font-size: 14px;
-            font-weight: 500;
-            display: none;
-            animation: slideInRight 0.3s ease, fadeOut 0.3s ease 4.7s;
-            border-left: 4px solid;
-            backdrop-filter: blur(10px);
-            background: rgba(255, 255, 255, 0.95);
-        }
-
-        #notification.success {
-            color: #155724;
-            background: rgba(212, 237, 218, 0.95);
-            border-left-color: #28a745;
-        }
-
-        #notification.error {
-            color: #721c24;
-            background: rgba(248, 215, 218, 0.95);
-            border-left-color: #dc3545;
-        }
-
-        #notification.info {
-            color: #0c5460;
-            background: rgba(209, 236, 241, 0.95);
-            border-left-color: #17a2b8;
-        }
-
-        #notification.warning {
-            color: #856404;
-            background: rgba(255, 243, 205, 0.95);
-            border-left-color: #ffc107;
-        }
-
-        @keyframes slideInRight {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        @keyframes fadeOut {
-            from {
-                opacity: 1;
-            }
-            to {
-                opacity: 0;
-            }
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .password-container {
-                padding: var(--spacing-xl) var(--spacing-lg);
-            }
-            
-            .password-header h1 {
-                font-size: var(--font-size-lg);
-            }
-            
-            .password-form .form-actions {
-                flex-direction: column;
-            }
-
-            .approval-actions {
-                flex-direction: column;
-            }
-
-            .bulk-approval-actions {
-                flex-direction: column;
-            }
-
-            #notification {
-                left: 20px;
-                right: 20px;
-                max-width: calc(100% - 40px);
-                min-width: auto;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .password-container {
-                padding: var(--spacing-lg);
-            }
-            
-            .password-header h1 {
-                font-size: var(--font-size-md);
-            }
-            
-            .password-form .form-actions .btn {
-                width: 100%;
-            }
-        }
-
-        /* Shake animation for wrong password */
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-            20%, 40%, 60%, 80% { transform: translateX(5px); }
-        }
-    </style>
 </head>
 <body>
     <!-- Loading Overlay -->
@@ -466,7 +19,7 @@
         <div class="loading-spinner"></div>
     </div>
     
-    <!-- Notification Container - Now with higher z-index -->
+    <!-- Notification Container -->
     <div id="notification" class="notification"></div>
     
     <div class="container">
@@ -531,6 +84,9 @@
                     <p>Waste & Disposal Reports Database</p>
                 </div>
                 <div class="header-actions">
+                    <button class="btn btn-secondary" id="manageItemsButton" style="margin-right: 10px;">
+                        <i class="fas fa-boxes"></i> Manage Items
+                    </button>
                     <button class="lock-btn" id="lockButton">
                         <i class="fas fa-lock"></i> Lock Session
                     </button>
@@ -567,7 +123,7 @@
                         <select id="filterType" class="filter-select">
                             <option value="">All Types</option>
                             <option value="expired">Expired Items</option>
-                            <option value="waste">Waste</option>
+                            <option value="waste">Waste Items</option>
                             <option value="noWaste">No Waste</option>
                         </select>
                     </div>
@@ -635,6 +191,7 @@
                             <th>Email</th>
                             <th>Submitted</th>
                             <th>Items</th>
+                            <th>At-Cost (₱)</th>
                             <th>Status</th>
                             <th>Approval</th>
                             <th>Actions</th>
@@ -659,6 +216,129 @@
                     <button class="page-btn" id="nextPageBtn" disabled>
                         Next <i class="fas fa-chevron-right"></i>
                     </button>
+                </div>
+            </div>
+
+            <!-- Chart Section -->
+            <div class="chart-section">
+                <div class="chart-header">
+                    <h2><i class="fas fa-chart-bar"></i> Store Performance</h2>
+                    <div class="period-info" id="periodInfo">All Time</div>
+                    <div class="chart-type-selector">
+                        <button class="chart-type-btn active" data-type="bar">
+                            <i class="fas fa-chart-bar"></i>
+                        </button>
+                        <button class="chart-type-btn" data-type="line">
+                            <i class="fas fa-chart-line"></i>
+                        </button>
+                        <button class="chart-type-btn" data-type="pie">
+                            <i class="fas fa-chart-pie"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="chart-controls">
+                    <div class="chart-control-group">
+                        <label for="chartPeriod">Period:</label>
+                        <select id="chartPeriod" class="chart-select">
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="thisWeek">This Week</option>
+                            <option value="lastWeek">Last Week</option>
+                            <option value="month">This Month</option>
+                            <option value="lastMonth">Last Month</option>
+                            <option value="quarter">This Quarter</option>
+                            <option value="year">This Year</option>
+                            <option value="specificDate">Specific Date</option>
+                            <option value="all">All Time</option>
+                        </select>
+                    </div>
+                    
+                    <div id="datePickerContainer" class="chart-control-group" style="display: none;">
+                        <label for="chartDatePicker">Date:</label>
+                        <input type="date" id="chartDatePicker" class="chart-select" style="width: 150px;">
+                    </div>
+                    
+                    <div class="chart-control-group">
+                        <label for="chartMetric">Metric:</label>
+                        <select id="chartMetric" class="chart-select">
+                            <option value="cost">Total At-Cost</option>
+                            <option value="reports">Reports Count</option>
+                            <option value="items">Items Count</option>
+                            <option value="average">Average Cost</option>
+                        </select>
+                    </div>
+                    
+                    <div class="chart-control-group">
+                        <label for="chartSort">Sort:</label>
+                        <select id="chartSort" class="chart-select">
+                            <option value="desc">High to Low</option>
+                            <option value="asc">Low to High</option>
+                        </select>
+                    </div>
+                    
+                    <button class="btn btn-secondary" id="refreshChart">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="storeChart"></canvas>
+                </div>
+                
+                <div class="chart-stats">
+                    <div class="chart-stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-trophy"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h4>Top Store</h4>
+                            <div class="value" id="topStoreName">-</div>
+                            <div class="subtext" id="topStoreValue">₱0.00</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h4>Total Cost</h4>
+                            <div class="value" id="totalCost">₱0.00</div>
+                            <div class="subtext" id="reportCount">0 reports</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h4>Consistent Store</h4>
+                            <div class="value" id="consistentStore">-</div>
+                            <div class="subtext" id="consistencyRate">0% rate</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h4>Attention Needed</h4>
+                            <div class="value" id="attentionStore">-</div>
+                            <div class="subtext" id="attentionReason">No issues</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chart-footer">
+                    <div>
+                        <span>Daily rate: <strong id="dailyRate">0%</strong></span>
+                    </div>
+                    <div>
+                        <span id="lastUpdated">Updated: -</span>
+                    </div>
                 </div>
             </div>
         </section>
@@ -815,8 +495,125 @@
                 <button class="btn btn-secondary" id="cancelBulkRejectionButton">
                     <i class="fas fa-times"></i> Cancel
                 </button>
-                <button class="btn btn-danger" id="confirmBulkRejectionButton">
+                    <button class="btn btn-danger" id="confirmBulkRejectionButton">
                     <i class="fas fa-check"></i> Confirm Rejection
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Items Management Modal -->
+    <div id="itemsManagementModal" class="modal">
+        <div class="modal-content" style="max-width: 700px; max-height: 80vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-boxes"></i> Manage Items Database</h3>
+                <span class="close-modal" id="closeItemsModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Add Item Form -->
+                <div class="add-item-section">
+                    <h4><i class="fas fa-plus-circle"></i> Add New Item</h4>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="newItemName">Item Name *</label>
+                            <input type="text" id="newItemName" placeholder="Enter item name" maxlength="100">
+                        </div>
+                        <div class="form-group">
+                            <label for="newItemCost">Unit Cost (₱) *</label>
+                            <input type="number" id="newItemCost" step="0.01" min="0" placeholder="0.00" value="0">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" id="addItemButton">
+                        <i class="fas fa-plus"></i> Add Item to Database
+                    </button>
+                </div>
+
+                <!-- Search -->
+                <div class="items-controls">
+                    <div class="search-box" style="flex: 1;">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchItems" placeholder="Search items...">
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <div class="table-container" style="max-height: 300px; overflow-y: auto; margin: 15px 0;">
+                    <table id="itemsTable">
+                        <thead>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Unit Cost (₱)</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemsTableBody">
+                            <!-- Items will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Items Pagination -->
+                <div class="table-info">
+                    <div class="info-text">
+                        Showing <span id="showingItemsCount">0</span> items
+                    </div>
+                    <div class="page-navigation">
+                        <button class="page-btn" id="prevItemsPageBtn" disabled>
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <div class="page-info" id="itemsPageInfo">Page 1</div>
+                        <button class="page-btn" id="nextItemsPageBtn" disabled>
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="stats-cards" style="margin-top: 20px;">
+                    <div class="stat-card" style="flex: 1; min-width: 150px;">
+                        <div class="stat-icon total-reports">
+                            <i class="fas fa-box"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalItemsCount">0</h3>
+                            <p>Total Items</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="closeItemsModalButton">
+                    <i class="fas fa-times"></i> Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Item Modal -->
+    <div id="editItemModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> Edit Item</h3>
+                <span class="close-modal" id="closeEditItemModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="editItemName">Item Name *</label>
+                    <input type="text" id="editItemName" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label for="editItemCost">Unit Cost (₱) *</label>
+                    <input type="number" id="editItemCost" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div id="editItemInfo" style="font-size: 12px; color: var(--color-gray); margin-top: 10px;"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelEditItemButton">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button class="btn btn-primary" id="saveItemButton">
+                    <i class="fas fa-save"></i> Save Changes
                 </button>
             </div>
         </div>
