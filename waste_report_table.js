@@ -294,9 +294,16 @@ function initializeApp() {
     
     if (isAuthenticated()) {
         showReportsSection();
-        requestAnimationFrame(() => {
-            loadReports();
-        });
+        // Use requestIdleCallback for smoother initial load
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(() => {
+                loadReports();
+            }, { timeout: 1000 });
+        } else {
+            setTimeout(() => {
+                loadReports();
+            }, 300);
+        }
     } else {
         showPasswordSection();
     }
@@ -1351,7 +1358,7 @@ function getReportApprovalStatus(report) {
     if (totalItems === 0) return 'complete';
     if (pendingCount === totalItems) return 'pending';
     if (approvedCount === totalItems) return 'complete';
-    if (rejectedCount === totalItems) return 'complete';
+    if (rejectedCount === totalItems) return 'rejected';
     return 'partial';
 }
 
@@ -1363,6 +1370,8 @@ function getApprovalStatusBadge(report) {
             return '<span class="item-approval-status status-pending"><i class="fas fa-clock"></i> Pending</span>';
         case 'complete':
             return '<span class="item-approval-status status-approved"><i class="fas fa-check-circle"></i> Approved</span>';
+        case 'rejected':
+            return '<span class="item-approval-status status-rejected"><i class="fas fa-times-circle"></i> Rejected</span>';
         case 'partial':
             return '<span class="item-approval-status status-partial"><i class="fas fa-exclamation-circle"></i> Partial</span>';
         default:
@@ -1393,10 +1402,8 @@ async function loadReports() {
         const tableBody = document.getElementById('reportsTableBody');
         if (!tableBody) return;
         
-        // Clear table efficiently
-        while (tableBody.firstChild) {
-            tableBody.removeChild(tableBody.firstChild);
-        }
+        // Clear table efficiently using innerHTML for better performance
+        tableBody.innerHTML = '';
         
         // Get filter values
         const storeFilter = document.getElementById('filterStore');
@@ -1434,9 +1441,12 @@ async function loadReports() {
         let wasteCount = 0;
         let noWasteCount = 0;
         let pendingApprovalCount = 0;
+        let rejectedCount = 0;
+        let partialCount = 0;
+        let completeCount = 0;
         
-        // Use DocumentFragment for batch DOM operations
-        const fragment = document.createDocumentFragment();
+        // Build HTML string for better performance
+        let tableHTML = '';
         
         snapshot.forEach(doc => {
             const report = { id: doc.id, ...doc.data() };
@@ -1450,7 +1460,11 @@ async function loadReports() {
             if (disposalTypes.includes('waste')) wasteCount++;
             if (disposalTypes.includes('noWaste')) noWasteCount++;
             
-            if (getReportApprovalStatus(report) === 'pending') pendingApprovalCount++;
+            const approvalStatus = getReportApprovalStatus(report);
+            if (approvalStatus === 'pending') pendingApprovalCount++;
+            if (approvalStatus === 'rejected') rejectedCount++;
+            if (approvalStatus === 'partial') partialCount++;
+            if (approvalStatus === 'complete') completeCount++;
             
             // Client-side filtering for fields not indexed in Firestore
             const emailMatch = !searchEmail?.value || 
@@ -1458,56 +1472,54 @@ async function loadReports() {
             const typeMatch = !typeFilter?.value || 
                              disposalTypes.includes(typeFilter.value);
             const statusMatch = !filterStatus?.value || 
-                               getReportApprovalStatus(report) === filterStatus.value;
+                               approvalStatus === filterStatus.value;
             
             if (emailMatch && typeMatch && statusMatch) {
                 const itemCount = getItemCount(report);
                 const totalCost = calculateReportCost(report);
                 const costCellClass = getCostCellClass(totalCost);
                 
-                const row = document.createElement('tr');
-                
-                row.innerHTML = `
-                    <td>
-                        <div class="report-id">${report.reportId?.substring(0, 12) || report.id.substring(0, 12)}${(report.reportId || report.id).length > 12 ? '...' : ''}</div>
-                    </td>
-                    <td><strong>${report.store || 'N/A'}</strong></td>
-                    <td>${report.personnel || 'N/A'}</td>
-                    <td><strong>${formatDate(report.reportDate)}</strong></td>
-                    <td>${getDisposalTypeBadge(disposalTypes)}</td>
-                    <td>
-                        <div style="font-size: 11px; color: var(--color-gray);">${report.email || 'N/A'}</div>
-                    </td>
-                    <td>
-                        <div style="font-size: 10px; color: var(--color-gray);">${formatDateTime(report.submittedAt)}</div>
-                    </td>
-                    <td>
-                        <div style="text-align: center;">
-                            <span style="background: var(--color-accent); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;">
-                                ${itemCount} ${itemCount === 1 ? 'item' : 'items'}
-                            </span>
-                        </div>
-                    </td>
-                    <td class="store-cost-cell ${costCellClass}">
-                        <strong>₱${totalCost.toFixed(2)}</strong>
-                    </td>
-                    <td><span class="status-badge status-submitted">Submitted</span></td>
-                    <td>${getApprovalStatusBadge(report)}</td>
-                    <td>
-                        <button class="view-details-btn" onclick="viewReportDetails('${report.id}')" title="View full report">
-                            <i class="fas fa-eye"></i> View
-                        </button>
-                    </td>
+                tableHTML += `
+                    <tr>
+                        <td>
+                            <div class="report-id">${report.reportId?.substring(0, 12) || report.id.substring(0, 12)}${(report.reportId || report.id).length > 12 ? '...' : ''}</div>
+                        </td>
+                        <td><strong>${report.store || 'N/A'}</strong></td>
+                        <td>${report.personnel || 'N/A'}</td>
+                        <td><strong>${formatDate(report.reportDate)}</strong></td>
+                        <td>${getDisposalTypeBadge(disposalTypes)}</td>
+                        <td>
+                            <div style="font-size: 11px; color: var(--color-gray);">${report.email || 'N/A'}</div>
+                        </td>
+                        <td>
+                            <div style="font-size: 10px; color: var(--color-gray);">${formatDateTime(report.submittedAt)}</div>
+                        </td>
+                        <td>
+                            <div style="text-align: center;">
+                                <span style="background: var(--color-accent); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;">
+                                    ${itemCount} ${itemCount === 1 ? 'item' : 'items'}
+                                </span>
+                            </div>
+                        </td>
+                        <td class="store-cost-cell ${costCellClass}">
+                            <strong>₱${totalCost.toFixed(2)}</strong>
+                        </td>
+                        <td><span class="status-badge status-submitted">Submitted</span></td>
+                        <td>${getApprovalStatusBadge(report)}</td>
+                        <td>
+                            <button class="view-details-btn" onclick="viewReportDetails('${report.id}')" title="View full report">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                        </td>
+                    </tr>
                 `;
-                
-                fragment.appendChild(row);
             }
         });
         
-        tableBody.appendChild(fragment);
-        
-        // Show empty state if no rows
-        if (tableBody.children.length === 0) {
+        // Set HTML in one operation
+        if (tableHTML) {
+            tableBody.innerHTML = tableHTML;
+        } else {
             tableBody.innerHTML = `
                 <tr>
                     <td colspan="12" class="empty-state">
@@ -1524,9 +1536,12 @@ async function loadReports() {
         updatePageInfo();
         updatePaginationButtons();
         
-        // Load chart data if this is the first page
+        // Load chart data if this is the first page (but don't wait for it)
         if (currentPage === 1) {
-            loadAllReportsForChart();
+            // Use setTimeout to avoid blocking UI
+            setTimeout(() => {
+                loadAllReportsForChart();
+            }, 100);
         }
         
         // Cache the data
@@ -1682,6 +1697,7 @@ async function buildReportContent(report) {
     });
     
     const totalCost = calculateReportCost(report);
+    const approvalStatus = getReportApprovalStatus(report);
     
     let content = `
         <div class="details-section">
@@ -1718,6 +1734,10 @@ async function buildReportContent(report) {
                     <div class="detail-label">Total At-Cost</div>
                     <div class="detail-value"><strong>₱${totalCost.toFixed(2)}</strong></div>
                 </div>
+                <div class="detail-item">
+                    <div class="detail-label">Overall Status</div>
+                    <div class="detail-value">${getApprovalStatusBadge(report)}</div>
+                </div>
             </div>
             
             <div class="approval-summary">
@@ -1741,31 +1761,37 @@ async function buildReportContent(report) {
         let bulkActions = '';
         
         if (expiredItems.length > 0) {
-            bulkActions += `
-                <div class="bulk-approval-actions" style="margin-bottom: 10px;">
-                    <h5><i class="fas fa-calendar-times"></i> Expired Items Actions:</h5>
-                    <button class="bulk-approval-btn bulk-approve-btn" onclick="bulkApproveItems('${report.id}', 'expired')">
-                        <i class="fas fa-check"></i> Approve All Expired
-                    </button>
-                    <button class="bulk-approval-btn bulk-reject-btn" onclick="openBulkRejectionModal('${report.id}', ${pendingCount}, 'expired')">
-                        <i class="fas fa-times"></i> Reject All Expired
-                    </button>
-                </div>
-            `;
+            const pendingExpired = expiredItems.filter(item => (!item.approvalStatus || item.approvalStatus === 'pending')).length;
+            if (pendingExpired > 0) {
+                bulkActions += `
+                    <div class="bulk-approval-actions" style="margin-bottom: 10px;">
+                        <h5><i class="fas fa-calendar-times"></i> Expired Items Actions (${pendingExpired} pending):</h5>
+                        <button class="bulk-approval-btn bulk-approve-btn" onclick="bulkApproveItems('${report.id}', 'expired')">
+                            <i class="fas fa-check"></i> Approve All Expired
+                        </button>
+                        <button class="bulk-approval-btn bulk-reject-btn" onclick="openBulkRejectionModal('${report.id}', ${pendingExpired}, 'expired')">
+                            <i class="fas fa-times"></i> Reject All Expired
+                        </button>
+                    </div>
+                `;
+            }
         }
         
         if (wasteItems.length > 0) {
-            bulkActions += `
-                <div class="bulk-approval-actions">
-                    <h5><i class="fas fa-trash-alt"></i> Waste Items Actions:</h5>
-                    <button class="bulk-approval-btn bulk-approve-btn" onclick="bulkApproveItems('${report.id}', 'waste')">
-                        <i class="fas fa-check"></i> Approve All Waste
-                    </button>
-                    <button class="bulk-approval-btn bulk-reject-btn" onclick="openBulkRejectionModal('${report.id}', ${pendingCount}, 'waste')">
-                        <i class="fas fa-times"></i> Reject All Waste
-                    </button>
-                </div>
-            `;
+            const pendingWaste = wasteItems.filter(item => (!item.approvalStatus || item.approvalStatus === 'pending')).length;
+            if (pendingWaste > 0) {
+                bulkActions += `
+                    <div class="bulk-approval-actions">
+                        <h5><i class="fas fa-trash-alt"></i> Waste Items Actions (${pendingWaste} pending):</h5>
+                        <button class="bulk-approval-btn bulk-approve-btn" onclick="bulkApproveItems('${report.id}', 'waste')">
+                            <i class="fas fa-check"></i> Approve All Waste
+                        </button>
+                        <button class="bulk-approval-btn bulk-reject-btn" onclick="openBulkRejectionModal('${report.id}', ${pendingWaste}, 'waste')">
+                            <i class="fas fa-times"></i> Reject All Waste
+                        </button>
+                    </div>
+                `;
+            }
         }
         
         if (bulkActions) {
@@ -1976,7 +2002,7 @@ function closeImageModal() {
 }
 
 // ================================
-// APPROVAL & REJECTION FUNCTIONS
+// APPROVAL & REJECTION FUNCTIONS - OPTIMIZED
 // ================================
 async function approveItem(reportId, itemIndex, itemType) {
     if (!isAuthenticated()) {
@@ -2016,11 +2042,8 @@ async function approveItem(reportId, itemIndex, itemType) {
         
         showNotification('Item approved successfully', 'success');
         
-        if (currentReportDetailsId === reportId) {
-            await viewReportDetails(reportId);
-        } else {
-            loadReports();
-        }
+        // Update UI without full reload
+        updateReportAfterApproval(reportId);
         
     } catch (error) {
         console.error('Error approving item:', error);
@@ -2073,11 +2096,8 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
         
         showNotification('Item rejected successfully', 'success');
         
-        if (currentReportDetailsId === reportId) {
-            await viewReportDetails(reportId);
-        } else {
-            loadReports();
-        }
+        // Update UI without full reload
+        updateReportAfterApproval(reportId);
         
         // Send email notification
         await sendRejectionEmailViaGAS(report.email, report.reportId || reportId, itemIndex + 1, itemType, reason.trim(), report);
@@ -2133,11 +2153,8 @@ async function bulkApproveItems(reportId, itemType) {
         
         showNotification('All pending items approved successfully', 'success');
         
-        if (currentReportDetailsId === reportId) {
-            await viewReportDetails(reportId);
-        } else {
-            loadReports();
-        }
+        // Update UI without full reload
+        updateReportAfterApproval(reportId);
         
     } catch (error) {
         console.error('Error bulk approving items:', error);
@@ -2195,11 +2212,8 @@ async function bulkRejectItems(reportId, itemType, reason) {
         
         showNotification('All pending items rejected successfully', 'success');
         
-        if (currentReportDetailsId === reportId) {
-            await viewReportDetails(reportId);
-        } else {
-            loadReports();
-        }
+        // Update UI without full reload
+        updateReportAfterApproval(reportId);
         
         // Send bulk rejection email
         await sendBulkRejectionEmailViaGAS(report.email, report.reportId || reportId, updatedItems.filter(i => i.approvalStatus === 'rejected').length, reason.trim(), report);
@@ -2210,6 +2224,68 @@ async function bulkRejectItems(reportId, itemType, reason) {
     } finally {
         showLoading(false);
     }
+}
+
+// ================================
+// OPTIMIZED UI UPDATING
+// ================================
+async function updateReportAfterApproval(reportId) {
+    try {
+        // Get updated report
+        const doc = await db.collection('wasteReports').doc(reportId).get();
+        if (!doc.exists) return;
+        
+        const updatedReport = { id: doc.id, ...doc.data() };
+        
+        // Update the table row if the report is in the current view
+        const rowIndex = reportsData.findIndex(r => r.id === reportId);
+        if (rowIndex !== -1) {
+            reportsData[rowIndex] = updatedReport;
+            
+            // Update the specific row in the table
+            const tableBody = document.getElementById('reportsTableBody');
+            if (tableBody && tableBody.children[rowIndex]) {
+                const row = tableBody.children[rowIndex];
+                const approvalCell = row.cells[9]; // Approval status cell
+                if (approvalCell) {
+                    approvalCell.innerHTML = getApprovalStatusBadge(updatedReport);
+                }
+            }
+        }
+        
+        // If details modal is open for this report, refresh it
+        if (currentReportDetailsId === reportId) {
+            await viewReportDetails(reportId);
+        }
+        
+        // Refresh statistics
+        updateStatisticsFromReports();
+        
+    } catch (error) {
+        console.error('Error updating UI after approval:', error);
+        // Fall back to full reload if partial update fails
+        loadReports();
+    }
+}
+
+function updateStatisticsFromReports() {
+    let expiredCount = 0;
+    let wasteCount = 0;
+    let noWasteCount = 0;
+    let pendingApprovalCount = 0;
+    
+    reportsData.forEach(report => {
+        const disposalTypes = Array.isArray(report.disposalTypes) ? report.disposalTypes : 
+                            report.disposalType ? [report.disposalType] : ['unknown'];
+        
+        if (disposalTypes.includes('expired')) expiredCount++;
+        if (disposalTypes.includes('waste')) wasteCount++;
+        if (disposalTypes.includes('noWaste')) noWasteCount++;
+        
+        if (getReportApprovalStatus(report) === 'pending') pendingApprovalCount++;
+    });
+    
+    updateStatistics(reportsData.length, expiredCount, wasteCount, noWasteCount, pendingApprovalCount);
 }
 
 // ================================
@@ -2315,13 +2391,14 @@ function handleBulkItemRejection() {
 }
 
 // ================================
-// EMAIL SENDING FUNCTIONS
+// EMAIL SENDING FUNCTIONS - FIXED VERSION
 // ================================
 async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType, reason, reportData) {
     try {
         const itemsArray = itemType === 'expired' ? reportData.expiredItems : reportData.wasteItems;
         const rejectedItem = itemsArray[itemNumber - 1];
 
+        // Prepare email data
         const emailData = {
             emailType: 'rejection',
             to: toEmail,
@@ -2338,31 +2415,90 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType,
             itemReason: itemType === 'waste' ? rejectedItem?.reason || 'N/A' : 'N/A',
             expirationDate: itemType === 'expired' ? formatDate(rejectedItem?.expirationDate) : 'N/A',
             rejectionReason: reason,
-            rejectedAt: new Date().toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            rejectedAt: new Date().toLocaleString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })
         };
 
-        const response = await fetch(GAS_CONFIG.ENDPOINT, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams(emailData)
+        console.log('Sending rejection email with data:', emailData);
+
+        // Use a more reliable method to send data
+        const formData = new FormData();
+        Object.keys(emailData).forEach(key => {
+            formData.append(key, emailData[key]);
         });
+
+        // Try different approaches
+        let success = false;
         
-        console.log('Rejection email sent');
-        return { success: true };
+        // Approach 1: Using fetch with form data
+        try {
+            await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData,
+                mode: 'no-cors' // Using no-cors for GAS
+            });
+            console.log('Rejection email sent via form data');
+            success = true;
+        } catch (error) {
+            console.warn('Form data approach failed, trying URL params:', error);
+            
+            // Approach 2: Using URL parameters
+            try {
+                const params = new URLSearchParams();
+                Object.keys(emailData).forEach(key => {
+                    params.append(key, emailData[key]);
+                });
+                
+                await fetch(GAS_CONFIG.ENDPOINT + '?' + params.toString(), {
+                    method: 'GET',
+                    mode: 'no-cors'
+                });
+                console.log('Rejection email sent via URL params');
+                success = true;
+            } catch (error2) {
+                console.error('URL params approach also failed:', error2);
+                
+                // Approach 3: Try JSON POST
+                try {
+                    await fetch(GAS_CONFIG.ENDPOINT, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(emailData),
+                        mode: 'no-cors'
+                    });
+                    console.log('Rejection email sent via JSON');
+                    success = true;
+                } catch (error3) {
+                    console.error('All email sending approaches failed:', error3);
+                }
+            }
+        }
+
+        if (success) {
+            console.log('✅ Rejection email sent successfully');
+            return { success: true };
+        } else {
+            console.warn('⚠️ Email sending failed, but item was still rejected');
+            return { success: false, error: 'Email sending failed' };
+        }
 
     } catch (error) {
-        console.error('Rejection email failed:', error);
-        return { success: false };
+        console.error('❌ Rejection email function error:', error);
+        return { success: false, error: error.message };
     }
 }
 
 async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, reason, reportData) {
     try {
         const emailData = {
-            emailType: 'rejection',
+            emailType: 'bulk_rejection',
             to: toEmail,
             subject: `Multiple Items Rejected - ${reportId}`,
             store: reportData.store || 'N/A',
@@ -2372,24 +2508,79 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
             reportId: reportId,
             rejectedCount: rejectedCount,
             rejectionReason: reason,
-            rejectedAt: new Date().toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            rejectedAt: new Date().toLocaleString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })
         };
 
-        await fetch(GAS_CONFIG.ENDPOINT, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams(emailData)
+        console.log('Sending bulk rejection email with data:', emailData);
+
+        const formData = new FormData();
+        Object.keys(emailData).forEach(key => {
+            formData.append(key, emailData[key]);
         });
+
+        let success = false;
         
-        console.log('Bulk rejection email sent');
-        return { success: true };
+        // Try different approaches
+        try {
+            await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData,
+                mode: 'no-cors'
+            });
+            console.log('Bulk rejection email sent via form data');
+            success = true;
+        } catch (error) {
+            console.warn('Form data approach failed, trying URL params:', error);
+            
+            try {
+                const params = new URLSearchParams();
+                Object.keys(emailData).forEach(key => {
+                    params.append(key, emailData[key]);
+                });
+                
+                await fetch(GAS_CONFIG.ENDPOINT + '?' + params.toString(), {
+                    method: 'GET',
+                    mode: 'no-cors'
+                });
+                console.log('Bulk rejection email sent via URL params');
+                success = true;
+            } catch (error2) {
+                console.error('URL params approach also failed:', error2);
+                
+                try {
+                    await fetch(GAS_CONFIG.ENDPOINT, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(emailData),
+                        mode: 'no-cors'
+                    });
+                    console.log('Bulk rejection email sent via JSON');
+                    success = true;
+                } catch (error3) {
+                    console.error('All bulk email sending approaches failed:', error3);
+                }
+            }
+        }
+
+        if (success) {
+            console.log('✅ Bulk rejection email sent successfully');
+            return { success: true };
+        } else {
+            console.warn('⚠️ Bulk email sending failed, but items were still rejected');
+            return { success: false, error: 'Email sending failed' };
+        }
 
     } catch (error) {
-        console.error('Bulk rejection email failed:', error);
-        return { success: false };
+        console.error('❌ Bulk rejection email function error:', error);
+        return { success: false, error: error.message };
     }
 }
 

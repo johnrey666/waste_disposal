@@ -8,6 +8,125 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Add Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Additional styles for dual chart layout */
+        .dual-chart-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--spacing-lg);
+            margin: var(--spacing-lg) 0;
+        }
+        
+        .chart-card {
+            background: var(--color-white);
+            border-radius: var(--border-radius);
+            border: var(--border-base);
+            box-shadow: var(--shadow-sm);
+            padding: var(--spacing-md);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            transition: all var(--transition-fast);
+        }
+        
+        .chart-card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+        
+        .chart-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-sm);
+            border-bottom: var(--border-thin);
+        }
+        
+        .chart-card-header h3 {
+            color: var(--color-primary);
+            font-size: var(--font-size-md);
+            font-weight: 600;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+        
+        .chart-card-type-selector {
+            display: flex;
+            gap: 4px;
+            background: var(--color-offwhite);
+            border-radius: var(--border-radius-sm);
+            padding: 2px;
+            border: var(--border-thin);
+        }
+        
+        .chart-card-type-btn {
+            padding: 4px 8px;
+            border: none;
+            background: transparent;
+            border-radius: var(--border-radius-sm);
+            cursor: pointer;
+            font-size: var(--font-size-xs);
+            color: var(--color-gray);
+            transition: all var(--transition-fast);
+        }
+        
+        .chart-card-type-btn:hover {
+            color: var(--color-primary);
+            background: rgba(42, 89, 52, 0.1);
+        }
+        
+        .chart-card-type-btn.active {
+            background: var(--color-primary);
+            color: white;
+        }
+        
+        .chart-card-body {
+            flex: 1;
+            position: relative;
+            min-height: 300px;
+        }
+        
+        .chart-card-footer {
+            margin-top: var(--spacing-md);
+            padding-top: var(--spacing-sm);
+            border-top: var(--border-thin);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: var(--font-size-xs);
+            color: var(--color-gray);
+        }
+        
+        .chart-card-stat {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .chart-card-stat i {
+            color: var(--color-primary);
+        }
+        
+        @media (max-width: 992px) {
+            .dual-chart-container {
+                grid-template-columns: 1fr;
+                gap: var(--spacing-md);
+            }
+            
+            .chart-card-body {
+                min-height: 250px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .chart-card-body {
+                min-height: 200px;
+            }
+        }
+    </style>
 </head>
 <body>
     <!-- Loading Overlay -->
@@ -54,84 +173,102 @@
             </div>
         </section>
 
-        <!-- Charts Section with Enhanced UI -->
+        <!-- Dual Charts Section -->
         <section class="chart-section">
             <div class="chart-header">
                 <h2><i class="fas fa-chart-bar"></i> Waste & Compliance Analytics</h2>
-                
-                <!-- Chart Type Selector -->
-                <div class="chart-type-selector">
-                    <button class="chart-type-btn active" data-chart="pie">
-                        <i class="fas fa-chart-pie"></i> Pie
-                    </button>
-                    <button class="chart-type-btn" data-chart="bar">
-                        <i class="fas fa-chart-bar"></i> Bar
-                    </button>
-                    <button class="chart-type-btn" data-chart="horizontalBar">
-                        <i class="fas fa-align-left"></i> Horizontal
-                    </button>
+            </div>
+
+            <!-- Dual Chart Container -->
+            <div class="dual-chart-container">
+                <!-- Compliance Rate Chart Card -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <h3><i class="fas fa-check-circle" style="color: #28a745;"></i> Compliance Rate</h3>
+                        <div class="chart-card-type-selector">
+                            <button class="chart-card-type-btn active" data-chart="compliance-pie" data-metric="compliance">
+                                <i class="fas fa-chart-pie"></i>
+                            </button>
+                            <button class="chart-card-type-btn" data-chart="compliance-bar" data-metric="compliance">
+                                <i class="fas fa-chart-bar"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-card-body">
+                        <canvas id="complianceChart"></canvas>
+                    </div>
+                    <div class="chart-card-footer">
+                        <div class="chart-card-stat">
+                            <i class="fas fa-store"></i>
+                            <span id="complianceStoreCount">0 stores</span>
+                        </div>
+                        <div class="chart-card-stat">
+                            <i class="fas fa-chart-line"></i>
+                            <span id="complianceAverage">0% avg</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Waste Cost Rate Chart Card -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <h3><i class="fas fa-money-bill-wave" style="color: #dc3545;"></i> Waste Cost Share</h3>
+                        <div class="chart-card-type-selector">
+                            <button class="chart-card-type-btn active" data-chart="cost-pie" data-metric="cost">
+                                <i class="fas fa-chart-pie"></i>
+                            </button>
+                            <button class="chart-card-type-btn" data-chart="cost-bar" data-metric="cost">
+                                <i class="fas fa-chart-bar"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-card-body">
+                        <canvas id="costChart"></canvas>
+                    </div>
+                    <div class="chart-card-footer">
+                        <div class="chart-card-stat">
+                            <i class="fas fa-store"></i>
+                            <span id="costStoreCount">0 stores</span>
+                        </div>
+                        <div class="chart-card-stat">
+                            <i class="fas fa-chart-line"></i>
+                            <span id="costAverage">0% avg</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Chart Controls -->
-            <div class="chart-controls">
-                <div class="chart-control-group">
-                    <label for="chartMetric"><i class="fas fa-filter"></i> Metric:</label>
-                    <select id="chartMetric" class="chart-select">
-                        <option value="compliance">Compliance Rate</option>
-                        <option value="cost">Waste Cost Share</option>
-                    </select>
-                </div>
-                
-                <div class="chart-control-group">
-                    <label for="chartSort"><i class="fas fa-sort"></i> Sort:</label>
-                    <select id="chartSort" class="chart-select">
-                        <option value="desc">Highest First</option>
-                        <option value="asc">Lowest First</option>
-                    </select>
-                </div>
-                
-                <button id="refreshChart" class="btn">
-                    <i class="fas fa-sync-alt"></i> Refresh
-                </button>
-            </div>
-
-            <!-- Chart Container -->
-            <div class="chart-container">
-                <canvas id="mainChart"></canvas>
-            </div>
-
-            <!-- Chart Statistics -->
+            <!-- Combined Chart Statistics -->
             <div class="chart-stats">
                 <div class="chart-stat-card">
-                    <h4><i class="fas fa-store"></i> Top Store</h4>
-                    <div class="value" id="topStoreValue">-</div>
-                    <div class="subtext" id="topStoreMetric">Compliance</div>
+                    <h4><i class="fas fa-store"></i> Top Compliance</h4>
+                    <div class="value" id="topComplianceStore">-</div>
+                    <div class="subtext" id="topComplianceValue">0%</div>
                 </div>
                 
                 <div class="chart-stat-card">
-                    <h4><i class="fas fa-chart-line"></i> Average</h4>
-                    <div class="value" id="averageValue">0%</div>
-                    <div class="subtext" id="averageMetric">All Stores</div>
+                    <h4><i class="fas fa-chart-line"></i> Avg Compliance</h4>
+                    <div class="value" id="overallComplianceAvg">0%</div>
+                    <div class="subtext">All Stores</div>
                 </div>
                 
                 <div class="chart-stat-card">
-                    <h4><i class="fas fa-exclamation-triangle"></i> Lowest</h4>
-                    <div class="value" id="lowestValue">-</div>
-                    <div class="subtext" id="lowestMetric">Needs Attention</div>
+                    <h4><i class="fas fa-money-bill-wave"></i> Highest Cost</h4>
+                    <div class="value" id="topCostStore">-</div>
+                    <div class="subtext" id="topCostValue">0%</div>
                 </div>
                 
                 <div class="chart-stat-card">
-                    <h4><i class="fas fa-database"></i> Coverage</h4>
-                    <div class="value" id="coverageValue">0%</div>
-                    <div class="subtext" id="coverageMetric">Stores Reporting</div>
+                    <h4><i class="fas fa-chart-line"></i> Avg Cost Share</h4>
+                    <div class="value" id="overallCostAvg">0%</div>
+                    <div class="subtext">All Stores</div>
                 </div>
             </div>
             
             <!-- Chart Footer -->
             <div class="chart-footer">
                 <div class="chart-info">
-                    <i class="fas fa-info-circle"></i> Click on chart segments for details. Use buttons above to change chart type.
+                    <i class="fas fa-info-circle"></i> Click on chart segments for details. Compliance rate shows reporting frequency, cost share shows waste expense distribution.
                 </div>
             </div>
         </section>
@@ -254,9 +391,10 @@
     // GLOBAL VARIABLES
     // ================================
     let db;
-    let mainChart = null;
-    let currentChartType = 'pie';
-    let currentMetric = 'compliance';
+    let complianceChart = null;
+    let costChart = null;
+    let currentComplianceChartType = 'pie';
+    let currentCostChartType = 'pie';
     let currentData = null;
 
     // Define all store names
@@ -389,7 +527,7 @@
             
             if (snapshot.empty) {
                 // No reports yet
-                createEmptyChart();
+                createEmptyCharts();
                 updateEmptyStats();
                 showLoading(false);
                 return;
@@ -414,8 +552,9 @@
                 totalReports: reports.length
             };
             
-            // Update chart with current settings
-            updateChart();
+            // Update both charts
+            updateComplianceChart();
+            updateCostChart();
             
             // Update statistics
             updateStats();
@@ -423,7 +562,7 @@
         } catch (error) {
             console.error('Error loading data:', error);
             showNotification('Error loading data', 'error');
-            createEmptyChart();
+            createEmptyCharts();
         } finally {
             showLoading(false);
         }
@@ -625,33 +764,28 @@
     // ================================
     // CHART FUNCTIONS
     // ================================
-    function updateChart() {
+    function updateComplianceChart() {
         if (!currentData) return;
         
-        const ctx = document.getElementById('mainChart');
+        const ctx = document.getElementById('complianceChart');
         
         // Destroy existing chart
-        if (mainChart) {
-            mainChart.destroy();
+        if (complianceChart) {
+            complianceChart.destroy();
         }
         
-        // Get current data
-        const data = currentData[currentMetric];
-        const sortOrder = document.getElementById('chartSort').value;
+        // Get compliance data
+        const data = currentData.compliance;
         
-        // Sort data based on selected order
+        // Sort data highest first for compliance
         let sortedResults = [...data.results];
-        if (sortOrder === 'desc') {
-            sortedResults.sort((a, b) => b.value - a.value);
-        } else {
-            sortedResults.sort((a, b) => a.value - b.value);
-        }
+        sortedResults.sort((a, b) => b.value - a.value);
         
-        // Take top 8 stores for better visibility
-        const displayResults = sortedResults.slice(0, 8);
+        // Take top 6 stores for better visibility
+        const displayResults = sortedResults.slice(0, 6);
         
         if (displayResults.length === 0) {
-            createEmptyChart();
+            createEmptyComplianceChart();
             return;
         }
         
@@ -661,35 +795,82 @@
         const colors = CHART_COLORS.slice(0, displayResults.length);
         
         // Create chart based on selected type
-        const chartConfig = getChartConfig(currentChartType, labels, values, colors, data);
+        const chartConfig = getChartConfig(currentComplianceChartType, labels, values, colors, data);
         
-        mainChart = new Chart(ctx, chartConfig);
+        complianceChart = new Chart(ctx, chartConfig);
         
-        // Update chart statistics
-        updateChartStats(data);
+        // Update compliance chart footer stats
+        document.getElementById('complianceStoreCount').textContent = `${data.storeCount} stores`;
+        document.getElementById('complianceAverage').textContent = `${data.overallAverage}% avg`;
+        
+        // Update combined stats
+        updateCombinedStats();
+    }
+
+    function updateCostChart() {
+        if (!currentData) return;
+        
+        const ctx = document.getElementById('costChart');
+        
+        // Destroy existing chart
+        if (costChart) {
+            costChart.destroy();
+        }
+        
+        // Get cost data
+        const data = currentData.cost;
+        
+        // Sort data highest first for cost
+        let sortedResults = [...data.results];
+        sortedResults.sort((a, b) => b.value - a.value);
+        
+        // Take top 6 stores for better visibility
+        const displayResults = sortedResults.slice(0, 6);
+        
+        if (displayResults.length === 0) {
+            createEmptyCostChart();
+            return;
+        }
+        
+        // Prepare data
+        const labels = displayResults.map(store => store.displayName);
+        const values = displayResults.map(store => store.value);
+        const colors = CHART_COLORS.slice(0, displayResults.length);
+        
+        // Create chart based on selected type
+        const chartConfig = getChartConfig(currentCostChartType, labels, values, colors, data);
+        
+        costChart = new Chart(ctx, chartConfig);
+        
+        // Update cost chart footer stats
+        document.getElementById('costStoreCount').textContent = `${data.storeCount} stores`;
+        document.getElementById('costAverage').textContent = `${data.overallAverage}% avg`;
+        
+        // Update combined stats
+        updateCombinedStats();
     }
 
     function getChartConfig(type, labels, values, colors, data) {
         const commonOptions = {
             responsive: true,
-            maintainAspectRatio: false,
+            maintainAspectRatio: true,
             plugins: {
                 legend: {
-                    display: type === 'pie' || type === 'doughnut',
+                    display: type === 'pie',
                     position: 'right',
                     labels: {
-                        boxWidth: 12,
-                        font: { size: 11 },
-                        padding: 15
+                        boxWidth: 10,
+                        font: { size: 10 },
+                        padding: 10
                     }
                 },
                 tooltip: {
                     backgroundColor: 'rgba(0, 0, 0, 0.85)',
-                    titleFont: { size: 12 },
-                    bodyFont: { size: 11 },
-                    padding: 10,
-                    cornerRadius: 6,
-                    displayColors: type === 'pie' || type === 'doughnut',
+                    titleFont: { size: 11 },
+                    bodyFont: { size: 10 },
+                    padding: 8,
+                    cornerRadius: 4,
+                    displayColors: type === 'pie',
                     callbacks: {
                         label: function(context) {
                             const store = data.results.find(s => 
@@ -697,7 +878,11 @@
                                 s.value === context.raw
                             );
                             if (store) {
-                                return `${data.metricName}: ${store.value}${data.unit}`;
+                                if (data.metricName === 'Compliance Rate') {
+                                    return `${data.metricName}: ${store.value}${data.unit} (${store.reportedDays}/${store.totalDays} days)`;
+                                } else {
+                                    return `${data.metricName}: ${store.value}${data.unit} (₱${store.cost?.toLocaleString() || 0})`;
+                                }
                             }
                             return `${context.dataset.label}: ${context.raw}${data.unit}`;
                         }
@@ -705,7 +890,7 @@
                 }
             },
             animation: {
-                duration: 800
+                duration: 600
             }
         };
 
@@ -715,86 +900,60 @@
             backgroundColor: colors,
             borderColor: '#fff',
             borderWidth: 1,
-            hoverOffset: 8
+            hoverOffset: 6
         }];
 
-        switch(type) {
-            case 'bar':
-                return {
-                    type: 'bar',
-                    data: { labels, datasets },
-                    options: {
-                        ...commonOptions,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    callback: function(value) {
-                                        return value + data.unit;
-                                    }
+        if (type === 'bar') {
+            return {
+                type: 'bar',
+                data: { labels, datasets },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + data.unit;
                                 },
-                                title: {
-                                    display: true,
-                                    text: data.metricName
-                                }
+                                font: { size: 9 }
                             },
-                            x: {
-                                grid: {
-                                    display: false
-                                }
+                            title: {
+                                display: true,
+                                text: data.metricName,
+                                font: { size: 10 }
                             }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 9 } }
                         }
                     }
-                };
-            
-            case 'horizontalBar':
-                return {
-                    type: 'bar',
-                    data: { labels, datasets },
-                    options: {
-                        ...commonOptions,
-                        indexAxis: 'y',
-                        scales: {
-                            x: {
-                                beginAtZero: true,
-                                ticks: {
-                                    callback: function(value) {
-                                        return value + data.unit;
-                                    }
-                                },
-                                title: {
-                                    display: true,
-                                    text: data.metricName
-                                }
-                            },
-                            y: {
-                                grid: {
-                                    display: false
-                                }
-                            }
-                        }
-                    }
-                };
-            
-            case 'pie':
-            default:
-                return {
-                    type: 'pie',
-                    data: { labels, datasets },
-                    options: {
-                        ...commonOptions,
-                        cutout: '0%',
-                        radius: '90%'
-                    }
-                };
+                }
+            };
+        } else { // pie chart
+            return {
+                type: 'pie',
+                data: { labels, datasets },
+                options: {
+                    ...commonOptions,
+                    cutout: '0%',
+                    radius: '85%'
+                }
+            };
         }
     }
 
-    function createEmptyChart() {
-        const ctx = document.getElementById('mainChart');
-        if (mainChart) mainChart.destroy();
+    function createEmptyCharts() {
+        createEmptyComplianceChart();
+        createEmptyCostChart();
+    }
+
+    function createEmptyComplianceChart() {
+        const ctx = document.getElementById('complianceChart');
+        if (complianceChart) complianceChart.destroy();
         
-        mainChart = new Chart(ctx, {
+        complianceChart = new Chart(ctx, {
             type: 'pie',
             data: {
                 labels: ['No Data Available'],
@@ -807,7 +966,7 @@
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
                 plugins: {
                     legend: { display: false },
                     tooltip: { enabled: false }
@@ -815,45 +974,69 @@
             }
         });
         
-        // Update stats to show empty state
-        document.getElementById('topStoreValue').textContent = '-';
-        document.getElementById('topStoreMetric').textContent = 'No data';
-        document.getElementById('averageValue').textContent = '0%';
-        document.getElementById('averageMetric').textContent = 'No stores';
-        document.getElementById('lowestValue').textContent = '-';
-        document.getElementById('lowestMetric').textContent = 'No data';
-        document.getElementById('coverageValue').textContent = '0%';
-        document.getElementById('coverageMetric').textContent = 'No reports';
+        document.getElementById('complianceStoreCount').textContent = '0 stores';
+        document.getElementById('complianceAverage').textContent = '0% avg';
+    }
+
+    function createEmptyCostChart() {
+        const ctx = document.getElementById('costChart');
+        if (costChart) costChart.destroy();
+        
+        costChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['No Data Available'],
+                datasets: [{
+                    data: [1],
+                    backgroundColor: ['#e9ecef'],
+                    borderColor: '#fff',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                }
+            }
+        });
+        
+        document.getElementById('costStoreCount').textContent = '0 stores';
+        document.getElementById('costAverage').textContent = '0% avg';
     }
 
     // ================================
     // STATISTICS FUNCTIONS
     // ================================
-    function updateChartStats(data) {
-        // Update top store
-        document.getElementById('topStoreValue').textContent = data.topStore ? 
-            STORE_DISPLAY_NAMES[data.topStore]?.split(' ')[0] || data.topStore : '-';
-        document.getElementById('topStoreMetric').textContent = `${data.topValue}${data.unit}`;
+    function updateCombinedStats() {
+        if (!currentData) return;
         
-        // Update average
-        document.getElementById('averageValue').textContent = `${data.overallAverage}${data.unit}`;
-        document.getElementById('averageMetric').textContent = `${data.storeCount} stores`;
+        const complianceData = currentData.compliance;
+        const costData = currentData.cost;
         
-        // Update lowest
-        document.getElementById('lowestValue').textContent = data.lowestStore ? 
-            STORE_DISPLAY_NAMES[data.lowestStore]?.split(' ')[0] || data.lowestStore : '-';
-        document.getElementById('lowestMetric').textContent = `${data.lowestValue}${data.unit}`;
+        // Update top compliance store
+        document.getElementById('topComplianceStore').textContent = complianceData.topStore ? 
+            STORE_DISPLAY_NAMES[complianceData.topStore]?.split(' ')[0] || complianceData.topStore : '-';
+        document.getElementById('topComplianceValue').textContent = `${complianceData.topValue}%`;
         
-        // Update coverage
-        document.getElementById('coverageValue').textContent = `${data.coverage}%`;
-        document.getElementById('coverageMetric').textContent = 'Stores Reporting';
+        // Update overall compliance average
+        document.getElementById('overallComplianceAvg').textContent = `${complianceData.overallAverage}%`;
+        
+        // Update top cost store
+        document.getElementById('topCostStore').textContent = costData.topStore ? 
+            STORE_DISPLAY_NAMES[costData.topStore]?.split(' ')[0] || costData.topStore : '-';
+        document.getElementById('topCostValue').textContent = `${costData.topValue}%`;
+        
+        // Update overall cost average
+        document.getElementById('overallCostAvg').textContent = `${costData.overallAverage}%`;
     }
 
     function updateStats() {
         if (!currentData) return;
         
         const complianceData = currentData.compliance;
-        const costData = currentData.cost;
         
         // Update quick stats
         document.getElementById('totalReports').textContent = currentData.totalReports;
@@ -875,6 +1058,9 @@
         const now = new Date();
         const timeString = now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
         document.getElementById('lastUpdatedTime').textContent = timeString;
+        
+        // Update combined stats
+        updateCombinedStats();
     }
 
     function updateEmptyStats() {
@@ -886,37 +1072,48 @@
         const now = new Date();
         const timeString = now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
         document.getElementById('lastUpdatedTime').textContent = timeString;
+        
+        // Reset combined stats
+        document.getElementById('topComplianceStore').textContent = '-';
+        document.getElementById('topComplianceValue').textContent = '0%';
+        document.getElementById('overallComplianceAvg').textContent = '0%';
+        document.getElementById('topCostStore').textContent = '-';
+        document.getElementById('topCostValue').textContent = '0%';
+        document.getElementById('overallCostAvg').textContent = '0%';
     }
 
     // ================================
     // EVENT HANDLERS
     // ================================
     function setupEventListeners() {
-        // Chart type buttons
-        document.querySelectorAll('.chart-type-btn').forEach(btn => {
+        // Compliance chart type buttons
+        document.querySelectorAll('[data-chart^="compliance-"]').forEach(btn => {
             btn.addEventListener('click', function() {
-                document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
+                const chartType = this.dataset.chart.split('-')[1]; // Get 'pie' or 'bar'
+                document.querySelectorAll('[data-chart^="compliance-"]').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
-                currentChartType = this.dataset.chart;
-                updateChart();
+                currentComplianceChartType = chartType;
+                updateComplianceChart();
             });
         });
         
-        // Metric selector
-        document.getElementById('chartMetric').addEventListener('change', function() {
-            currentMetric = this.value;
-            updateChart();
+        // Cost chart type buttons
+        document.querySelectorAll('[data-chart^="cost-"]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const chartType = this.dataset.chart.split('-')[1]; // Get 'pie' or 'bar'
+                document.querySelectorAll('[data-chart^="cost-"]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentCostChartType = chartType;
+                updateCostChart();
+            });
         });
         
-        // Sort selector
-        document.getElementById('chartSort').addEventListener('change', function() {
-            updateChart();
-        });
-        
-        // Refresh button
-        document.getElementById('refreshChart').addEventListener('click', function() {
-            loadAllData();
-            showNotification('Chart data refreshed', 'info');
+        // Refresh functionality (click on any chart card)
+        document.querySelectorAll('.chart-card').forEach(card => {
+            card.addEventListener('dblclick', function() {
+                loadAllData();
+                showNotification('Chart data refreshed', 'info');
+            });
         });
     }
 
@@ -1059,152 +1256,69 @@
                 text-overflow: ellipsis;
             }
             
-            /* Enhanced Chart Controls */
-            .chart-controls {
+            /* Chart Statistics */
+            .chart-stats {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: var(--spacing-md);
+                margin-top: var(--spacing-lg);
+            }
+            
+            .chart-stat-card {
                 background: var(--color-offwhite);
                 border-radius: var(--border-radius);
                 padding: var(--spacing-md);
-                margin-bottom: var(--spacing-md);
                 border: var(--border-thin);
-                display: flex;
-                flex-wrap: wrap;
-                gap: var(--spacing-md);
-                align-items: center;
+                transition: all var(--transition-fast);
             }
             
-            .chart-control-group {
+            .chart-stat-card:hover {
+                transform: translateY(-2px);
+                box-shadow: var(--shadow-md);
+                border-color: var(--color-primary);
+            }
+            
+            .chart-stat-card h4 {
+                font-size: var(--font-size-sm);
+                color: var(--color-darkgray);
+                margin-bottom: var(--spacing-sm);
+                font-weight: 600;
                 display: flex;
                 align-items: center;
                 gap: var(--spacing-sm);
-                flex: 1;
-                min-width: 200px;
             }
             
-            .chart-control-group label {
-                font-weight: 500;
-                color: var(--color-darkgray);
-                font-size: var(--font-size-sm);
-                white-space: nowrap;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-            }
-            
-            .chart-select {
-                padding: 6px 10px;
-                border: var(--border-thin);
-                border-radius: var(--border-radius);
-                font-size: var(--font-size-sm);
-                background: var(--color-white);
-                color: var(--color-black);
-                min-width: 120px;
-                flex: 1;
-                transition: all var(--transition-fast);
-                height: 32px;
-            }
-            
-            .chart-select:focus {
-                outline: none;
-                border-color: var(--color-primary);
-                box-shadow: 0 0 0 2px rgba(42, 89, 52, 0.1);
-            }
-            
-            #refreshChart {
-                background: var(--color-white);
-                border: var(--border-thin);
-                color: var(--color-darkgray);
-                padding: 6px 12px;
-                font-size: var(--font-size-sm);
-                height: 32px;
-                min-width: 80px;
-                transition: all var(--transition-fast);
-            }
-            
-            #refreshChart:hover {
-                background: var(--color-accent);
+            .chart-stat-card .value {
+                font-size: var(--font-size-xl);
+                font-weight: 700;
                 color: var(--color-primary);
-                border-color: var(--color-primary);
-                transform: rotate(90deg);
+                margin-bottom: 2px;
             }
             
-            /* Enhanced Chart Type Selector */
-            .chart-type-selector {
-                display: flex;
-                gap: var(--spacing-xs);
+            .chart-stat-card .subtext {
+                font-size: var(--font-size-xs);
+                color: var(--color-gray);
+            }
+            
+            /* Chart Footer */
+            .chart-footer {
+                margin-top: var(--spacing-lg);
+                padding: var(--spacing-md);
                 background: var(--color-offwhite);
                 border-radius: var(--border-radius);
-                padding: 3px;
                 border: var(--border-thin);
             }
             
-            .chart-type-btn {
-                padding: 6px 12px;
-                border: none;
-                background: transparent;
-                border-radius: var(--border-radius-sm);
-                cursor: pointer;
-                font-size: var(--font-size-sm);
-                display: inline-flex;
+            .chart-info {
+                display: flex;
                 align-items: center;
-                gap: 4px;
+                gap: var(--spacing-sm);
+                font-size: var(--font-size-sm);
                 color: var(--color-gray);
-                transition: all var(--transition-fast);
-                font-weight: 500;
-                min-width: 80px;
-                justify-content: center;
-            }
-            
-            .chart-type-btn:hover {
-                color: var(--color-primary);
-                background: rgba(42, 89, 52, 0.1);
-            }
-            
-            .chart-type-btn.active {
-                background: var(--color-primary);
-                color: white;
-                box-shadow: var(--shadow-sm);
-            }
-            
-            /* Chart Container Enhancement */
-            .chart-container {
-                position: relative;
-                height: 400px;
-                margin: var(--spacing-lg) 0;
-                background: var(--color-white);
-                border-radius: var(--border-radius);
-                padding: var(--spacing-lg);
-                border: var(--border-base);
-                box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
             }
             
             /* Mobile Responsive */
             @media (max-width: 768px) {
-                .chart-container {
-                    height: 300px;
-                    padding: var(--spacing-md);
-                }
-                
-                .chart-controls {
-                    flex-direction: column;
-                    align-items: stretch;
-                    gap: var(--spacing-sm);
-                }
-                
-                .chart-control-group {
-                    min-width: 100%;
-                }
-                
-                .chart-type-selector {
-                    width: 100%;
-                    justify-content: center;
-                }
-                
-                .chart-type-btn {
-                    min-width: 70px;
-                    padding: 6px 8px;
-                    font-size: var(--font-size-xs);
-                }
-                
                 .stat-grid {
                     grid-template-columns: repeat(2, 1fr);
                     gap: var(--spacing-sm);
@@ -1224,21 +1338,28 @@
                 .value-large {
                     font-size: var(--font-size-lg);
                 }
+                
+                .chart-stats {
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: var(--spacing-sm);
+                }
+                
+                .chart-stat-card {
+                    padding: var(--spacing-sm);
+                }
+                
+                .chart-stat-card .value {
+                    font-size: var(--font-size-lg);
+                }
             }
             
             @media (max-width: 480px) {
-                .chart-container {
-                    height: 250px;
-                }
-                
                 .stat-grid {
                     grid-template-columns: 1fr;
                 }
                 
-                .chart-type-btn {
-                    min-width: 60px;
-                    padding: 4px 6px;
-                    font-size: 10px;
+                .chart-stats {
+                    grid-template-columns: 1fr;
                 }
             }
         `;
