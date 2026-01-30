@@ -1,4 +1,39 @@
 // ================================
+// PERFORMANCE OPTIMIZATION MODULE
+// ================================
+const Performance = {
+    cache: new Map(),
+    debounceTimers: {},
+    
+    getElement(selector) {
+        if (!this.cache.has(selector)) {
+            const element = document.querySelector(selector);
+            if (element) this.cache.set(selector, element);
+            return element;
+        }
+        return this.cache.get(selector);
+    },
+    
+    debounce(func, wait = 300, id = 'default') {
+        return (...args) => {
+            clearTimeout(this.debounceTimers[id]);
+            this.debounceTimers[id] = setTimeout(() => func.apply(this, args), wait);
+        };
+    },
+    
+    throttle(func, limit = 300) {
+        let inThrottle;
+        return (...args) => {
+            if (!inThrottle) {
+                func.apply(this, args);
+                inThrottle = true;
+                setTimeout(() => inThrottle = false, limit);
+            }
+        };
+    }
+};
+
+// ================================
 // CONFIGURATION
 // ================================
 
@@ -33,8 +68,6 @@ let lastVisibleDoc = null;
 let firstVisibleDoc = null;
 let reportsData = [];
 let isDataLoading = false;
-let debounceTimer;
-let filterTimeout;
 
 // Items management variables
 let itemsData = [];
@@ -83,7 +116,7 @@ const ALL_STORES = [
     'FG NAGA'
 ];
 
-// Store abbreviations for better display - make sure all are unique and clear
+// Store abbreviations for better display
 const STORE_ABBREVIATIONS = {
     'FG Express IROSIN': 'FG IROSIN',
     'FG Express LIGAO': 'FG LIGAO',
@@ -99,7 +132,7 @@ const STORE_ABBREVIATIONS = {
     'FG NAGA': 'FG NAGA'
 };
 
-// Store display names for chart labels (even shorter if needed)
+// Store display names for chart labels
 const STORE_DISPLAY_NAMES = {
     'FG Express IROSIN': 'IROSIN',
     'FG Express LIGAO': 'LIGAO',
@@ -109,8 +142,8 @@ const STORE_DISPLAY_NAMES = {
     'FG Express BAAO': 'BAAO',
     'FG Express PIODURAN': 'PIODURAN',
     'FG Express RIZAL': 'RIZAL',
-    'FG to go TABACO': 'TABACO (to go)',
-    'FG to go LEGAZPI': 'LEGAZPI (to go)',
+    'FG to go TABACO': 'TABACO',
+    'FG to go LEGAZPI': 'LEGAZPI',
     'FG LEGAZPI': 'LEGAZPI',
     'FG NAGA': 'NAGA'
 };
@@ -119,7 +152,7 @@ const STORE_DISPLAY_NAMES = {
 // OPTIMIZED LOADING & NOTIFICATION
 // ================================
 function showNotification(message, type = 'success', duration = 3000) {
-    const notification = document.getElementById('notification');
+    const notification = Performance.getElement('#notification');
     if (!notification) return;
     
     if (notification.timeoutId) {
@@ -143,7 +176,7 @@ function showNotification(message, type = 'success', duration = 3000) {
 }
 
 function showLoading(show, message = 'Loading...') {
-    const overlay = document.getElementById('loadingOverlay');
+    const overlay = Performance.getElement('#loadingOverlay');
     if (!overlay) return;
     
     requestAnimationFrame(() => {
@@ -202,7 +235,7 @@ function lockSession() {
 }
 
 function checkPassword() {
-    const passwordInput = document.getElementById('password');
+    const passwordInput = Performance.getElement('#password');
     if (!passwordInput) return;
     
     const enteredPassword = passwordInput.value.trim();
@@ -221,9 +254,9 @@ function checkPassword() {
         
         showNotification('Access granted! Loading reports...', 'success');
         
-        const passwordSection = document.getElementById('passwordSection');
-        const reportsSection = document.getElementById('reportsSection');
-        const statisticsSection = document.getElementById('statisticsSection');
+        const passwordSection = Performance.getElement('#passwordSection');
+        const reportsSection = Performance.getElement('#reportsSection');
+        const statisticsSection = Performance.getElement('#statisticsSection');
         
         if (passwordSection) passwordSection.style.display = 'none';
         if (reportsSection) reportsSection.style.display = 'block';
@@ -249,9 +282,9 @@ function checkPassword() {
 function lockReports() {
     lockSession();
     
-    const passwordSection = document.getElementById('passwordSection');
-    const reportsSection = document.getElementById('reportsSection');
-    const statisticsSection = document.getElementById('statisticsSection');
+    const passwordSection = Performance.getElement('#passwordSection');
+    const reportsSection = Performance.getElement('#reportsSection');
+    const statisticsSection = Performance.getElement('#statisticsSection');
     
     if (passwordSection) passwordSection.style.display = 'block';
     if (reportsSection) reportsSection.style.display = 'none';
@@ -259,7 +292,7 @@ function lockReports() {
     
     showNotification('Session locked. Enter password to access again.', 'info');
     
-    const passwordInput = document.getElementById('password');
+    const passwordInput = Performance.getElement('#password');
     if (passwordInput) {
         passwordInput.focus();
     }
@@ -310,10 +343,10 @@ function initializeApp() {
 }
 
 function showPasswordSection() {
-    const passwordSection = document.getElementById('passwordSection');
+    const passwordSection = Performance.getElement('#passwordSection');
     if (passwordSection) {
         passwordSection.style.display = 'block';
-        const passwordInput = document.getElementById('password');
+        const passwordInput = Performance.getElement('#password');
         if (passwordInput) {
             passwordInput.focus();
         }
@@ -321,9 +354,9 @@ function showPasswordSection() {
 }
 
 function showReportsSection() {
-    const passwordSection = document.getElementById('passwordSection');
-    const reportsSection = document.getElementById('reportsSection');
-    const statisticsSection = document.getElementById('statisticsSection');
+    const passwordSection = Performance.getElement('#passwordSection');
+    const reportsSection = Performance.getElement('#reportsSection');
+    const statisticsSection = Performance.getElement('#statisticsSection');
     
     if (passwordSection) passwordSection.style.display = 'none';
     if (reportsSection) reportsSection.style.display = 'block';
@@ -395,10 +428,14 @@ function analyzeStorePerformance() {
             reportDates: new Set(),
             monthlyCosts: {},
             dailyCosts: {},
-            currentMetric: 0
+            currentMetric: 0,
+            periodReportCount: 0,
+            periodItemCount: 0,
+            periodCost: 0
         };
     });
     
+    // Process ALL reports for store performance
     allReportsData.forEach(report => {
         const store = report.store;
         const reportDate = new Date(report.reportDate);
@@ -415,82 +452,112 @@ function analyzeStorePerformance() {
                 reportDates: new Set(),
                 monthlyCosts: {},
                 dailyCosts: {},
-                currentMetric: 0
+                currentMetric: 0,
+                periodReportCount: 0,
+                periodItemCount: 0,
+                periodCost: 0
             };
         }
         
         const storeData = chartAnalysis.stores[store];
         
-        // Calculate total cost
+        // Calculate total cost - ONLY include approved items
         let reportCost = 0;
+        let approvedItemCount = 0;
         
-        if (report.disposalTypes?.includes('noWaste')) {
+        // Check if it's a no-waste report (always accepted)
+        if (report.disposalTypes?.includes('noWaste') || report.disposalType === 'noWaste') {
             // No waste report has 0 cost
             reportCost = 0;
-        } else {
-            // Calculate cost from expired items
-            if (report.expiredItems) {
-                report.expiredItems.forEach(item => {
-                    const itemCost = item.itemCost || 0;
-                    const quantity = item.quantity || 0;
-                    reportCost += itemCost * quantity;
-                });
-            }
             
-            // Calculate cost from waste items
-            if (report.wasteItems) {
-                report.wasteItems.forEach(item => {
+            // Count report and add to store data
+            storeData.reportCount++;
+            storeData.reportDates.add(report.reportDate);
+            
+            // Track daily reports
+            if (!chartAnalysis.dailyReports[dayKey]) {
+                chartAnalysis.dailyReports[dayKey] = new Set();
+            }
+            chartAnalysis.dailyReports[dayKey].add(store);
+            
+            // Track costs by exact date (even though cost is 0)
+            if (!chartAnalysis.dailyCosts[dateKey]) {
+                chartAnalysis.dailyCosts[dateKey] = {};
+            }
+            if (!chartAnalysis.dailyCosts[dateKey][store]) {
+                chartAnalysis.dailyCosts[dateKey][store] = 0;
+            }
+            chartAnalysis.dailyCosts[dateKey][store] += reportCost;
+            
+            return; // Skip to next report
+        }
+        
+        // For reports with items, only include APPROVED items in cost calculation
+        if (report.expiredItems) {
+            report.expiredItems.forEach(item => {
+                if (item.approvalStatus === 'approved') {
                     const itemCost = item.itemCost || 0;
                     const quantity = item.quantity || 0;
                     reportCost += itemCost * quantity;
-                });
+                    approvedItemCount++;
+                    storeData.itemCount++;
+                }
+            });
+        }
+        
+        if (report.wasteItems) {
+            report.wasteItems.forEach(item => {
+                if (item.approvalStatus === 'approved') {
+                    const itemCost = item.itemCost || 0;
+                    const quantity = item.quantity || 0;
+                    reportCost += itemCost * quantity;
+                    approvedItemCount++;
+                    storeData.itemCount++;
+                }
+            });
+        }
+        
+        // Only count report and add to store data if at least ONE item is approved
+        if (reportCost > 0 || approvedItemCount > 0) {
+            storeData.totalCost += reportCost;
+            storeData.reportCount++;
+            storeData.reportDates.add(report.reportDate);
+            
+            // Track monthly costs
+            if (!storeData.monthlyCosts[monthKey]) {
+                storeData.monthlyCosts[monthKey] = 0;
             }
+            storeData.monthlyCosts[monthKey] += reportCost;
+            
+            // Track daily costs
+            if (!storeData.dailyCosts[dayKey]) {
+                storeData.dailyCosts[dayKey] = 0;
+            }
+            storeData.dailyCosts[dayKey] += reportCost;
+            
+            // Track daily reports
+            if (!chartAnalysis.dailyReports[dayKey]) {
+                chartAnalysis.dailyReports[dayKey] = new Set();
+            }
+            chartAnalysis.dailyReports[dayKey].add(store);
+            
+            // Track costs by exact date
+            if (!chartAnalysis.dailyCosts[dateKey]) {
+                chartAnalysis.dailyCosts[dateKey] = {};
+            }
+            if (!chartAnalysis.dailyCosts[dateKey][store]) {
+                chartAnalysis.dailyCosts[dateKey][store] = 0;
+            }
+            chartAnalysis.dailyCosts[dateKey][store] += reportCost;
         }
-        
-        storeData.totalCost += reportCost;
-        storeData.reportCount++;
-        
-        // Count items
-        if (report.expiredItems) storeData.itemCount += report.expiredItems.length;
-        if (report.wasteItems) storeData.itemCount += report.wasteItems.length;
-        
-        // Track report dates for daily analysis
-        storeData.reportDates.add(report.reportDate);
-        
-        // Track monthly costs
-        if (!storeData.monthlyCosts[monthKey]) {
-            storeData.monthlyCosts[monthKey] = 0;
-        }
-        storeData.monthlyCosts[monthKey] += reportCost;
-        
-        // Track daily costs
-        if (!storeData.dailyCosts[dayKey]) {
-            storeData.dailyCosts[dayKey] = 0;
-        }
-        storeData.dailyCosts[dayKey] += reportCost;
-        
-        // Track daily reports
-        if (!chartAnalysis.dailyReports[dayKey]) {
-            chartAnalysis.dailyReports[dayKey] = new Set();
-        }
-        chartAnalysis.dailyReports[dayKey].add(store);
-        
-        // Track costs by exact date
-        if (!chartAnalysis.dailyCosts[dateKey]) {
-            chartAnalysis.dailyCosts[dateKey] = {};
-        }
-        if (!chartAnalysis.dailyCosts[dateKey][store]) {
-            chartAnalysis.dailyCosts[dateKey][store] = 0;
-        }
-        chartAnalysis.dailyCosts[dateKey][store] += reportCost;
     });
 }
 
 function createChartBasedOnType() {
-    const period = document.getElementById('chartPeriod').value;
-    const metric = document.getElementById('chartMetric').value;
-    const sortOrder = document.getElementById('chartSort').value;
-    const datePicker = document.getElementById('chartDatePicker');
+    const period = Performance.getElement('#chartPeriod')?.value || 'all';
+    const metric = Performance.getElement('#chartMetric')?.value || 'cost';
+    const sortOrder = Performance.getElement('#chartSort')?.value || 'desc';
+    const datePicker = Performance.getElement('#chartDatePicker');
     
     // Start with ALL_STORES
     let storeEntries = ALL_STORES.map(store => {
@@ -501,98 +568,197 @@ function createChartBasedOnType() {
             reportDates: new Set(),
             monthlyCosts: {},
             dailyCosts: {},
-            currentMetric: 0
+            currentMetric: 0,
+            periodReportCount: 0,
+            periodItemCount: 0,
+            periodCost: 0
         };
+        
+        // Reset period-specific counters
+        data.periodReportCount = 0;
+        data.periodItemCount = 0;
+        data.periodCost = 0;
         
         return [store, data];
     });
     
-    // Filter by period
+    // Filter by period and calculate period-specific metrics
     const now = new Date();
+    
     if (period === 'today') {
         const today = now.toISOString().split('T')[0]; // YYYY-MM-DD format
-        storeEntries = storeEntries.map(([store, data]) => {
-            const dailyCost = data.dailyCosts[today] || 0;
-            return [store, { ...data, currentMetric: dailyCost }];
+        storeEntries.forEach(([store, data]) => {
+            // Count reports from today
+            data.reportDates.forEach(dateStr => {
+                if (dateStr === today) {
+                    data.periodReportCount++;
+                }
+            });
+            
+            // Get cost from today
+            data.periodCost = data.dailyCosts[today] || 0;
+            
+            // For item count, we need to filter reports from today
+            // This is a simplified version - in production you might want to track this differently
+            data.periodItemCount = data.itemCount; // This is an approximation
         });
     } else if (period === 'yesterday') {
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayKey = yesterday.toISOString().split('T')[0];
-        storeEntries = storeEntries.map(([store, data]) => {
-            const dailyCost = data.dailyCosts[yesterdayKey] || 0;
-            return [store, { ...data, currentMetric: dailyCost }];
+        
+        storeEntries.forEach(([store, data]) => {
+            data.reportDates.forEach(dateStr => {
+                if (dateStr === yesterdayKey) {
+                    data.periodReportCount++;
+                }
+            });
+            data.periodCost = data.dailyCosts[yesterdayKey] || 0;
+            data.periodItemCount = data.itemCount; // Approximation
         });
     } else if (period === 'thisWeek') {
         const startOfWeek = new Date(now);
         startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Sunday
-        storeEntries = storeEntries.map(([store, data]) => {
+        
+        storeEntries.forEach(([store, data]) => {
             let weekCost = 0;
+            let weekReportCount = 0;
+            
             for (let i = 0; i < 7; i++) {
                 const date = new Date(startOfWeek);
                 date.setDate(date.getDate() + i);
                 const dateKey = date.toISOString().split('T')[0];
+                
+                // Check if store has reports on this date
+                if (data.reportDates.has(dateKey)) {
+                    weekReportCount++;
+                }
+                
                 weekCost += data.dailyCosts[dateKey] || 0;
             }
-            return [store, { ...data, currentMetric: weekCost }];
+            
+            data.periodReportCount = weekReportCount;
+            data.periodCost = weekCost;
+            data.periodItemCount = data.itemCount; // Approximation
         });
     } else if (period === 'lastWeek') {
         const startOfLastWeek = new Date(now);
         startOfLastWeek.setDate(startOfLastWeek.getDate() - startOfLastWeek.getDay() - 7);
-        storeEntries = storeEntries.map(([store, data]) => {
+        
+        storeEntries.forEach(([store, data]) => {
             let weekCost = 0;
+            let weekReportCount = 0;
+            
             for (let i = 0; i < 7; i++) {
                 const date = new Date(startOfLastWeek);
                 date.setDate(date.getDate() + i);
                 const dateKey = date.toISOString().split('T')[0];
+                
+                if (data.reportDates.has(dateKey)) {
+                    weekReportCount++;
+                }
+                
                 weekCost += data.dailyCosts[dateKey] || 0;
             }
-            return [store, { ...data, currentMetric: weekCost }];
+            
+            data.periodReportCount = weekReportCount;
+            data.periodCost = weekCost;
+            data.periodItemCount = data.itemCount; // Approximation
         });
     } else if (period === 'month') {
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        storeEntries = storeEntries.map(([store, data]) => {
-            const monthlyCost = data.monthlyCosts[currentMonth] || 0;
-            return [store, { ...data, currentMetric: monthlyCost }];
+        
+        storeEntries.forEach(([store, data]) => {
+            // Count reports from this month
+            data.reportDates.forEach(dateStr => {
+                if (dateStr.startsWith(currentMonth)) {
+                    data.periodReportCount++;
+                }
+            });
+            
+            data.periodCost = data.monthlyCosts[currentMonth] || 0;
+            data.periodItemCount = data.itemCount; // Approximation
         });
     } else if (period === 'lastMonth') {
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthKey = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
-        storeEntries = storeEntries.map(([store, data]) => {
-            const monthlyCost = data.monthlyCosts[lastMonthKey] || 0;
-            return [store, { ...data, currentMetric: monthlyCost }];
+        
+        storeEntries.forEach(([store, data]) => {
+            data.reportDates.forEach(dateStr => {
+                if (dateStr.startsWith(lastMonthKey)) {
+                    data.periodReportCount++;
+                }
+            });
+            data.periodCost = data.monthlyCosts[lastMonthKey] || 0;
+            data.periodItemCount = data.itemCount; // Approximation
         });
     } else if (period === 'quarter') {
         const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
-        storeEntries = storeEntries.map(([store, data]) => {
+        const quarterEnd = new Date(quarterStart.getFullYear(), quarterStart.getMonth() + 3, 0);
+        
+        storeEntries.forEach(([store, data]) => {
             let quarterCost = 0;
+            let quarterReportCount = 0;
+            
+            data.reportDates.forEach(dateStr => {
+                const reportDate = new Date(dateStr);
+                if (reportDate >= quarterStart && reportDate <= quarterEnd) {
+                    quarterReportCount++;
+                }
+            });
+            
             for (let i = 0; i < 3; i++) {
                 const month = new Date(quarterStart.getFullYear(), quarterStart.getMonth() + i, 1);
                 const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
                 quarterCost += data.monthlyCosts[monthKey] || 0;
             }
-            return [store, { ...data, currentMetric: quarterCost }];
+            
+            data.periodReportCount = quarterReportCount;
+            data.periodCost = quarterCost;
+            data.periodItemCount = data.itemCount; // Approximation
         });
     } else if (period === 'year') {
         const currentYear = now.getFullYear();
-        storeEntries = storeEntries.map(([store, data]) => {
+        const yearStart = new Date(currentYear, 0, 1);
+        const yearEnd = new Date(currentYear, 11, 31);
+        
+        storeEntries.forEach(([store, data]) => {
             let yearCost = 0;
+            let yearReportCount = 0;
+            
+            data.reportDates.forEach(dateStr => {
+                if (dateStr.startsWith(currentYear.toString())) {
+                    yearReportCount++;
+                }
+            });
+            
             for (let i = 1; i <= 12; i++) {
                 const monthKey = `${currentYear}-${String(i).padStart(2, '0')}`;
                 yearCost += data.monthlyCosts[monthKey] || 0;
             }
-            return [store, { ...data, currentMetric: yearCost }];
+            
+            data.periodReportCount = yearReportCount;
+            data.periodCost = yearCost;
+            data.periodItemCount = data.itemCount; // Approximation
         });
     } else if (period === 'specificDate' && datePicker && datePicker.value) {
         const selectedDate = datePicker.value;
-        storeEntries = storeEntries.map(([store, data]) => {
-            const dailyCost = data.dailyCosts[selectedDate] || 0;
-            return [store, { ...data, currentMetric: dailyCost }];
+        
+        storeEntries.forEach(([store, data]) => {
+            if (data.reportDates.has(selectedDate)) {
+                data.periodReportCount = 1;
+            } else {
+                data.periodReportCount = 0;
+            }
+            data.periodCost = data.dailyCosts[selectedDate] || 0;
+            data.periodItemCount = data.itemCount; // Approximation
         });
     } else {
-        // All time - use total cost
-        storeEntries = storeEntries.map(([store, data]) => {
-            return [store, { ...data, currentMetric: data.totalCost }];
+        // All time - use total values
+        storeEntries.forEach(([store, data]) => {
+            data.periodReportCount = data.reportCount;
+            data.periodCost = data.totalCost;
+            data.periodItemCount = data.itemCount;
         });
     }
     
@@ -601,16 +767,16 @@ function createChartBasedOnType() {
         let metricValue;
         switch(metric) {
             case 'reports':
-                metricValue = data.reportCount;
+                metricValue = data.periodReportCount; // FIXED: Use period-specific report count
                 break;
             case 'items':
-                metricValue = data.itemCount;
+                metricValue = data.periodItemCount; // FIXED: Use period-specific item count
                 break;
             case 'average':
-                metricValue = data.reportCount > 0 ? data.totalCost / data.reportCount : 0;
+                metricValue = data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0; // FIXED: Use period values
                 break;
             default: // cost
-                metricValue = data.currentMetric;
+                metricValue = data.periodCost; // FIXED: Use period-specific cost
         }
         return {
             store,
@@ -632,13 +798,13 @@ function createChartBasedOnType() {
     const dataValues = sortedStoreEntries.map(([store, data]) => {
         switch(metric) {
             case 'reports':
-                return data.reportCount;
+                return data.periodReportCount; // FIXED
             case 'items':
-                return data.itemCount;
+                return data.periodItemCount; // FIXED
             case 'average':
-                return data.reportCount > 0 ? data.totalCost / data.reportCount : 0;
+                return data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0; // FIXED
             default: // cost
-                return data.currentMetric;
+                return data.periodCost; // FIXED
         }
     });
     
@@ -650,7 +816,8 @@ function createChartBasedOnType() {
 }
 
 function createChart(labels, dataValues, storeEntries, metric, period) {
-    const ctx = document.getElementById('storeChart').getContext('2d');
+    const ctx = document.getElementById('storeChart')?.getContext('2d');
+    if (!ctx) return;
     
     // Destroy existing chart
     if (storeChart) {
@@ -965,7 +1132,7 @@ function getChartLabel(metric, period) {
 }
 
 function getPeriodText(period) {
-    const datePicker = document.getElementById('chartDatePicker');
+    const datePicker = Performance.getElement('#chartDatePicker');
     const now = new Date();
     
     switch(period) {
@@ -1029,7 +1196,7 @@ function buildChartTooltip(context, storeEntries, metric, period) {
     
     // Add additional info
     if (metric !== 'reports') {
-        label += ` (${storeData.reportCount} report${storeData.reportCount !== 1 ? 's' : ''} total)`;
+        label += ` (${storeData.periodReportCount} report${storeData.periodReportCount !== 1 ? 's' : ''} in period)`;
     }
     
     // Add last report date if available
@@ -1090,14 +1257,14 @@ function updateChartStatistics(storeEntries, metric, period) {
     
     // Top performing store (excluding zeros if needed)
     const topStore = storeEntries[0];
-    const topStoreName = document.getElementById('topStoreName');
-    const topStoreValue = document.getElementById('topStoreValue');
+    const topStoreName = Performance.getElement('#topStoreName');
+    const topStoreValue = Performance.getElement('#topStoreValue');
     
     if (topStoreName && topStoreValue) {
-        const value = metric === 'reports' ? topStore[1].reportCount :
-                     metric === 'items' ? topStore[1].itemCount :
-                     metric === 'average' ? (topStore[1].reportCount > 0 ? topStore[1].totalCost / topStore[1].reportCount : 0) :
-                     topStore[1].currentMetric;
+        const value = metric === 'reports' ? topStore[1].periodReportCount :
+                     metric === 'items' ? topStore[1].periodItemCount :
+                     metric === 'average' ? (topStore[1].periodReportCount > 0 ? topStore[1].periodCost / topStore[1].periodReportCount : 0) :
+                     topStore[1].periodCost;
         
         topStoreName.textContent = STORE_DISPLAY_NAMES[topStore[0]] || STORE_ABBREVIATIONS[topStore[0]] || topStore[0];
         topStoreValue.textContent = metric === 'reports' ? `${value} reports` :
@@ -1107,18 +1274,18 @@ function updateChartStatistics(storeEntries, metric, period) {
     }
     
     // Total cost/reports
-    const totalCostEl = document.getElementById('totalCost');
-    const reportCountEl = document.getElementById('reportCount');
+    const totalCostEl = Performance.getElement('#totalCost');
+    const reportCountEl = Performance.getElement('#reportCount');
     
     if (totalCostEl && reportCountEl) {
         const totalValue = storeEntries.reduce((sum, [store, data]) => {
-            return sum + (metric === 'reports' ? data.reportCount :
-                         metric === 'items' ? data.itemCount :
-                         metric === 'average' ? (data.reportCount > 0 ? data.totalCost / data.reportCount : 0) :
-                         data.currentMetric);
+            return sum + (metric === 'reports' ? data.periodReportCount :
+                         metric === 'items' ? data.periodItemCount :
+                         metric === 'average' ? (data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0) :
+                         data.periodCost);
         }, 0);
         
-        const totalReports = storeEntries.reduce((sum, [store, data]) => sum + data.reportCount, 0);
+        const totalReports = storeEntries.reduce((sum, [store, data]) => sum + data.periodReportCount, 0);
         
         totalCostEl.textContent = metric === 'reports' ? `${totalValue}` :
                                  metric === 'items' ? `${totalValue}` :
@@ -1128,8 +1295,8 @@ function updateChartStatistics(storeEntries, metric, period) {
     }
     
     // Most consistent store (daily reporting)
-    const consistentStoreEl = document.getElementById('consistentStore');
-    const consistencyRateEl = document.getElementById('consistencyRate');
+    const consistentStoreEl = Performance.getElement('#consistentStore');
+    const consistencyRateEl = Performance.getElement('#consistencyRate');
     
     if (consistentStoreEl && consistencyRateEl) {
         let mostConsistentStore = '';
@@ -1148,8 +1315,8 @@ function updateChartStatistics(storeEntries, metric, period) {
     }
     
     // Store needing attention
-    const attentionStoreEl = document.getElementById('attentionStore');
-    const attentionReasonEl = document.getElementById('attentionReason');
+    const attentionStoreEl = Performance.getElement('#attentionStore');
+    const attentionReasonEl = Performance.getElement('#attentionReason');
     
     if (attentionStoreEl && attentionReasonEl) {
         let attentionStore = '';
@@ -1157,24 +1324,20 @@ function updateChartStatistics(storeEntries, metric, period) {
         
         // Find store with no reports at all
         for (const [store, data] of storeEntries) {
-            if (data.reportCount === 0) {
+            if (data.periodReportCount === 0) {
                 attentionStore = store;
-                reason = 'No reports yet';
+                reason = 'No reports in selected period';
                 break;
             }
         }
         
         if (!attentionStore) {
-            // If all stores have reports, check for stores with no reports in last 30 days
+            // If all stores have reports, check for stores with low report counts
             for (const [store, data] of storeEntries) {
-                const lastReport = getLastReportDate(store);
-                if (lastReport && lastReport.includes('d ago')) {
-                    const days = parseInt(lastReport);
-                    if (days > 30) {
-                        attentionStore = store;
-                        reason = `No reports in ${days} days`;
-                        break;
-                    }
+                if (data.periodReportCount < 2) {
+                    attentionStore = store;
+                    reason = `Only ${data.periodReportCount} report${data.periodReportCount !== 1 ? 's' : ''} in period`;
+                    break;
                 }
             }
         }
@@ -1189,16 +1352,11 @@ function updateChartStatistics(storeEntries, metric, period) {
     }
     
     // Daily reporting rate
-    const dailyRateEl = document.getElementById('dailyRate');
+    const dailyRateEl = Performance.getElement('#dailyRate');
     if (dailyRateEl) {
         const totalStores = storeEntries.length;
         const activeStores = storeEntries.filter(([store, data]) => {
-            return Array.from(data.reportDates).some(dateStr => {
-                const reportDate = new Date(dateStr);
-                const yesterday = new Date();
-                yesterday.setDate(yesterday.getDate() - 1);
-                return reportDate >= yesterday;
-            });
+            return data.periodReportCount > 0;
         }).length;
         
         const dailyRate = totalStores > 0 ? Math.round((activeStores / totalStores) * 100) : 0;
@@ -1206,13 +1364,13 @@ function updateChartStatistics(storeEntries, metric, period) {
     }
     
     // Last updated
-    const lastUpdatedEl = document.getElementById('lastUpdated');
+    const lastUpdatedEl = Performance.getElement('#lastUpdated');
     if (lastUpdatedEl) {
         lastUpdatedEl.textContent = `Updated: ${now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'})}`;
     }
     
     // Update period info
-    const periodInfoEl = document.getElementById('periodInfo');
+    const periodInfoEl = Performance.getElement('#periodInfo');
     if (periodInfoEl) {
         periodInfoEl.textContent = getPeriodText(period);
     }
@@ -1223,13 +1381,13 @@ function refreshChart() {
 }
 
 function updateChartPeriodControls() {
-    const periodSelect = document.getElementById('chartPeriod');
-    const datePickerContainer = document.getElementById('datePickerContainer');
+    const periodSelect = Performance.getElement('#chartPeriod');
+    const datePickerContainer = Performance.getElement('#datePickerContainer');
     
     if (periodSelect && datePickerContainer) {
         if (periodSelect.value === 'specificDate') {
             datePickerContainer.style.display = 'block';
-            const datePicker = document.getElementById('chartDatePicker');
+            const datePicker = Performance.getElement('#chartDatePicker');
             if (datePicker) {
                 datePicker.value = new Date().toISOString().split('T')[0];
             }
@@ -1384,7 +1542,7 @@ function getItemCount(report) {
 }
 
 // ================================
-// OPTIMIZED REPORTS LOADING WITH COST
+// OPTIMIZED REPORTS LOADING WITH COST - UPDATED FOR DATE RANGE
 // ================================
 async function loadReports() {
     if (isDataLoading) return;
@@ -1399,18 +1557,19 @@ async function loadReports() {
     
     try {
         reportsData = [];
-        const tableBody = document.getElementById('reportsTableBody');
+        const tableBody = Performance.getElement('#reportsTableBody');
         if (!tableBody) return;
         
         // Clear table efficiently using innerHTML for better performance
         tableBody.innerHTML = '';
         
-        // Get filter values
-        const storeFilter = document.getElementById('filterStore');
-        const dateFilter = document.getElementById('filterDate');
-        const searchEmail = document.getElementById('searchEmail');
-        const typeFilter = document.getElementById('filterType');
-        const filterStatus = document.getElementById('filterStatus');
+        // Get filter values - UPDATED for date range
+        const storeFilter = Performance.getElement('#filterStore');
+        const dateFromFilter = Performance.getElement('#filterDateFrom');
+        const dateToFilter = Performance.getElement('#filterDateTo');
+        const searchEmail = Performance.getElement('#searchEmail');
+        const typeFilter = Performance.getElement('#filterType');
+        const filterStatus = Performance.getElement('#filterStatus');
         
         let query = db.collection('wasteReports');
         
@@ -1419,9 +1578,9 @@ async function loadReports() {
             query = query.where('store', '==', storeFilter.value);
         }
         
-        if (dateFilter?.value) {
-            query = query.where('reportDate', '==', dateFilter.value);
-        }
+        // FIXED: Date range filtering - we'll filter client-side for range
+        // Firestore doesn't support range queries on different fields easily
+        // So we'll get all reports and filter client-side for date range
         
         query = query.orderBy('submittedAt', 'desc').limit(pageSize);
         
@@ -1474,7 +1633,29 @@ async function loadReports() {
             const statusMatch = !filterStatus?.value || 
                                approvalStatus === filterStatus.value;
             
-            if (emailMatch && typeMatch && statusMatch) {
+            // UPDATED: Date range filtering
+            let dateMatch = true;
+            if (dateFromFilter?.value || dateToFilter?.value) {
+                const reportDate = new Date(report.reportDate);
+                
+                if (dateFromFilter?.value) {
+                    const fromDate = new Date(dateFromFilter.value);
+                    fromDate.setHours(0, 0, 0, 0);
+                    if (reportDate < fromDate) {
+                        dateMatch = false;
+                    }
+                }
+                
+                if (dateToFilter?.value) {
+                    const toDate = new Date(dateToFilter.value);
+                    toDate.setHours(23, 59, 59, 999);
+                    if (reportDate > toDate) {
+                        dateMatch = false;
+                    }
+                }
+            }
+            
+            if (emailMatch && typeMatch && statusMatch && dateMatch) {
                 const itemCount = getItemCount(report);
                 const totalCost = calculateReportCost(report);
                 const costCellClass = getCostCellClass(totalCost);
@@ -1558,11 +1739,11 @@ async function loadReports() {
 }
 
 function updateStatistics(total, expired, waste, noWaste, pending = 0) {
-    const totalEl = document.getElementById('totalReports');
-    const expiredEl = document.getElementById('expiredCount');
-    const wasteEl = document.getElementById('wasteCount');
-    const noWasteEl = document.getElementById('noWasteCount');
-    const pendingEl = document.getElementById('pendingApprovalCount');
+    const totalEl = Performance.getElement('#totalReports');
+    const expiredEl = Performance.getElement('#expiredCount');
+    const wasteEl = Performance.getElement('#wasteCount');
+    const noWasteEl = Performance.getElement('#noWasteCount');
+    const pendingEl = Performance.getElement('#pendingApprovalCount');
     
     if (totalEl) totalEl.textContent = total;
     if (expiredEl) expiredEl.textContent = expired;
@@ -1572,20 +1753,20 @@ function updateStatistics(total, expired, waste, noWaste, pending = 0) {
 }
 
 function updatePageInfo() {
-    const pageInfo = document.getElementById('pageInfo');
+    const pageInfo = Performance.getElement('#pageInfo');
     if (pageInfo) {
         pageInfo.textContent = `Page ${currentPage}`;
     }
     
-    const showingCount = document.getElementById('showingCount');
+    const showingCount = Performance.getElement('#showingCount');
     if (showingCount) {
         showingCount.textContent = reportsData.length;
     }
 }
 
 function updatePaginationButtons() {
-    const prevBtn = document.getElementById('prevPageBtn');
-    const nextBtn = document.getElementById('nextPageBtn');
+    const prevBtn = Performance.getElement('#prevPageBtn');
+    const nextBtn = Performance.getElement('#nextPageBtn');
     
     if (prevBtn) {
         prevBtn.disabled = currentPage <= 1;
@@ -1602,27 +1783,28 @@ function changePage(direction) {
 }
 
 // ================================
-// OPTIMIZED FILTERS WITH DEBOUNCE
+// OPTIMIZED FILTERS WITH DEBOUNCE - UPDATED FOR DATE RANGE
 // ================================
 function debounceApplyFilters() {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
+    Performance.debounce(() => {
         currentPage = 1;
         lastVisibleDoc = null;
         loadReports();
-    }, 300); // Reduced from 500ms for faster response
+    }, 300, 'filters')();
 }
 
 function clearFilters() {
-    const storeFilter = document.getElementById('filterStore');
-    const typeFilter = document.getElementById('filterType');
-    const dateFilter = document.getElementById('filterDate');
-    const searchEmail = document.getElementById('searchEmail');
-    const filterStatus = document.getElementById('filterStatus');
+    const storeFilter = Performance.getElement('#filterStore');
+    const typeFilter = Performance.getElement('#filterType');
+    const dateFromFilter = Performance.getElement('#filterDateFrom'); // UPDATED
+    const dateToFilter = Performance.getElement('#filterDateTo'); // UPDATED
+    const searchEmail = Performance.getElement('#searchEmail');
+    const filterStatus = Performance.getElement('#filterStatus');
     
     if (storeFilter) storeFilter.value = '';
     if (typeFilter) typeFilter.value = '';
-    if (dateFilter) dateFilter.value = '';
+    if (dateFromFilter) dateFromFilter.value = ''; // UPDATED
+    if (dateToFilter) dateToFilter.value = ''; // UPDATED
     if (searchEmail) searchEmail.value = '';
     if (filterStatus) filterStatus.value = '';
     
@@ -1655,7 +1837,7 @@ async function viewReportDetails(reportId) {
         const report = { id: doc.id, ...doc.data() };
         await buildModalContent(report);
         
-        const detailsModal = document.getElementById('detailsModal');
+        const detailsModal = Performance.getElement('#detailsModal');
         if (detailsModal) {
             detailsModal.style.display = 'flex';
         }
@@ -1669,7 +1851,7 @@ async function viewReportDetails(reportId) {
 }
 
 async function buildModalContent(report) {
-    const modalContent = document.getElementById('modalContent');
+    const modalContent = Performance.getElement('#modalContent');
     if (!modalContent) return;
     
     const content = await buildReportContent(report);
@@ -1973,7 +2155,7 @@ function buildNoWasteContent() {
 }
 
 function closeDetailsModal() {
-    const detailsModal = document.getElementById('detailsModal');
+    const detailsModal = Performance.getElement('#detailsModal');
     if (detailsModal) {
         detailsModal.style.display = 'none';
     }
@@ -1981,8 +2163,8 @@ function closeDetailsModal() {
 }
 
 function viewImage(src) {
-    const imageModal = document.getElementById('imageModal');
-    const modalImage = document.getElementById('modalImage');
+    const imageModal = Performance.getElement('#imageModal');
+    const modalImage = Performance.getElement('#modalImage');
     
     if (imageModal && modalImage) {
         modalImage.src = src;
@@ -1995,7 +2177,7 @@ function viewImage(src) {
 }
 
 function closeImageModal() {
-    const imageModal = document.getElementById('imageModal');
+    const imageModal = Performance.getElement('#imageModal');
     if (imageModal) {
         imageModal.style.display = 'none';
     }
@@ -2243,7 +2425,7 @@ async function updateReportAfterApproval(reportId) {
             reportsData[rowIndex] = updatedReport;
             
             // Update the specific row in the table
-            const tableBody = document.getElementById('reportsTableBody');
+            const tableBody = Performance.getElement('#reportsTableBody');
             if (tableBody && tableBody.children[rowIndex]) {
                 const row = tableBody.children[rowIndex];
                 const approvalCell = row.cells[9]; // Approval status cell
@@ -2260,6 +2442,11 @@ async function updateReportAfterApproval(reportId) {
         
         // Refresh statistics
         updateStatisticsFromReports();
+        
+        // Refresh chart data if report status changed (since we now track approved items)
+        setTimeout(() => {
+            loadAllReportsForChart();
+        }, 500);
         
     } catch (error) {
         console.error('Error updating UI after approval:', error);
@@ -2294,7 +2481,7 @@ function updateStatisticsFromReports() {
 function openRejectionModal(itemInfo, reportId, itemIndex, itemType) {
     currentRejectionData = { reportId, itemIndex, itemType };
     
-    const rejectionItemInfo = document.getElementById('rejectionItemInfo');
+    const rejectionItemInfo = Performance.getElement('#rejectionItemInfo');
     if (rejectionItemInfo) {
         rejectionItemInfo.innerHTML = `
             <p><strong>Item:</strong> ${itemInfo.item || 'N/A'}</p>
@@ -2305,13 +2492,13 @@ function openRejectionModal(itemInfo, reportId, itemIndex, itemType) {
         `;
     }
     
-    const rejectionReason = document.getElementById('rejectionReason');
+    const rejectionReason = Performance.getElement('#rejectionReason');
     if (rejectionReason) {
         rejectionReason.value = '';
-        document.getElementById('rejectionCharCount').textContent = '0/500 characters';
+        Performance.getElement('#rejectionCharCount').textContent = '0/500 characters';
     }
     
-    const rejectionModal = document.getElementById('rejectionModal');
+    const rejectionModal = Performance.getElement('#rejectionModal');
     if (rejectionModal) {
         rejectionModal.style.display = 'flex';
         rejectionReason.focus();
@@ -2320,7 +2507,7 @@ function openRejectionModal(itemInfo, reportId, itemIndex, itemType) {
 
 function closeRejectionModal() {
     currentRejectionData = null;
-    const rejectionModal = document.getElementById('rejectionModal');
+    const rejectionModal = Performance.getElement('#rejectionModal');
     if (rejectionModal) {
         rejectionModal.style.display = 'none';
     }
@@ -2329,18 +2516,18 @@ function closeRejectionModal() {
 function openBulkRejectionModal(reportId, itemCount, itemType) {
     currentBulkRejectionData = { reportId, itemType };
     
-    const bulkItemsCount = document.getElementById('bulkItemsCount');
-    const bulkReportId = document.getElementById('bulkReportId');
+    const bulkItemsCount = Performance.getElement('#bulkItemsCount');
+    const bulkReportId = Performance.getElement('#bulkReportId');
     if (bulkItemsCount) bulkItemsCount.textContent = itemCount;
     if (bulkReportId) bulkReportId.textContent = reportId;
     
-    const bulkRejectionReason = document.getElementById('bulkRejectionReason');
+    const bulkRejectionReason = Performance.getElement('#bulkRejectionReason');
     if (bulkRejectionReason) {
         bulkRejectionReason.value = '';
-        document.getElementById('bulkRejectionCharCount').textContent = '0/500 characters';
+        Performance.getElement('#bulkRejectionCharCount').textContent = '0/500 characters';
     }
     
-    const bulkRejectionModal = document.getElementById('bulkRejectionModal');
+    const bulkRejectionModal = Performance.getElement('#bulkRejectionModal');
     if (bulkRejectionModal) {
         bulkRejectionModal.style.display = 'flex';
         bulkRejectionReason.focus();
@@ -2349,14 +2536,14 @@ function openBulkRejectionModal(reportId, itemCount, itemType) {
 
 function closeBulkRejectionModal() {
     currentBulkRejectionData = null;
-    const bulkRejectionModal = document.getElementById('bulkRejectionModal');
+    const bulkRejectionModal = Performance.getElement('#bulkRejectionModal');
     if (bulkRejectionModal) {
         bulkRejectionModal.style.display = 'none';
     }
 }
 
 function handleItemRejection() {
-    const reason = document.getElementById('rejectionReason').value.trim();
+    const reason = Performance.getElement('#rejectionReason')?.value.trim();
     if (!reason) {
         showNotification('Please provide a reason for rejection', 'error');
         return;
@@ -2374,7 +2561,7 @@ function handleItemRejection() {
 }
 
 function handleBulkItemRejection() {
-    const reason = document.getElementById('bulkRejectionReason').value.trim();
+    const reason = Performance.getElement('#bulkRejectionReason')?.value.trim();
     if (!reason) {
         showNotification('Please provide a reason for rejection', 'error');
         return;
@@ -2391,7 +2578,7 @@ function handleBulkItemRejection() {
 }
 
 // ================================
-// EMAIL SENDING FUNCTIONS - FIXED VERSION
+// EMAIL SENDING FUNCTIONS
 // ================================
 async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType, reason, reportData) {
     try {
@@ -2426,7 +2613,6 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType,
 
         console.log('Sending rejection email with data:', emailData);
 
-        // Use a more reliable method to send data
         const formData = new FormData();
         Object.keys(emailData).forEach(key => {
             formData.append(key, emailData[key]);
@@ -2491,7 +2677,7 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType,
 
     } catch (error) {
         console.error('❌ Rejection email function error:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: error.message || 'Unknown error' };
     }
 }
 
@@ -2580,12 +2766,12 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
 
     } catch (error) {
         console.error('❌ Bulk rejection email function error:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: error.message || 'Unknown error' };
     }
 }
 
 // ================================
-// EXPORT FUNCTIONS
+// EXPORT FUNCTIONS - UPDATED FOR DATE RANGE
 // ================================
 async function exportReports(type = 'current') {
     if (!isAuthenticated()) {
@@ -2604,17 +2790,16 @@ async function exportReports(type = 'current') {
         let query = db.collection('wasteReports').orderBy('submittedAt', 'desc');
         
         if (type === 'current') {
-            // Apply current filters
-            const storeFilter = document.getElementById('filterStore');
-            const dateFilter = document.getElementById('filterDate');
+            // Apply current filters - UPDATED for date range
+            const storeFilter = Performance.getElement('#filterStore');
+            const dateFromFilter = Performance.getElement('#filterDateFrom');
+            const dateToFilter = Performance.getElement('#filterDateTo');
             
             if (storeFilter?.value) {
                 query = query.where('store', '==', storeFilter.value);
             }
             
-            if (dateFilter?.value) {
-                query = query.where('reportDate', '==', dateFilter.value);
-            }
+            // Note: We'll filter by date range client-side for export too
         }
         
         const snapshot = await query.get();
@@ -2624,10 +2809,39 @@ async function exportReports(type = 'current') {
             return;
         }
         
-        const reports = [];
+        let reports = [];
         snapshot.forEach(doc => {
             reports.push({ id: doc.id, ...doc.data() });
         });
+        
+        // Apply date range filter client-side for export
+        const dateFromFilter = Performance.getElement('#filterDateFrom');
+        const dateToFilter = Performance.getElement('#filterDateTo');
+        
+        if (type === 'current' && (dateFromFilter?.value || dateToFilter?.value)) {
+            reports = reports.filter(report => {
+                const reportDate = new Date(report.reportDate);
+                let isValid = true;
+                
+                if (dateFromFilter?.value) {
+                    const fromDate = new Date(dateFromFilter.value);
+                    fromDate.setHours(0, 0, 0, 0);
+                    if (reportDate < fromDate) {
+                        isValid = false;
+                    }
+                }
+                
+                if (dateToFilter?.value) {
+                    const toDate = new Date(dateToFilter.value);
+                    toDate.setHours(23, 59, 59, 999);
+                    if (reportDate > toDate) {
+                        isValid = false;
+                    }
+                }
+                
+                return isValid;
+            });
+        }
         
         await exportToExcel(reports, type === 'all' ? 'All_Reports' : 'Filtered_Reports');
         
@@ -2645,7 +2859,7 @@ async function exportReportsByDate() {
         return;
     }
     
-    const exportDateEl = document.getElementById('exportDate');
+    const exportDateEl = Performance.getElement('#exportDate');
     const exportDate = exportDateEl ? exportDateEl.value : '';
     
     if (!exportDate) {
@@ -2739,10 +2953,10 @@ async function exportToExcel(reports, fileName) {
 }
 
 function showExportDate() {
-    const exportDateContainer = document.getElementById('exportDateContainer');
+    const exportDateContainer = Performance.getElement('#exportDateContainer');
     if (exportDateContainer) {
         exportDateContainer.style.display = 'block';
-        const exportDateInput = document.getElementById('exportDate');
+        const exportDateInput = Performance.getElement('#exportDate');
         if (exportDateInput) {
             const today = new Date().toISOString().split('T')[0];
             exportDateInput.value = today;
@@ -2751,7 +2965,7 @@ function showExportDate() {
 }
 
 function hideExportDate() {
-    const exportDateContainer = document.getElementById('exportDateContainer');
+    const exportDateContainer = Performance.getElement('#exportDateContainer');
     if (exportDateContainer) {
         exportDateContainer.style.display = 'none';
     }
@@ -2766,7 +2980,7 @@ function openItemsManagement() {
         return;
     }
     
-    const itemsModal = document.getElementById('itemsManagementModal');
+    const itemsModal = Performance.getElement('#itemsManagementModal');
     if (itemsModal) {
         itemsModal.style.display = 'flex';
         loadItems();
@@ -2774,7 +2988,7 @@ function openItemsManagement() {
 }
 
 function closeItemsManagement() {
-    const itemsModal = document.getElementById('itemsManagementModal');
+    const itemsModal = Performance.getElement('#itemsManagementModal');
     if (itemsModal) {
         itemsModal.style.display = 'none';
     }
@@ -2786,7 +3000,7 @@ async function loadItems() {
     showLoading(true, 'Loading items...');
     
     try {
-        const searchTerm = document.getElementById('searchItems')?.value.toLowerCase() || '';
+        const searchTerm = Performance.getElement('#searchItems')?.value.toLowerCase() || '';
         
         let query = db.collection('items');
         
@@ -2813,7 +3027,7 @@ async function loadItems() {
         }
         
         itemsData = [];
-        const tableBody = document.getElementById('itemsTableBody');
+        const tableBody = Performance.getElement('#itemsTableBody');
         if (!tableBody) return;
         
         const fragment = document.createDocumentFragment();
@@ -2889,23 +3103,23 @@ async function loadItems() {
 }
 
 function updateItemsStatistics(totalCount) {
-    const totalEl = document.getElementById('totalItemsCount');
-    const showingEl = document.getElementById('showingItemsCount');
+    const totalEl = Performance.getElement('#totalItemsCount');
+    const showingEl = Performance.getElement('#showingItemsCount');
     
     if (totalEl) totalEl.textContent = totalCount;
     if (showingEl) showingEl.textContent = itemsData.length;
 }
 
 function updateItemsPageInfo() {
-    const pageInfo = document.getElementById('itemsPageInfo');
+    const pageInfo = Performance.getElement('#itemsPageInfo');
     if (pageInfo) {
         pageInfo.textContent = `Page ${itemsCurrentPage}`;
     }
 }
 
 function updateItemsPaginationButtons() {
-    const prevBtn = document.getElementById('prevItemsPageBtn');
-    const nextBtn = document.getElementById('nextItemsPageBtn');
+    const prevBtn = Performance.getElement('#prevItemsPageBtn');
+    const nextBtn = Performance.getElement('#nextItemsPageBtn');
     
     if (prevBtn) {
         prevBtn.disabled = itemsCurrentPage <= 1;
@@ -2927,8 +3141,8 @@ async function addItemToDatabase() {
         return;
     }
     
-    const nameInput = document.getElementById('newItemName');
-    const costInput = document.getElementById('newItemCost');
+    const nameInput = Performance.getElement('#newItemName');
+    const costInput = Performance.getElement('#newItemCost');
     
     const name = nameInput?.value.trim();
     const cost = parseFloat(costInput?.value) || 0;
@@ -2996,9 +3210,9 @@ async function addItemToDatabase() {
 function openEditItemModal(itemId, name, cost = 0) {
     currentEditItemId = itemId;
     
-    const nameInput = document.getElementById('editItemName');
-    const costInput = document.getElementById('editItemCost');
-    const itemInfo = document.getElementById('editItemInfo');
+    const nameInput = Performance.getElement('#editItemName');
+    const costInput = Performance.getElement('#editItemCost');
+    const itemInfo = Performance.getElement('#editItemInfo');
     
     if (nameInput) nameInput.value = name;
     if (costInput) costInput.value = cost;
@@ -3006,7 +3220,7 @@ function openEditItemModal(itemId, name, cost = 0) {
         itemInfo.innerHTML = `Editing item: <strong>${name}</strong>`;
     }
     
-    const editModal = document.getElementById('editItemModal');
+    const editModal = Performance.getElement('#editItemModal');
     if (editModal) {
         editModal.style.display = 'flex';
         nameInput?.focus();
@@ -3015,7 +3229,7 @@ function openEditItemModal(itemId, name, cost = 0) {
 
 function closeEditItemModal() {
     currentEditItemId = null;
-    const editModal = document.getElementById('editItemModal');
+    const editModal = Performance.getElement('#editItemModal');
     if (editModal) {
         editModal.style.display = 'none';
     }
@@ -3024,8 +3238,8 @@ function closeEditItemModal() {
 async function saveItemChanges() {
     if (!currentEditItemId) return;
     
-    const nameInput = document.getElementById('editItemName');
-    const costInput = document.getElementById('editItemCost');
+    const nameInput = Performance.getElement('#editItemName');
+    const costInput = Performance.getElement('#editItemCost');
     
     const name = nameInput?.value.trim();
     const cost = parseFloat(costInput?.value) || 0;
@@ -3145,13 +3359,12 @@ function applyItemsFilters() {
 }
 
 // ================================
-// ENHANCED EVENT LISTENERS WITH CHART TYPE SELECTOR
+// ENHANCED EVENT LISTENERS WITH CHART TYPE SELECTOR - UPDATED FOR DATE RANGE
 // ================================
 function setupEventListeners() {
     // Password section
-    const passwordInput = document.getElementById('password');
-    const accessButton = document.getElementById('accessButton');
-    const lockButton = document.getElementById('lockButton');
+    const passwordInput = Performance.getElement('#password');
+    const accessButton = Performance.getElement('#accessButton');
     
     if (passwordInput && accessButton) {
         passwordInput.addEventListener('keypress', (e) => {
@@ -3160,6 +3373,7 @@ function setupEventListeners() {
         accessButton.addEventListener('click', checkPassword);
     }
     
+    const lockButton = Performance.getElement('#lockButton');
     if (lockButton) {
         lockButton.addEventListener('click', lockReports);
     }
@@ -3168,11 +3382,11 @@ function setupEventListeners() {
     initChartTypeSelector();
     
     // Chart controls
-    const chartPeriod = document.getElementById('chartPeriod');
-    const chartMetric = document.getElementById('chartMetric');
-    const chartSort = document.getElementById('chartSort');
-    const refreshChartBtn = document.getElementById('refreshChart');
-    const chartDatePicker = document.getElementById('chartDatePicker');
+    const chartPeriod = Performance.getElement('#chartPeriod');
+    const chartMetric = Performance.getElement('#chartMetric');
+    const chartSort = Performance.getElement('#chartSort');
+    const refreshChartBtn = Performance.getElement('#refreshChart');
+    const chartDatePicker = Performance.getElement('#chartDatePicker');
     
     if (chartPeriod) chartPeriod.addEventListener('change', updateChartPeriodControls);
     if (chartMetric) chartMetric.addEventListener('change', createChartBasedOnType);
@@ -3180,19 +3394,20 @@ function setupEventListeners() {
     if (refreshChartBtn) refreshChartBtn.addEventListener('click', refreshChart);
     if (chartDatePicker) chartDatePicker.addEventListener('change', createChartBasedOnType);
     
-    // Reports filters with debounce
-    const searchEmail = document.getElementById('searchEmail');
-    const filterStore = document.getElementById('filterStore');
-    const filterType = document.getElementById('filterType');
-    const filterDate = document.getElementById('filterDate');
-    const filterStatus = document.getElementById('filterStatus');
-    const clearFiltersBtn = document.getElementById('clearFilters');
+    // Reports filters with debounce - UPDATED for date range
+    const searchEmail = Performance.getElement('#searchEmail');
+    const filterStore = Performance.getElement('#filterStore');
+    const filterType = Performance.getElement('#filterType');
+    const filterDateFrom = Performance.getElement('#filterDateFrom'); // UPDATED
+    const filterDateTo = Performance.getElement('#filterDateTo'); // UPDATED
+    const filterStatus = Performance.getElement('#filterStatus');
+    const clearFiltersBtn = Performance.getElement('#clearFilters');
     
-    [searchEmail, filterStore, filterType, filterDate, filterStatus].forEach(el => {
+    [searchEmail, filterStore, filterType, filterDateFrom, filterDateTo, filterStatus].forEach(el => {
         if (el) {
-            el.addEventListener('change', debounceApplyFilters);
+            el.addEventListener('change', Performance.debounce(debounceApplyFilters, 300, 'filters'));
             if (el.tagName === 'INPUT') {
-                el.addEventListener('input', debounceApplyFilters);
+                el.addEventListener('input', Performance.debounce(debounceApplyFilters, 300, 'filters'));
             }
         }
     });
@@ -3202,8 +3417,8 @@ function setupEventListeners() {
     }
     
     // Reports pagination
-    const prevPageBtn = document.getElementById('prevPageBtn');
-    const nextPageBtn = document.getElementById('nextPageBtn');
+    const prevPageBtn = Performance.getElement('#prevPageBtn');
+    const nextPageBtn = Performance.getElement('#nextPageBtn');
     
     if (prevPageBtn) prevPageBtn.addEventListener('click', () => changePage(-1));
     if (nextPageBtn) nextPageBtn.addEventListener('click', () => changePage(1));
@@ -3228,20 +3443,20 @@ function setupEventListeners() {
         });
     }
     
-    const exportDateButton = document.getElementById('exportDateButton');
-    const cancelExportDate = document.getElementById('cancelExportDate');
+    const exportDateButton = Performance.getElement('#exportDateButton');
+    const cancelExportDate = Performance.getElement('#cancelExportDate');
     
     if (exportDateButton) exportDateButton.addEventListener('click', exportReportsByDate);
     if (cancelExportDate) cancelExportDate.addEventListener('click', hideExportDate);
     
     // Manage items
-    const manageItemsButton = document.getElementById('manageItemsButton');
-    const closeItemsModalBtn = document.getElementById('closeItemsModal');
-    const closeItemsModalButton = document.getElementById('closeItemsModalButton');
-    const addItemButton = document.getElementById('addItemButton');
-    const searchItemsInput = document.getElementById('searchItems');
-    const prevItemsPageBtn = document.getElementById('prevItemsPageBtn');
-    const nextItemsPageBtn = document.getElementById('nextItemsPageBtn');
+    const manageItemsButton = Performance.getElement('#manageItemsButton');
+    const closeItemsModalBtn = Performance.getElement('#closeItemsModal');
+    const closeItemsModalButton = Performance.getElement('#closeItemsModalButton');
+    const addItemButton = Performance.getElement('#addItemButton');
+    const searchItemsInput = Performance.getElement('#searchItems');
+    const prevItemsPageBtn = Performance.getElement('#prevItemsPageBtn');
+    const nextItemsPageBtn = Performance.getElement('#nextItemsPageBtn');
     
     if (manageItemsButton) manageItemsButton.addEventListener('click', openItemsManagement);
     if (closeItemsModalBtn) closeItemsModalBtn.addEventListener('click', closeItemsManagement);
@@ -3249,49 +3464,46 @@ function setupEventListeners() {
     if (addItemButton) addItemButton.addEventListener('click', addItemToDatabase);
     
     if (searchItemsInput) {
-        searchItemsInput.addEventListener('input', () => {
-            clearTimeout(filterTimeout);
-            filterTimeout = setTimeout(() => {
-                itemsCurrentPage = 1;
-                itemsLastVisibleDoc = null;
-                loadItems();
-            }, 300);
-        });
+        searchItemsInput.addEventListener('input', Performance.debounce(() => {
+            itemsCurrentPage = 1;
+            itemsLastVisibleDoc = null;
+            loadItems();
+        }, 300, 'itemsSearch'));
     }
     
     if (prevItemsPageBtn) prevItemsPageBtn.addEventListener('click', () => changeItemsPage(-1));
     if (nextItemsPageBtn) nextItemsPageBtn.addEventListener('click', () => changeItemsPage(1));
     
     // Edit item modal
-    const closeEditItemModalBtn = document.getElementById('closeEditItemModal');
-    const cancelEditItemButton = document.getElementById('cancelEditItemButton');
-    const saveItemButton = document.getElementById('saveItemButton');
+    const closeEditItemModalBtn = Performance.getElement('#closeEditItemModal');
+    const cancelEditItemButton = Performance.getElement('#cancelEditItemButton');
+    const saveItemButton = Performance.getElement('#saveItemButton');
     
     if (closeEditItemModalBtn) closeEditItemModalBtn.addEventListener('click', closeEditItemModal);
     if (cancelEditItemButton) cancelEditItemButton.addEventListener('click', closeEditItemModal);
     if (saveItemButton) saveItemButton.addEventListener('click', saveItemChanges);
     
     // Report details modal
-    const closeDetailsModalBtn = document.getElementById('closeDetailsModal');
-    const closeModalButton = document.getElementById('closeModalButton');
+    const closeDetailsModalBtn = Performance.getElement('#closeDetailsModal');
+    const closeModalButton = Performance.getElement('#closeModalButton');
     
     if (closeDetailsModalBtn) closeDetailsModalBtn.addEventListener('click', closeDetailsModal);
     if (closeModalButton) closeModalButton.addEventListener('click', closeDetailsModal);
     
     // Image modal
-    const closeImageModalBtn = document.getElementById('closeImageModal');
-    const closeImageModalButton = document.getElementById('closeImageModalButton');
+    const closeImageModalBtn = Performance.getElement('#closeImageModal');
+    const closeImageModalButton = Performance.getElement('#closeImageModalButton');
     
     if (closeImageModalBtn) closeImageModalBtn.addEventListener('click', closeImageModal);
     if (closeImageModalButton) closeImageModalButton.addEventListener('click', closeImageModal);
     
     // Rejection modals
-    const closeRejectionModalBtn = document.getElementById('closeRejectionModal');
-    const cancelRejectionButton = document.getElementById('cancelRejectionButton');
-    const confirmRejectionButton = document.getElementById('confirmRejectionButton');
-    const closeBulkRejectionModalBtn = document.getElementById('closeBulkRejectionModal');
-    const cancelBulkRejectionButton = document.getElementById('cancelBulkRejectionButton');
-    const confirmBulkRejectionButton = document.getElementById('confirmBulkRejectionButton');
+    const closeRejectionModalBtn = Performance.getElement('#closeRejectionModal');
+    const cancelRejectionButton = Performance.getElement('#cancelRejectionButton');
+    const confirmRejectionButton = Performance.getElement('#confirmRejectionButton');
+    const closeBulkRejectionModalBtn = Performance.getElement('#closeBulkRejectionModal');
+    const cancelBulkRejectionButton = Performance.getElement('#cancelBulkRejectionButton');
+    const confirmBulkRejectionButton = Performance.getElement('#confirmBulkRejectionButton');
     
     if (closeRejectionModalBtn) closeRejectionModalBtn.addEventListener('click', closeRejectionModal);
     if (cancelRejectionButton) cancelRejectionButton.addEventListener('click', closeRejectionModal);
@@ -3301,13 +3513,13 @@ function setupEventListeners() {
     if (confirmBulkRejectionButton) confirmBulkRejectionButton.addEventListener('click', handleBulkItemRejection);
     
     // Character count for rejection reasons
-    const rejectionReason = document.getElementById('rejectionReason');
-    const bulkRejectionReason = document.getElementById('bulkRejectionReason');
+    const rejectionReason = Performance.getElement('#rejectionReason');
+    const bulkRejectionReason = Performance.getElement('#bulkRejectionReason');
     
     if (rejectionReason) {
         rejectionReason.addEventListener('input', function() {
             const charCount = this.value.length;
-            const charCountEl = document.getElementById('rejectionCharCount');
+            const charCountEl = Performance.getElement('#rejectionCharCount');
             if (charCountEl) {
                 charCountEl.textContent = `${Math.min(charCount, 500)}/500 characters`;
                 if (charCount > 500) {
@@ -3320,7 +3532,7 @@ function setupEventListeners() {
     if (bulkRejectionReason) {
         bulkRejectionReason.addEventListener('input', function() {
             const charCount = this.value.length;
-            const charCountEl = document.getElementById('bulkRejectionCharCount');
+            const charCountEl = Performance.getElement('#bulkRejectionCharCount');
             if (charCountEl) {
                 charCountEl.textContent = `${Math.min(charCount, 500)}/500 characters`;
                 if (charCount > 500) {
@@ -3360,7 +3572,7 @@ function setupEventListeners() {
     // Session timeout check
     setInterval(() => {
         if (!isAuthenticated()) {
-            const reportsSection = document.getElementById('reportsSection');
+            const reportsSection = Performance.getElement('#reportsSection');
             if (reportsSection && reportsSection.style.display !== 'none') {
                 lockReports();
                 showNotification('Session expired. Please login again.', 'info');

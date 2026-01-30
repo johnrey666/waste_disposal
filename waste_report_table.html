@@ -26,7 +26,7 @@
         <!-- Navigation -->
         <nav class="navbar">
             <div class="nav-brand">
-                <img src="logo.jpg" alt="FG Operations Logo" class="nav-logo">
+                <img src="logo.jpg" alt="FG Operations Logo" class="nav-logo" loading="lazy" width="28" height="28">
                 <span>FG Operations</span>
             </div>
             <ul class="nav-links">
@@ -97,7 +97,8 @@
             <div class="table-controls">
                 <div class="search-box">
                     <i class="fas fa-search"></i>
-                    <input type="text" id="searchEmail" placeholder="Search by email...">
+                    <!-- FIXED: Changed placeholder to be more general -->
+                    <input type="text" id="searchInput" placeholder="Search reports...">
                 </div>
                 <div class="filter-controls">
                     <div class="filter-group">
@@ -127,9 +128,14 @@
                             <option value="noWaste">No Waste</option>
                         </select>
                     </div>
+                    <!-- UPDATED: Changed from single date to date range -->
                     <div class="filter-group">
-                        <label for="filterDate">Date:</label>
-                        <input type="date" id="filterDate" class="filter-select">
+                        <label for="filterDateFrom">Date From:</label>
+                        <input type="date" id="filterDateFrom" class="filter-select">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterDateTo">Date To:</label>
+                        <input type="date" id="filterDateTo" class="filter-select">
                     </div>
                     <div class="filter-group">
                         <label for="filterStatus">Approval:</label>
@@ -399,7 +405,7 @@
         <footer class="footer">
             <div class="footer-content">
                 <div class="footer-brand">
-                    <img src="logo.jpg" alt="FG Operations Logo" class="footer-logo">
+                    <img src="logo.jpg" alt="FG Operations Logo" class="footer-logo" loading="lazy" width="20" height="20">
                     <span>FG Operations Waste/Disposal Reporting System</span>
                 </div>
                 <div class="footer-links">

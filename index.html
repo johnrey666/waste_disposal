@@ -37,10 +37,12 @@
         .chart-card-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start; /* Changed from center to flex-start for mobile */
             margin-bottom: var(--spacing-md);
             padding-bottom: var(--spacing-sm);
             border-bottom: var(--border-thin);
+            flex-wrap: wrap; /* Added for mobile */
+            gap: var(--spacing-sm); /* Added for spacing on mobile */
         }
         
         .chart-card-header h3 {
@@ -51,6 +53,8 @@
             display: flex;
             align-items: center;
             gap: var(--spacing-sm);
+            flex: 1; /* Added to take available space */
+            min-width: 0; /* Prevents overflow */
         }
         
         .chart-card-type-selector {
@@ -60,6 +64,7 @@
             border-radius: var(--border-radius-sm);
             padding: 2px;
             border: var(--border-thin);
+            flex-shrink: 0; /* Prevents shrinking on mobile */
         }
         
         .chart-card-type-btn {
@@ -71,6 +76,11 @@
             font-size: var(--font-size-xs);
             color: var(--color-gray);
             transition: all var(--transition-fast);
+            width: 30px; /* Fixed width for mobile */
+            height: 24px; /* Fixed height */
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .chart-card-type-btn:hover {
@@ -86,7 +96,9 @@
         .chart-card-body {
             flex: 1;
             position: relative;
-            min-height: 300px;
+            min-height: 200px; /* Reduced from 300px */
+            width: 100%; /* Ensure full width */
+            overflow: hidden; /* Prevent overflow */
         }
         
         .chart-card-footer {
@@ -98,18 +110,23 @@
             align-items: center;
             font-size: var(--font-size-xs);
             color: var(--color-gray);
+            flex-wrap: wrap; /* Allow wrapping on mobile */
+            gap: var(--spacing-sm); /* Add gap for wrapped items */
         }
         
         .chart-card-stat {
             display: flex;
             align-items: center;
             gap: 4px;
+            white-space: nowrap; /* Prevent text breaking */
         }
         
         .chart-card-stat i {
             color: var(--color-primary);
+            flex-shrink: 0; /* Prevent icon shrinking */
         }
         
+        /* MOBILE RESPONSIVE FIXES */
         @media (max-width: 992px) {
             .dual-chart-container {
                 grid-template-columns: 1fr;
@@ -117,13 +134,101 @@
             }
             
             .chart-card-body {
-                min-height: 250px;
+                min-height: 200px; /* Reduced from 250px */
+            }
+            
+            .chart-card-header {
+                flex-direction: column; /* Stack header items on mobile */
+                align-items: stretch;
+                gap: var(--spacing-sm);
+            }
+            
+            .chart-card-header h3 {
+                font-size: calc(var(--font-size-md) * 0.95); /* Slightly smaller on mobile */
+            }
+            
+            .chart-card-type-selector {
+                align-self: flex-end; /* Align to end on mobile */
             }
         }
         
         @media (max-width: 768px) {
+            .chart-card {
+                padding: var(--spacing-sm); /* Reduce padding on mobile */
+                margin: 0; /* Remove extra margin */
+            }
+            
             .chart-card-body {
-                min-height: 200px;
+                min-height: 220px; /* Increased for better mobile visibility */
+            }
+            
+            .chart-card-header h3 {
+                font-size: var(--font-size-sm); /* Smaller font on mobile */
+                flex-wrap: wrap; /* Allow title to wrap */
+            }
+            
+            .chart-card-header h3 i {
+                margin-right: 4px; /* Reduce icon spacing */
+            }
+            
+            .chart-card-footer {
+                font-size: calc(var(--font-size-xs) * 0.9); /* Smaller footer text */
+                flex-direction: column; /* Stack footer stats */
+                align-items: flex-start;
+                gap: 8px;
+            }
+            
+            .chart-card-stat {
+                width: 100%; /* Full width for stats */
+                justify-content: space-between; /* Space out label and value */
+            }
+            
+            /* Chart section specific fixes */
+            .chart-section {
+                padding: var(--spacing-sm) !important; /* Reduce section padding */
+            }
+            
+            .chart-header h2 {
+                font-size: var(--font-size-md) !important; /* Smaller chart header */
+                padding: var(--spacing-sm) !important;
+                margin-bottom: var(--spacing-sm) !important;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .chart-card-body {
+                min-height: 200px; /* Fixed height for very small screens */
+            }
+            
+            .chart-card-header h3 {
+                font-size: calc(var(--font-size-sm) * 0.9); /* Even smaller on very small screens */
+            }
+            
+            .chart-card {
+                padding: 12px; /* Minimum padding */
+            }
+            
+            /* Ensure chart canvases are properly sized */
+            #complianceChart, #costChart {
+                max-height: 180px !important; /* Limit chart height */
+                width: 100% !important;
+            }
+        }
+        
+        /* Fix for chart container on very small screens */
+        @media (max-width: 360px) {
+            .chart-card-body {
+                min-height: 180px;
+            }
+            
+            .chart-card-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .chart-card-type-selector {
+                align-self: center; /* Center on very small screens */
+                margin-top: 4px;
             }
         }
     </style>
@@ -396,6 +501,12 @@
     let currentComplianceChartType = 'pie';
     let currentCostChartType = 'pie';
     let currentData = null;
+    let dataCache = {
+        reports: [],
+        timestamp: 0,
+        ttl: 5 * 60 * 1000, // 5 minutes cache
+        statistics: null
+    };
 
     // Define all store names
     const ALL_STORES = [
@@ -437,7 +548,40 @@
     ];
 
     // ================================
-    // LOADING & NOTIFICATION
+    // OPTIMIZED UTILITY FUNCTIONS
+    // ================================
+    function getReportApprovalStatus(report) {
+        if (!report) return 'pending';
+        
+        if (report.disposalTypes?.includes('noWaste') || report.disposalType === 'noWaste') {
+            return 'complete';
+        }
+        
+        let approvedCount = 0;
+        let rejectedCount = 0;
+        let pendingCount = 0;
+        let totalItems = 0;
+        
+        const expiredItems = report.expiredItems || [];
+        const wasteItems = report.wasteItems || [];
+        
+        [...expiredItems, ...wasteItems].forEach(item => {
+            totalItems++;
+            const status = item.approvalStatus || 'pending';
+            if (status === 'approved') approvedCount++;
+            else if (status === 'rejected') rejectedCount++;
+            else pendingCount++;
+        });
+        
+        if (totalItems === 0) return 'complete';
+        if (pendingCount === totalItems) return 'pending';
+        if (approvedCount === totalItems) return 'complete';
+        if (rejectedCount === totalItems) return 'rejected';
+        return 'partial';
+    }
+
+    // ================================
+    // OPTIMIZED LOADING & NOTIFICATION
     // ================================
     function showNotification(message, type = 'success', duration = 3000) {
         const notification = document.getElementById('notification');
@@ -484,7 +628,7 @@
     }
 
     // ================================
-    // FIREBASE INITIALIZATION
+    // OPTIMIZED FIREBASE INITIALIZATION
     // ================================
     function initializeFirebase() {
         try {
@@ -493,18 +637,7 @@
             }
             db = firebase.firestore();
             
-            // Enable offline persistence for better performance
-            db.enablePersistence()
-                .then(() => console.log('✅ Firebase persistence enabled'))
-                .catch(err => {
-                    if (err.code === 'failed-precondition') {
-                        console.log('Multiple tabs open, persistence can only be enabled in one tab at a time.');
-                    } else if (err.code === 'unimplemented') {
-                        console.log('The current browser does not support persistence.');
-                    }
-                });
-            
-            // Load all data
+            // Load all data with cached optimization
             loadAllData();
             
         } catch (error) {
@@ -514,16 +647,33 @@
     }
 
     // ================================
-    // DATA LOADING FUNCTIONS
+    // OPTIMIZED DATA LOADING FUNCTIONS
     // ================================
     async function loadAllData() {
-        showLoading(true, 'Loading store statistics...');
+        // Show minimal loading feedback
+        showLoading(true, 'Loading analytics...');
         
         try {
-            // Get all reports
+            const now = Date.now();
+            
+            // Check if we have cached data that's still valid
+            if (dataCache.reports.length > 0 && 
+                dataCache.statistics && 
+                (now - dataCache.timestamp) < dataCache.ttl) {
+                
+                console.log('📊 Using cached data');
+                processCachedData();
+                showLoading(false);
+                return;
+            }
+            
+            // Get all reports with optimized query
+            console.time('Firestore query');
             const snapshot = await db.collection('wasteReports')
                 .orderBy('reportDate', 'desc')
+                .limit(1000) // Limit to last 1000 reports for performance
                 .get();
+            console.timeEnd('Firestore query');
             
             if (snapshot.empty) {
                 // No reports yet
@@ -533,41 +683,74 @@
                 return;
             }
             
-            // Process all reports
+            // Process reports in smaller batches for better performance
+            console.time('Process reports');
             const reports = [];
             snapshot.forEach(doc => {
                 reports.push({ id: doc.id, ...doc.data() });
             });
+            console.timeEnd('Process reports');
             
-            // Calculate compliance data
+            // Cache the data
+            dataCache.reports = reports;
+            dataCache.timestamp = now;
+            
+            // Calculate compliance data (including reports with at least one approved item)
+            console.time('Calculate compliance data');
             const complianceData = calculateComplianceData(reports);
+            console.timeEnd('Calculate compliance data');
             
-            // Calculate cost data
+            // Calculate cost data (including reports with at least one approved item)
+            console.time('Calculate cost data');
             const costData = calculateCostData(reports);
+            console.timeEnd('Calculate cost data');
             
-            // Store data globally
-            currentData = {
+            // Store calculated statistics in cache
+            dataCache.statistics = {
                 compliance: complianceData,
                 cost: costData,
                 totalReports: reports.length
             };
             
-            // Update both charts
-            updateComplianceChart();
-            updateCostChart();
+            // Store data globally
+            currentData = dataCache.statistics;
             
-            // Update statistics
-            updateStats();
+            // Update both charts asynchronously
+            setTimeout(() => {
+                updateComplianceChart();
+                updateCostChart();
+                
+                // Update statistics
+                updateStats();
+                
+                showLoading(false);
+            }, 100); // Small delay to allow UI to update
             
         } catch (error) {
             console.error('Error loading data:', error);
             showNotification('Error loading data', 'error');
             createEmptyCharts();
-        } finally {
             showLoading(false);
         }
     }
 
+    function processCachedData() {
+        if (!dataCache.statistics) {
+            loadAllData(); // Fallback to fresh load
+            return;
+        }
+        
+        currentData = dataCache.statistics;
+        
+        // Update both charts
+        updateComplianceChart();
+        updateCostChart();
+        
+        // Update statistics
+        updateStats();
+    }
+
+    // Optimized compliance calculation
     function calculateComplianceData(reports) {
         const now = new Date();
         const currentYear = now.getFullYear();
@@ -576,43 +759,88 @@
         const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
         const daysSoFar = Math.min(currentDay, daysInMonth);
         
-        // Initialize store data
+        // Initialize store data with more efficient structure
         const storeData = {};
-        ALL_STORES.forEach(store => {
+        const storeCount = ALL_STORES.length;
+        
+        // Pre-initialize all stores
+        for (let i = 0; i < storeCount; i++) {
+            const store = ALL_STORES[i];
             storeData[store] = {
                 reportedDays: new Set(),
                 totalReports: 0
             };
-        });
+        }
         
-        // Process reports for current month
-        reports.forEach(report => {
+        // Process reports with early exit optimizations
+        const reportCount = reports.length;
+        const currentMonthStart = new Date(currentYear, currentMonth, 1).getTime();
+        const currentDayEnd = new Date(currentYear, currentMonth, currentDay + 1).getTime() - 1;
+        
+        for (let i = 0; i < reportCount; i++) {
+            const report = reports[i];
             const store = report.store;
-            const reportDate = new Date(report.reportDate);
             
-            if (store && storeData[store]) {
+            if (!store || !storeData[store]) continue;
+            
+            // Check if this report should be counted for compliance
+            let shouldCountReport = false;
+            
+            // Always count no-waste reports
+            if (report.disposalTypes?.includes('noWaste') || report.disposalType === 'noWaste') {
+                shouldCountReport = true;
+            }
+            // For reports with items, check if at least one item is approved
+            else {
+                const expiredItems = report.expiredItems || [];
+                const wasteItems = report.wasteItems || [];
+                
+                // Fast check for approved items
+                for (let j = 0; j < expiredItems.length; j++) {
+                    if (expiredItems[j].approvalStatus === 'approved') {
+                        shouldCountReport = true;
+                        break;
+                    }
+                }
+                
+                if (!shouldCountReport) {
+                    for (let j = 0; j < wasteItems.length; j++) {
+                        if (wasteItems[j].approvalStatus === 'approved') {
+                            shouldCountReport = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (shouldCountReport) {
                 storeData[store].totalReports++;
                 
-                // Check if report is from current month
-                if (reportDate.getFullYear() === currentYear && 
-                    reportDate.getMonth() === currentMonth &&
-                    reportDate.getDate() <= currentDay) {
+                // Check if report is from current month (optimized date comparison)
+                const reportDate = new Date(report.reportDate);
+                const reportTime = reportDate.getTime();
+                
+                if (reportTime >= currentMonthStart && reportTime <= currentDayEnd) {
                     storeData[store].reportedDays.add(reportDate.getDate());
                 }
             }
-        });
+        }
         
         // Calculate compliance percentages
         const results = [];
         let totalCompliance = 0;
-        let storeCount = 0;
+        let storeCountWithReports = 0;
         let topStore = null;
         let topValue = 0;
         let lowestStore = null;
         let lowestValue = 100;
         
-        for (const [store, data] of Object.entries(storeData)) {
-            if (data.totalReports === 0) continue; // Skip stores with no reports at all
+        for (let i = 0; i < storeCount; i++) {
+            const store = ALL_STORES[i];
+            const data = storeData[store];
+            
+            // Skip stores with no counted reports
+            if (data.totalReports === 0) continue;
             
             const reportedDays = data.reportedDays.size;
             const complianceRate = daysSoFar > 0 ? 
@@ -629,7 +857,7 @@
             });
             
             totalCompliance += complianceRate;
-            storeCount++;
+            storeCountWithReports++;
             
             if (complianceRate > topValue) {
                 topValue = complianceRate;
@@ -643,10 +871,11 @@
         }
         
         // Calculate overall average
-        const overallAverage = storeCount > 0 ? Math.round(totalCompliance / storeCount) : 0;
+        const overallAverage = storeCountWithReports > 0 ? 
+            Math.round(totalCompliance / storeCountWithReports) : 0;
         
-        // Calculate coverage (percentage of stores with any reports)
-        const coverage = Math.round((storeCount / ALL_STORES.length) * 100);
+        // Calculate coverage (percentage of stores with any counted reports)
+        const coverage = Math.round((storeCountWithReports / ALL_STORES.length) * 100);
         
         return {
             results,
@@ -655,7 +884,7 @@
             topValue,
             lowestStore,
             lowestValue,
-            storeCount,
+            storeCount: storeCountWithReports,
             coverage,
             metricName: 'Compliance Rate',
             unit: '%',
@@ -663,45 +892,71 @@
         };
     }
 
+    // Optimized cost calculation
     function calculateCostData(reports) {
-        // Calculate total cost per store
+        // Initialize store costs with more efficient structure
         const storeCosts = {};
+        const storeCount = ALL_STORES.length;
+        
+        // Pre-initialize all stores
+        for (let i = 0; i < storeCount; i++) {
+            storeCosts[ALL_STORES[i]] = 0;
+        }
+        
+        // Calculate total cost per store (including reports with at least one approved item)
         let totalCost = 0;
+        const reportCount = reports.length;
         
-        ALL_STORES.forEach(store => {
-            storeCosts[store] = 0;
-        });
-        
-        reports.forEach(report => {
+        for (let i = 0; i < reportCount; i++) {
+            const report = reports[i];
             const store = report.store;
-            if (!store || !storeCosts.hasOwnProperty(store)) return;
             
-            // Skip no-waste reports
+            if (!store || !storeCosts.hasOwnProperty(store)) continue;
+            
+            let reportCost = 0;
+            let hasApprovedItem = false;
+            
+            // Check for no-waste reports (they have 0 cost but should be counted)
             if (report.disposalTypes?.includes('noWaste') || report.disposalType === 'noWaste') {
-                return;
+                continue; // Skip for cost calculation since cost is 0
             }
             
-            // Calculate cost from expired items
-            if (report.expiredItems) {
-                report.expiredItems.forEach(item => {
+            // Calculate cost only from APPROVED items
+            const expiredItems = report.expiredItems || [];
+            const wasteItems = report.wasteItems || [];
+            
+            // Process expired items
+            for (let j = 0; j < expiredItems.length; j++) {
+                const item = expiredItems[j];
+                if (item.approvalStatus === 'approved') {
                     const itemCost = item.itemCost || 0;
                     const quantity = item.quantity || 0;
-                    storeCosts[store] += itemCost * quantity;
-                });
+                    reportCost += itemCost * quantity;
+                    hasApprovedItem = true;
+                }
             }
             
-            // Calculate cost from waste items
-            if (report.wasteItems) {
-                report.wasteItems.forEach(item => {
+            // Process waste items
+            for (let j = 0; j < wasteItems.length; j++) {
+                const item = wasteItems[j];
+                if (item.approvalStatus === 'approved') {
                     const itemCost = item.itemCost || 0;
                     const quantity = item.quantity || 0;
-                    storeCosts[store] += itemCost * quantity;
-                });
+                    reportCost += itemCost * quantity;
+                    hasApprovedItem = true;
+                }
             }
-        });
+            
+            // Only add cost if there's at least one approved item
+            if (hasApprovedItem) {
+                storeCosts[store] += reportCost;
+            }
+        }
         
-        // Calculate total cost
-        totalCost = Object.values(storeCosts).reduce((sum, cost) => sum + cost, 0);
+        // Calculate total cost from stores with approved items
+        for (let i = 0; i < storeCount; i++) {
+            totalCost += storeCosts[ALL_STORES[i]];
+        }
         
         // Calculate percentages and prepare data
         const results = [];
@@ -709,10 +964,14 @@
         let topValue = 0;
         let lowestStore = null;
         let lowestValue = 100;
-        let storeCount = 0;
+        let storeCountWithCost = 0;
         let totalPercentage = 0;
         
-        for (const [store, cost] of Object.entries(storeCosts)) {
+        for (let i = 0; i < storeCount; i++) {
+            const store = ALL_STORES[i];
+            const cost = storeCosts[store];
+            
+            // Only include stores with approved items and non-zero cost
             if (cost === 0) continue;
             
             const percentage = totalCost > 0 ? Math.round((cost / totalCost) * 100) : 0;
@@ -723,11 +982,11 @@
                 value: percentage,
                 cost: cost,
                 label: `${percentage}%`,
-                description: `₱${cost.toLocaleString()}`
+                description: `${percentage}% share`
             });
             
             totalPercentage += percentage;
-            storeCount++;
+            storeCountWithCost++;
             
             if (percentage > topValue) {
                 topValue = percentage;
@@ -741,10 +1000,11 @@
         }
         
         // Calculate overall average
-        const overallAverage = storeCount > 0 ? Math.round(totalPercentage / storeCount) : 0;
+        const overallAverage = storeCountWithCost > 0 ? 
+            Math.round(totalPercentage / storeCountWithCost) : 0;
         
-        // Calculate coverage (percentage of stores with waste cost)
-        const coverage = Math.round((storeCount / ALL_STORES.length) * 100);
+        // Calculate coverage (percentage of stores with waste cost from approved items)
+        const coverage = Math.round((storeCountWithCost / ALL_STORES.length) * 100);
         
         return {
             results,
@@ -753,7 +1013,7 @@
             topValue,
             lowestStore,
             lowestValue,
-            storeCount,
+            storeCount: storeCountWithCost,
             coverage,
             metricName: 'Waste Cost Share',
             unit: '%',
@@ -762,7 +1022,7 @@
     }
 
     // ================================
-    // CHART FUNCTIONS
+    // OPTIMIZED CHART FUNCTIONS
     // ================================
     function updateComplianceChart() {
         if (!currentData) return;
@@ -881,7 +1141,8 @@
                                 if (data.metricName === 'Compliance Rate') {
                                     return `${data.metricName}: ${store.value}${data.unit} (${store.reportedDays}/${store.totalDays} days)`;
                                 } else {
-                                    return `${data.metricName}: ${store.value}${data.unit} (₱${store.cost?.toLocaleString() || 0})`;
+                                    // Show only percentage, removed PHP cost for confidentiality
+                                    return `${data.metricName}: ${store.value}${data.unit}`;
                                 }
                             }
                             return `${context.dataset.label}: ${context.raw}${data.unit}`;
@@ -1008,7 +1269,7 @@
     }
 
     // ================================
-    // STATISTICS FUNCTIONS
+    // OPTIMIZED STATISTICS FUNCTIONS
     // ================================
     function updateCombinedStats() {
         if (!currentData) return;
@@ -1039,7 +1300,7 @@
         const complianceData = currentData.compliance;
         
         // Update quick stats
-        document.getElementById('totalReports').textContent = currentData.totalReports;
+        document.getElementById('totalReports').textContent = currentData.totalReports.toLocaleString();
         document.getElementById('totalStoresWithReports').textContent = `${complianceData.storeCount} stores`;
         
         // Find store needing attention (lowest compliance with reports)
@@ -1111,6 +1372,8 @@
         // Refresh functionality (click on any chart card)
         document.querySelectorAll('.chart-card').forEach(card => {
             card.addEventListener('dblclick', function() {
+                // Clear cache and force reload
+                dataCache.timestamp = 0;
                 loadAllData();
                 showNotification('Chart data refreshed', 'info');
             });
@@ -1118,12 +1381,16 @@
     }
 
     // ================================
-    // INITIALIZATION
+    // OPTIMIZED INITIALIZATION
     // ================================
     document.addEventListener('DOMContentLoaded', () => {
         console.log('Home page loaded, initializing charts...');
+        
+        // Initialize Firebase immediately
         initializeFirebase();
-        setupEventListeners();
+        
+        // Setup event listeners with a small delay to not block initial render
+        setTimeout(setupEventListeners, 100);
         
         // Add CSS for enhanced UI
         addEnhancedStyles();
@@ -1315,6 +1582,58 @@
                 gap: var(--spacing-sm);
                 font-size: var(--font-size-sm);
                 color: var(--color-gray);
+            }
+            
+            /* MOBILE FIXES FOR CHART STATS */
+            @media (max-width: 768px) {
+                .chart-stats {
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: var(--spacing-sm);
+                    margin-top: var(--spacing-md);
+                }
+                
+                .chart-stat-card {
+                    padding: var(--spacing-sm);
+                }
+                
+                .chart-stat-card h4 {
+                    font-size: var(--font-size-xs);
+                    margin-bottom: var(--spacing-xs);
+                }
+                
+                .chart-stat-card .value {
+                    font-size: var(--font-size-lg);
+                }
+                
+                .chart-stat-card .subtext {
+                    font-size: calc(var(--font-size-xs) * 0.9);
+                }
+                
+                .chart-footer {
+                    padding: var(--spacing-sm);
+                    margin-top: var(--spacing-md);
+                }
+                
+                .chart-info {
+                    font-size: var(--font-size-xs);
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 8px;
+                }
+                
+                .chart-info i {
+                    align-self: flex-start;
+                }
+            }
+            
+            @media (max-width: 480px) {
+                .chart-stats {
+                    grid-template-columns: 1fr;
+                }
+                
+                .chart-stat-card {
+                    padding: 12px;
+                }
             }
             
             /* Mobile Responsive */

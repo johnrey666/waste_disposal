@@ -2294,3 +2294,87 @@ body {
 .form-grid .form-group .select2-container {
     margin-top: 2px;
 }
+
+/* FIX: Improved search box styling */
+.search-box {
+    position: relative;
+    flex: 1;
+    max-width: none; /* Remove the max-width constraint */
+    min-width: 200px;
+}
+
+.search-box i {
+    position: absolute;
+    left: var(--spacing-md);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-gray);
+    font-size: var(--font-size-sm);
+    z-index: 1;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 6px 12px 6px 32px;
+    border: var(--border-thin);
+    border-radius: var(--border-radius);
+    font-size: var(--font-size-sm);
+    background: var(--color-offwhite);
+    transition: all var(--transition-fast);
+    min-width: 150px;
+}
+
+.search-box input:focus { 
+    outline: none; 
+    border-color: var(--color-primary); 
+    background: var(--color-white);
+    box-shadow: 0 0 0 3px rgba(42, 89, 52, 0.1);
+}
+
+/* FIX: Improved table controls layout */
+.table-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--color-white);
+    border-radius: var(--border-radius);
+    border: var(--border-thin);
+    box-shadow: var(--shadow-subtle);
+    flex-wrap: wrap;
+}
+
+.filter-controls { 
+    display: flex; 
+    gap: var(--spacing-md); 
+    align-items: center; 
+    flex-wrap: wrap; 
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.filter-group { 
+    display: flex; 
+    align-items: center; 
+    gap: var(--spacing-sm); 
+    position: relative; 
+    flex-shrink: 0;
+}
+
+.filter-select { 
+    padding: 6px 10px; 
+    border: var(--border-thin); 
+    border-radius: var(--border-radius); 
+    font-size: var(--font-size-sm); 
+    background: var(--color-white); 
+    min-width: 120px; 
+    cursor: pointer; 
+    transition: all var(--transition-fast);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23777777' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 28px;
+}
