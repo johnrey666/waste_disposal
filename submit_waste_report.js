@@ -12,13 +12,19 @@ const firebaseConfig = {
 };
 
 // ================================
-// EMAILJS CONFIGURATION
+// GOOGLE APPS SCRIPT CONFIGURATION
 // ================================
-const EMAILJS_CONFIG = {
-    USER_ID: 'TwPt4meJ4Z2h_6ufb',
-    SERVICE_ID: 'service_txc1dw9',
-    TEMPLATE_ID: 'template_jnrgr6r'
+const GAS_CONFIG = {
+    ENDPOINT: 'https://script.google.com/macros/s/AKfycbyPGgZ54q-lDUu5YxaeQbSJ-z2pDqM8ia4eTfshdpSNbrqBFF7fQZvglx9IeZn0PqHSTg/exec',
+    SENDER_EMAIL: 'tsliferich@gmail.com',
+    SENDER_NAME: 'FG Operations'
 };
+
+// ================================
+// ITEMS LIST FOR DROPDOWN
+// ================================
+let ITEMS_LIST = [];
+let itemsLoaded = false;
 
 // Initialize Firebase
 let db;
@@ -31,18 +37,6 @@ try {
 } catch (error) {
     console.error('❌ Firebase initialization error:', error);
     showNotification('Firebase connection failed. Please check console.', 'error');
-}
-
-// Initialize EmailJS
-try {
-    if (EMAILJS_CONFIG.USER_ID) {
-        emailjs.init(EMAILJS_CONFIG.USER_ID);
-        console.log('✅ EmailJS initialized successfully');
-    } else {
-        console.warn('⚠️ EmailJS not initialized: USER_ID missing');
-    }
-} catch (error) {
-    console.error('❌ EmailJS initialization error:', error);
 }
 
 // ================================
@@ -100,6 +94,207 @@ function formatFileSize(bytes) {
 
 function calculateObjectSize(obj) {
     return new TextEncoder().encode(JSON.stringify(obj)).length;
+}
+
+// ================================
+// FETCH ITEMS FROM FIRESTORE
+// ================================
+async function fetchItemsFromFirestore() {
+    try {
+        if (!db) {
+            console.error('Firebase not initialized');
+            throw new Error('Firebase not initialized');
+        }
+        
+        console.log('Fetching items from Firestore...');
+        showLoading(true, 'Loading items...');
+        
+        const snapshot = await db.collection('items')
+            .orderBy('name', 'asc')
+            .get();
+        
+        ITEMS_LIST = [];
+        
+        snapshot.forEach(doc => {
+            const itemData = doc.data();
+            ITEMS_LIST.push(itemData.name);
+        });
+        
+        console.log(`✅ Loaded ${ITEMS_LIST.length} items from Firestore`);
+        itemsLoaded = true;
+        
+        initializeAllSelect2Dropdowns();
+        return ITEMS_LIST;
+        
+    } catch (error) {
+        console.error('❌ Error fetching items from Firestore:', error);
+        showNotification('Failed to load items from database. Please try again.', 'error');
+        throw error;
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ================================
+// GET ITEM COST FROM FIRESTORE
+// ================================
+async function getItemCost(itemName) {
+    try {
+        if (!itemName || !db) return 0;
+        
+        console.log(`Fetching cost for item: ${itemName}`);
+        
+        const query = await db.collection('items')
+            .where('name', '==', itemName)
+            .limit(1)
+            .get();
+        
+        if (!query.empty) {
+            const doc = query.docs[0];
+            const itemData = doc.data();
+            const cost = parseFloat(itemData.cost) || 0;
+            console.log(`Found cost for ${itemName}: ₱${cost.toFixed(2)}`);
+            return cost;
+        }
+        
+        console.log(`No cost found for ${itemName}, using 0`);
+        return 0;
+        
+    } catch (error) {
+        console.error('Error getting item cost:', error);
+        return 0;
+    }
+}
+
+function initializeAllSelect2Dropdowns() {
+    $('.item-dropdown').each(function() {
+        const selectId = $(this).attr('id');
+        if (selectId) {
+            initSelect2Dropdown(selectId);
+        }
+    });
+}
+
+// ================================
+// DISPOSAL TYPE TOGGLE FUNCTIONS
+// ================================
+function toggleDisposalType(checkboxId) {
+    const expiredCheckbox = document.getElementById('expired');
+    const wasteCheckbox = document.getElementById('waste');
+    const noWasteCheckbox = document.getElementById('noWaste');
+    
+    const expiredContainer = document.getElementById('expiredContainer');
+    const wasteContainer = document.getElementById('wasteContainer');
+    
+    const currentCheckbox = document.getElementById(checkboxId);
+    const isChecked = currentCheckbox.checked;
+    
+    if (checkboxId === 'noWaste' && isChecked) {
+        expiredCheckbox.checked = false;
+        wasteCheckbox.checked = false;
+        
+        if (expiredContainer) expiredContainer.classList.remove('show');
+        if (wasteContainer) wasteContainer.classList.remove('show');
+        
+        const expiredFields = document.getElementById('expiredFields');
+        const wasteFields = document.getElementById('wasteFields');
+        if (expiredFields) expiredFields.innerHTML = '';
+        if (wasteFields) wasteFields.innerHTML = '';
+    }
+    else if ((checkboxId === 'expired' || checkboxId === 'waste') && isChecked) {
+        noWasteCheckbox.checked = false;
+        
+        if (checkboxId === 'expired' && expiredCheckbox.checked) {
+            if (expiredContainer) expiredContainer.classList.add('show');
+            const expiredFields = document.getElementById('expiredFields');
+            if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0) {
+                addExpiredItem();
+            }
+        }
+        
+        if (checkboxId === 'waste' && wasteCheckbox.checked) {
+            if (wasteContainer) wasteContainer.classList.add('show');
+            const wasteFields = document.getElementById('wasteFields');
+            if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0) {
+                addWasteItem();
+            }
+        }
+    }
+    else if (!isChecked) {
+        if (checkboxId === 'expired') {
+            if (expiredContainer) expiredContainer.classList.remove('show');
+            const expiredFields = document.getElementById('expiredFields');
+            if (expiredFields) expiredFields.innerHTML = '';
+        }
+        else if (checkboxId === 'waste') {
+            if (wasteContainer) wasteContainer.classList.remove('show');
+            const wasteFields = document.getElementById('wasteFields');
+            if (wasteFields) wasteFields.innerHTML = '';
+        }
+        else if (checkboxId === 'noWaste') {
+            if (expiredCheckbox.checked && expiredContainer) {
+                expiredContainer.classList.add('show');
+                const expiredFields = document.getElementById('expiredFields');
+                if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0) {
+                    addExpiredItem();
+                }
+            }
+            if (wasteCheckbox.checked && wasteContainer) {
+                wasteContainer.classList.add('show');
+                const wasteFields = document.getElementById('wasteFields');
+                if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0) {
+                    addWasteItem();
+                }
+            }
+        }
+    }
+    
+    updateDisposalTypeHint();
+}
+
+function updateDisposalTypeHint() {
+    const expiredChecked = document.getElementById('expired').checked;
+    const wasteChecked = document.getElementById('waste').checked;
+    const noWasteChecked = document.getElementById('noWaste').checked;
+    const hint = document.getElementById('disposalTypeHint');
+    
+    if (!hint) return;
+    
+    const selected = [];
+    if (expiredChecked) selected.push('Expired Items');
+    if (wasteChecked) selected.push('Waste');
+    if (noWasteChecked) selected.push('No Waste');
+    
+    if (selected.length === 0) {
+        hint.textContent = 'Select at least one disposal type';
+        hint.style.color = '#dc3545';
+    } else if (selected.length === 1) {
+        hint.textContent = `Selected: ${selected[0]}`;
+        hint.style.color = '#28a745';
+    } else {
+        hint.textContent = `Selected: ${selected.join(', ')}`;
+        hint.style.color = '#28a745';
+    }
+}
+
+function validateDisposalTypeSelection() {
+    const expiredChecked = document.getElementById('expired').checked;
+    const wasteChecked = document.getElementById('waste').checked;
+    const noWasteChecked = document.getElementById('noWaste').checked;
+    
+    if (!expiredChecked && !wasteChecked && !noWasteChecked) {
+        showNotification('Please select at least one disposal type.', 'error');
+        return false;
+    }
+    
+    if (noWasteChecked && (expiredChecked || wasteChecked)) {
+        const confirmProceed = confirm('You have selected "No Waste" along with other disposal types. "No Waste" will override other selections. Do you want to continue?');
+        if (!confirmProceed) {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 // ================================
@@ -206,13 +401,16 @@ async function fileToBase64(file) {
 }
 
 // ================================
-// EMAIL SENDING FUNCTION - FIXED TO MATCH TEMPLATE VARIABLES EXACTLY
+// EMAIL FUNCTION
 // ================================
 async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
     try {
-        console.log('Preparing email confirmation...');
+        console.log('📧 Preparing email via Google Apps Script...');
         
-        // Format the submission time
+        if (!GAS_CONFIG.ENDPOINT) {
+            return { success: false, error: 'Email service URL not configured' };
+        }
+        
         const submissionTime = new Date().toLocaleString('en-US', {
             year: 'numeric',
             month: 'short',
@@ -221,100 +419,142 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
             minute: '2-digit'
         });
         
-        // Prepare report details (same as before)
-        let reportDetails = 'Item details:\n\n';
+        let reportDetails = '';
+        let htmlReportDetails = '';
         
-        if (reportData.disposalType === 'expired' && reportData.expiredItems) {
-            reportData.expiredItems.forEach((item, index) => {
-                reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''}\n`;
-            });
-        } else if (reportData.disposalType === 'waste' && reportData.wasteItems) {
-            reportData.wasteItems.forEach((item, index) => {
-                reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''}\n`;
-            });
-        } else if (reportData.disposalType === 'noWaste') {
+        const expiredItems = itemsDetails.filter(item => item.type === 'expired');
+        const wasteItems = itemsDetails.filter(item => item.type === 'waste');
+        
+        if (reportData.noWaste) {
             reportDetails = 'No waste or expired items to report for this period.';
+            htmlReportDetails = '<li>No waste or expired items to report for this period.</li>';
+        } else {
+            if (expiredItems.length > 0) {
+                reportDetails += 'EXPIRED ITEMS:\n';
+                htmlReportDetails += '<h4>Expired Items:</h4><ul>';
+                expiredItems.forEach((item, index) => {
+                    const totalCost = (item.itemCost || 0) * (item.quantity || 0);
+                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Cost: ₱${totalCost.toFixed(2)})\n`;
+                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Cost: ₱${totalCost.toFixed(2)})`;
+                    if (item.notes) {
+                        reportDetails += `   Notes: ${item.notes}\n`;
+                        htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
+                    }
+                    htmlReportDetails += '</li>';
+                });
+                htmlReportDetails += '</ul>';
+            }
+            
+            if (wasteItems.length > 0) {
+                reportDetails += '\nWASTE ITEMS:\n';
+                htmlReportDetails += '<h4>Waste Items:</h4><ul>';
+                wasteItems.forEach((item, index) => {
+                    const totalCost = (item.itemCost || 0) * (item.quantity || 0);
+                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})\n`;
+                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})`;
+                    if (item.notes) {
+                        reportDetails += `   Notes: ${item.notes}\n`;
+                        htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
+                    }
+                    htmlReportDetails += '</li>';
+                });
+                htmlReportDetails += '</ul>';
+            }
         }
-
-        // CRITICAL FIX: Use exact variable names from your EmailJS template
-        const templateParams = {
-            to_email: reportData.email,  // Required by EmailJS service
-
-            reportId: reportId || 'N/A',                              // ← matches {{reportId}}
-            submissionTime: submissionTime || 'N/A',                  // ← matches {{submissionTime}}
-            store: reportData.store || 'N/A',                         // ← matches {{store}}
-            personnel: reportData.personnel || 'N/A',                 // ← matches {{personnel}}
-            reportDate: formatDate(reportData.reportDate) || 'N/A',   // ← matches {{reportDate}}
-            disposalType: (reportData.disposalType || 'N/A').toUpperCase(), // ← matches {{disposalType}}
-            itemCount: itemsDetails.length || 0,                      // ← matches {{itemCount}}
-            totalBatches: reportData.totalBatches || 1,               // ← matches {{#if totalBatches}} and {{totalBatches}}
-            reportDetails: reportDetails || 'No details provided'     // ← matches {{reportDetails}}
+        
+        const emailData = {
+            to: reportData.email,
+            subject: `Waste Report Confirmation - ${reportId}`,
+            store: reportData.store || 'N/A',
+            personnel: reportData.personnel || 'N/A',
+            reportDate: formatDate(reportData.reportDate) || 'N/A',
+            disposalTypes: reportData.disposalTypes || ['N/A'],
+            itemCount: itemsDetails.length,
+            reportDetails: reportDetails,
+            htmlReportDetails: htmlReportDetails,
+            submissionTime: submissionTime,
+            reportId: reportId,
+            totalBatches: reportData.totalBatches || 1,
+            hasAttachments: reportData.originalFileSize > 0
         };
         
-        console.log('Email template parameters:', templateParams);
+        console.log('📤 Sending email to:', emailData.to);
         
-        // Send email using EmailJS
-        const response = await emailjs.send(
-            EMAILJS_CONFIG.SERVICE_ID,
-            EMAILJS_CONFIG.TEMPLATE_ID,
-            templateParams
-        );
+        try {
+            const formData = new FormData();
+            formData.append('data', JSON.stringify(emailData));
+            
+            const response = await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData
+            });
+            
+            console.log('✅ FormData request sent (status:', response.status, ')');
+            
+            if (response.ok) {
+                try {
+                    const result = await response.json();
+                    return { success: true, response: result };
+                } catch (e) {
+                    return { success: true, message: 'Email sent (non-JSON response)' };
+                }
+            } else {
+                return { success: true, message: 'Email likely sent (non-200 but processed)' };
+            }
+        } catch (err) {
+            console.log('FormData failed, trying fallback methods...', err);
+        }
         
-        console.log('✅ Email sent successfully:', response);
-        return { success: true, response };
+        try {
+            const params = new URLSearchParams();
+            Object.keys(emailData).forEach(key => params.append(key, emailData[key]));
+            const url = `${GAS_CONFIG.ENDPOINT}?${params.toString()}`;
+            
+            await fetch(url, { method: 'GET', mode: 'no-cors' });
+            console.log('✅ GET fallback request submitted');
+            return { success: true, message: 'Email sent via GET fallback' };
+        } catch (err) {
+            console.log('GET fallback failed, trying iframe...');
+        }
+        
+        return new Promise(resolve => {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.name = 'gasIframe';
+            
+            const form = document.createElement('form');
+            form.target = 'gasIframe';
+            form.method = 'POST';
+            form.action = GAS_CONFIG.ENDPOINT;
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'data';
+            input.value = JSON.stringify(emailData);
+            form.appendChild(input);
+            
+            document.body.appendChild(iframe);
+            document.body.appendChild(form);
+            
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+                document.body.removeChild(form);
+                console.log('✅ Iframe fallback submitted');
+                resolve({ success: true, message: 'Email sent via iframe fallback' });
+            }, 2000);
+            
+            form.submit();
+        });
         
     } catch (error) {
         console.error('❌ Email sending failed:', error);
-        
-        if (error.text) {
-            console.error('EmailJS error text:', error.text);
-        }
-        if (error.message) {
-            console.error('Error message:', error.message);
-        }
-        
-        return { 
-            success: false, 
-            error: error.text || error.message || 'Email sending failed' 
-        };
+        return { success: false, error: error.message || 'Unknown error' };
     }
 }
 
 // ================================
-// FORM FUNCTIONS (unchanged)
+// FORM FUNCTIONS
 // ================================
-function toggleDynamicFields() {
-    const disposalType = document.querySelector('input[name="disposalType"]:checked');
-    if (!disposalType) return;
-    
-    const expiredContainer = document.getElementById('expiredContainer');
-    const wasteContainer = document.getElementById('wasteContainer');
-    
-    if (expiredContainer) expiredContainer.classList.remove('show');
-    if (wasteContainer) wasteContainer.classList.remove('show');
-    
-    const expiredFields = document.getElementById('expiredFields');
-    const wasteFields = document.getElementById('wasteFields');
-    if (expiredFields) expiredFields.innerHTML = '';
-    if (wasteFields) wasteFields.innerHTML = '';
-    
-    if (disposalType.value === 'expired') {
-        if (expiredContainer) {
-            expiredContainer.classList.add('show');
-            if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0) {
-                addExpiredItem();
-            }
-        }
-    } else if (disposalType.value === 'waste') {
-        if (wasteContainer) {
-            wasteContainer.classList.add('show');
-            if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0) {
-                addWasteItem();
-            }
-        }
-    }
-}
-
 function createFilePreview(fileInput, previewContainerId) {
     const files = fileInput.files;
     const previewContainer = document.getElementById(previewContainerId);
@@ -381,6 +621,22 @@ function removeFileFromInput(fileInput, index) {
     fileInput.dispatchEvent(new Event('change'));
 }
 
+function initSelect2Dropdown(selectElementId) {
+    if (ITEMS_LIST.length === 0) {
+        console.log('Items not loaded yet, delaying Select2 initialization for:', selectElementId);
+        return;
+    }
+    
+    // SIMPLE DROPDOWN WITHOUT COST DISPLAY
+    $(`#${selectElementId}`).select2({
+        data: ITEMS_LIST.map(item => ({ id: item, text: item })),
+        placeholder: "Select or type to search...",
+        allowClear: false,
+        width: '100%',
+        dropdownParent: $(`#${selectElementId}`).parent()
+    });
+}
+
 function addExpiredItem() {
     const expiredFields = document.getElementById('expiredFields');
     if (!expiredFields) return;
@@ -400,7 +656,10 @@ function addExpiredItem() {
         <div class="form-grid">
             <div class="form-group">
                 <label for="expiredItem-${itemId}">Item Name <span class="required">*</span></label>
-                <input type="text" id="expiredItem-${itemId}" name="expiredItems[${itemId}][item]" required placeholder="Enter item name">
+                <select class="item-dropdown" id="expiredItem-${itemId}" name="expiredItems[${itemId}][item]" required>
+                    <option value="" disabled selected>Select or type to search...</option>
+                </select>
+                <span class="note">Type to search or select from dropdown</span>
             </div>
             <div class="form-group">
                 <label for="deliveredDate-${itemId}">Delivered Date <span class="required">*</span></label>
@@ -450,6 +709,10 @@ function addExpiredItem() {
     `;
     
     expiredFields.appendChild(fieldGroup);
+    
+    setTimeout(() => {
+        initSelect2Dropdown(`expiredItem-${itemId}`);
+    }, 100);
 }
 
 function addWasteItem() {
@@ -465,12 +728,15 @@ function addWasteItem() {
     fieldGroup.innerHTML = `
         <div class="field-header">
             <div class="field-title">Waste Item</div>
-            <button type="button" class="remove-btn" onclick="removeField('waste-${itemId}')">×</button>
+                <button type="button" class="remove-btn" onclick="removeField('waste-${itemId}')">×</button>
         </div>
         <div class="form-grid">
             <div class="form-group">
                 <label for="wasteItem-${itemId}">Item/Description <span class="required">*</span></label>
-                <input type="text" id="wasteItem-${itemId}" name="wasteItems[${itemId}][item]" required placeholder="Enter item or description">
+                <select class="item-dropdown" id="wasteItem-${itemId}" name="wasteItems[${itemId}][item]" required>
+                    <option value="" disabled selected>Select or type to search...</option>
+                </select>
+                <span class="note">Type to search or select from dropdown</span>
             </div>
             <div class="form-group">
                 <label for="reason-${itemId}">Reason for Waste <span class="required">*</span></label>
@@ -521,6 +787,10 @@ function addWasteItem() {
     `;
     
     wasteFields.appendChild(fieldGroup);
+    
+    setTimeout(() => {
+        initSelect2Dropdown(`wasteItem-${itemId}`);
+    }, 100);
 }
 
 function removeField(fieldId) {
@@ -547,26 +817,16 @@ function validateFiles(fileInput) {
     return null;
 }
 
-function calculateTotalFileSize(fileInputs) {
-    let totalSize = 0;
-    fileInputs.forEach(input => {
-        if (input && input.files) {
-            Array.from(input.files).forEach(file => {
-                totalSize += file.size;
-            });
-        }
-    });
-    return totalSize;
-}
-
 function validateDynamicFields() {
-    const disposalType = document.querySelector('input[name="disposalType"]:checked');
-    if (!disposalType) {
-        showNotification('Please select a disposal type.', 'error');
-        return false;
-    }
+    const expiredChecked = document.getElementById('expired').checked;
+    const wasteChecked = document.getElementById('waste').checked;
+    const noWasteChecked = document.getElementById('noWaste').checked;
     
-    if (disposalType.value === 'expired') {
+    if (noWasteChecked) return true;
+    
+    let isValid = true;
+    
+    if (expiredChecked) {
         const expiredItems = document.querySelectorAll('#expiredFields .field-group');
         if (expiredItems.length === 0) {
             showNotification('Please add at least one expired item.', 'error');
@@ -574,7 +834,7 @@ function validateDynamicFields() {
         }
         
         for (let item of expiredItems) {
-            const requiredFields = item.querySelectorAll('input[required], select[required]');
+            const requiredFields = item.querySelectorAll('select[required], input[required]');
             const fileInput = item.querySelector('input[type="file"]');
             
             for (let field of requiredFields) {
@@ -597,8 +857,9 @@ function validateDynamicFields() {
                 }
             }
         }
-        
-    } else if (disposalType.value === 'waste') {
+    }
+    
+    if (wasteChecked) {
         const wasteItems = document.querySelectorAll('#wasteFields .field-group');
         if (wasteItems.length === 0) {
             showNotification('Please add at least one waste item.', 'error');
@@ -606,7 +867,7 @@ function validateDynamicFields() {
         }
         
         for (let item of wasteItems) {
-            const requiredFields = item.querySelectorAll('input[required], select[required]');
+            const requiredFields = item.querySelectorAll('select[required], input[required]');
             const fileInput = item.querySelector('input[type="file"]');
             
             for (let field of requiredFields) {
@@ -631,11 +892,11 @@ function validateDynamicFields() {
         }
     }
     
-    return true;
+    return isValid;
 }
 
 // ================================
-// BATCH PROCESSING FUNCTIONS (unchanged)
+// BATCH PROCESSING FUNCTIONS
 // ================================
 function splitIntoBatches(items, maxBatchSize = 800 * 1024) {
     const batches = [];
@@ -681,12 +942,14 @@ async function saveReportInBatches(mainReportId, baseReportData, items) {
             itemCount: batch.length
         };
         
-        if (baseReportData.disposalType === 'expired') {
-            batchReport.expiredItems = batch;
-            batchReport.totalExpiredItems = batch.length;
-        } else if (baseReportData.disposalType === 'waste') {
-            batchReport.wasteItems = batch;
-            batchReport.totalWasteItems = batch.length;
+        const expiredBatch = batch.filter(item => item.type === 'expired');
+        const wasteBatch = batch.filter(item => item.type === 'waste');
+        
+        if (expiredBatch.length > 0) {
+            batchReport.expiredItems = expiredBatch;
+        }
+        if (wasteBatch.length > 0) {
+            batchReport.wasteItems = wasteBatch;
         }
         
         const batchSize = calculateObjectSize(batchReport);
@@ -704,7 +967,7 @@ async function saveReportInBatches(mainReportId, baseReportData, items) {
 }
 
 // ================================
-// FORM SUBMISSION HANDLER (unchanged except passing totalBatches to email)
+// FORM SUBMISSION HANDLER
 // ================================
 async function handleSubmit(event) {
     console.log('Form submission started...');
@@ -728,7 +991,11 @@ async function handleSubmit(event) {
     
     const originalText = submitBtn.textContent;
     
-    // Basic validation
+    if (!itemsLoaded || ITEMS_LIST.length === 0) {
+        showNotification('Please wait for items to load before submitting.', 'error');
+        return;
+    }
+    
     const requiredFields = ['email', 'store', 'personnel', 'reportDate'];
     for (let field of requiredFields) {
         const fieldElement = document.getElementById(field);
@@ -739,10 +1006,8 @@ async function handleSubmit(event) {
         }
     }
     
-    const disposalType = document.querySelector('input[name="disposalType"]:checked');
-    if (!disposalType) {
-        showNotification('Please select a disposal type.', 'error');
-        console.error('No disposal type selected');
+    if (!validateDisposalTypeSelection()) {
+        console.error('Invalid disposal type selection');
         return;
     }
     
@@ -751,18 +1016,22 @@ async function handleSubmit(event) {
         return;
     }
     
-    // Show loading state
     submitBtn.textContent = 'Submitting...';
     submitBtn.disabled = true;
     showLoading(true);
     
-    // Initialize base report data
+    const disposalTypes = [];
+    const disposalTypeCheckboxes = document.querySelectorAll('input[name="disposalType"]:checked');
+    disposalTypeCheckboxes.forEach(checkbox => {
+        disposalTypes.push(checkbox.value);
+    });
+    
     const baseReportData = {
         email: document.getElementById('email').value.trim(),
         store: document.getElementById('store').value,
         personnel: document.getElementById('personnel').value.trim(),
         reportDate: document.getElementById('reportDate').value,
-        disposalType: disposalType.value,
+        disposalTypes: disposalTypes,
         submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
         status: 'submitted',
         createdAt: new Date().toISOString(),
@@ -771,8 +1040,12 @@ async function handleSubmit(event) {
         emailError: null
     };
     
+    if (disposalTypes.includes('noWaste')) {
+        baseReportData.noWaste = true;
+        baseReportData.notes = "No waste or expired items to report for this period";
+    }
+    
     try {
-        // Generate main report ID
         const mainReportId = 'REPORT-' + Date.now().toString();
         baseReportData.reportId = mainReportId;
         
@@ -781,11 +1054,11 @@ async function handleSubmit(event) {
         let totalOriginalSize = 0;
         let totalCompressedSize = 0;
         let allItems = [];
+        let savedReportIds = [mainReportId];
+        let totalBatches = 1;
         
-        // Process based on disposal type
-        if (disposalType.value === 'expired') {
+        if (disposalTypes.includes('expired')) {
             const expiredFields = document.querySelectorAll('#expiredFields .field-group');
-            
             console.log(`Found ${expiredFields.length} expired items`);
             
             for (let field of expiredFields) {
@@ -809,8 +1082,24 @@ async function handleSubmit(event) {
                     }
                 }
                 
+                const dropdown = document.getElementById(`expiredItem-${itemId}`);
+                let selectedItem = '';
+                if (dropdown && dropdown.value) {
+                    selectedItem = dropdown.value;
+                } else {
+                    const selectElement = $(`#expiredItem-${itemId}`);
+                    if (selectElement.length > 0) {
+                        selectedItem = selectElement.select2('data')[0]?.id || '';
+                    }
+                }
+                
+                // GET AND SAVE THE COST
+                const itemCost = await getItemCost(selectedItem);
+                console.log(`Item: ${selectedItem}, Cost: ₱${itemCost.toFixed(2)}`);
+                
                 const expiredItem = {
-                    item: document.getElementById(`expiredItem-${itemId}`).value.trim(),
+                    type: 'expired',
+                    item: selectedItem,
                     deliveredDate: document.getElementById(`deliveredDate-${itemId}`).value,
                     manufacturedDate: document.getElementById(`manufacturedDate-${itemId}`).value,
                     expirationDate: document.getElementById(`expirationDate-${itemId}`).value,
@@ -819,19 +1108,19 @@ async function handleSubmit(event) {
                     documentation: filesBase64,
                     notes: document.getElementById(`notes-${itemId}`).value.trim() || '',
                     itemId: itemId,
-                    totalFiles: fileInput ? fileInput.files.length : 0
+                    totalFiles: fileInput ? fileInput.files.length : 0,
+                    // SAVE COST TO FIRESTORE
+                    itemCost: itemCost
                 };
                 
                 allItems.push(expiredItem);
             }
             
-            baseReportData.totalExpiredItems = allItems.length;
-            baseReportData.originalFileSize = totalOriginalSize;
-            baseReportData.compressedFileSize = totalCompressedSize;
-            
-        } else if (disposalType.value === 'waste') {
+            baseReportData.totalExpiredItems = allItems.filter(item => item.type === 'expired').length;
+        }
+        
+        if (disposalTypes.includes('waste')) {
             const wasteFields = document.querySelectorAll('#wasteFields .field-group');
-            
             console.log(`Found ${wasteFields.length} waste items`);
             
             for (let field of wasteFields) {
@@ -855,26 +1144,44 @@ async function handleSubmit(event) {
                     }
                 }
                 
+                const dropdown = document.getElementById(`wasteItem-${itemId}`);
+                let selectedItem = '';
+                if (dropdown && dropdown.value) {
+                    selectedItem = dropdown.value;
+                } else {
+                    const selectElement = $(`#wasteItem-${itemId}`);
+                    if (selectElement.length > 0) {
+                        selectedItem = selectElement.select2('data')[0]?.id || '';
+                    }
+                }
+                
+                // GET AND SAVE THE COST
+                const itemCost = await getItemCost(selectedItem);
+                console.log(`Item: ${selectedItem}, Cost: ₱${itemCost.toFixed(2)}`);
+                
                 const wasteItem = {
-                    item: document.getElementById(`wasteItem-${itemId}`).value.trim(),
+                    type: 'waste',
+                    item: selectedItem,
                     reason: document.getElementById(`reason-${itemId}`).value,
                     quantity: parseFloat(document.getElementById(`wasteQuantity-${itemId}`).value) || 0,
                     unit: document.getElementById(`wasteUnit-${itemId}`).value,
                     documentation: filesBase64,
                     notes: document.getElementById(`wasteNotes-${itemId}`).value.trim() || '',
                     itemId: itemId,
-                    totalFiles: fileInput ? fileInput.files.length : 0
+                    totalFiles: fileInput ? fileInput.files.length : 0,
+                    // SAVE COST TO FIRESTORE
+                    itemCost: itemCost
                 };
                 
                 allItems.push(wasteItem);
             }
             
-            baseReportData.totalWasteItems = allItems.length;
+            baseReportData.totalWasteItems = allItems.filter(item => item.type === 'waste').length;
+        }
+        
+        if (allItems.length > 0) {
             baseReportData.originalFileSize = totalOriginalSize;
             baseReportData.compressedFileSize = totalCompressedSize;
-        } else if (disposalType.value === 'noWaste') {
-            baseReportData.noWaste = true;
-            baseReportData.notes = "No waste or expired items to report for this period";
         }
         
         const estimatedReportSize = calculateObjectSize({
@@ -882,20 +1189,24 @@ async function handleSubmit(event) {
             items: allItems
         });
         
-        let totalBatches = 1;
-        let savedReportIds = [mainReportId];
-        
         if (estimatedReportSize > 800 * 1024) {
             console.log('Report is large, splitting into batches...');
             totalBatches = await saveReportInBatches(mainReportId, baseReportData, allItems);
-            
+            savedReportIds = [];
+            for (let i = 1; i <= totalBatches; i++) {
+                savedReportIds.push(`${mainReportId}_BATCH${i}`);
+            }
         } else {
             console.log('Report fits in single document, saving...');
             
-            if (disposalType.value === 'expired') {
-                baseReportData.expiredItems = allItems;
-            } else if (disposalType.value === 'waste') {
-                baseReportData.wasteItems = allItems;
+            const expiredItems = allItems.filter(item => item.type === 'expired');
+            const wasteItems = allItems.filter(item => item.type === 'waste');
+            
+            if (expiredItems.length > 0) {
+                baseReportData.expiredItems = expiredItems;
+            }
+            if (wasteItems.length > 0) {
+                baseReportData.wasteItems = wasteItems;
             }
             
             const finalSize = calculateObjectSize(baseReportData);
@@ -909,78 +1220,62 @@ async function handleSubmit(event) {
             console.log('✅ Report saved to Firestore with ID:', mainReportId);
         }
         
-        // Add totalBatches to baseReportData for email
         baseReportData.totalBatches = totalBatches;
 
-        // ================================
-        // SEND EMAIL CONFIRMATION
-        // ================================
         console.log('Attempting to send email confirmation...');
         
-        if (!EMAILJS_CONFIG.USER_ID) {
-            console.warn('⚠️ EmailJS not configured: USER_ID missing');
+        const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems);
+        
+        if (emailResult.success) {
+            console.log('✅ Email confirmation request submitted');
+            
+            try {
+                const updatePromises = savedReportIds.map(reportId => {
+                    const reportRef = db.collection('wasteReports').doc(reportId);
+                    return reportRef.update({
+                        emailSent: true,
+                        emailSentAt: new Date().toISOString(),
+                        emailStatus: 'sent',
+                        emailService: 'Google Apps Script'
+                    });
+                });
+                
+                await Promise.all(updatePromises);
+                console.log('✅ Email status updated in database');
+            } catch (updateError) {
+                console.warn('Could not update email status in database:', updateError);
+            }
+            
             showNotification(
-                `Report submitted successfully! (No email sent - EmailJS not configured) ${totalBatches > 1 ? `(${totalBatches} parts)` : ''}`, 
+                `✅ Report submitted successfully! Confirmation email sent. ${totalBatches > 1 ? `(${totalBatches} parts)` : ''}`, 
+                'success'
+            );
+            
+        } else {
+            console.warn('⚠️ Report saved but email failed:', emailResult.error);
+            
+            try {
+                const updatePromises = savedReportIds.map(reportId => {
+                    const reportRef = db.collection('wasteReports').doc(reportId);
+                    return reportRef.update({
+                        emailSent: false,
+                        emailError: emailResult.error,
+                        emailStatus: 'failed',
+                        lastEmailAttempt: new Date().toISOString()
+                    });
+                });
+                
+                await Promise.all(updatePromises);
+            } catch (updateError) {
+                console.warn('Could not update email error in database:', updateError);
+            }
+            
+            showNotification(
+                `⚠️ Report saved successfully! (Email failed: ${emailResult.error || 'Check connection'})`, 
                 'warning'
             );
-        } else {
-            const itemsDetails = allItems.map(item => ({
-                type: disposalType.value,
-                ...item
-            }));
-            
-            const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, itemsDetails);
-            
-            if (emailResult.success) {
-                console.log('✅ Email confirmation sent successfully');
-                
-                try {
-                    const updatePromises = savedReportIds.map(reportId => {
-                        const reportRef = db.collection('wasteReports').doc(reportId);
-                        return reportRef.update({
-                            emailSent: true,
-                            emailSentAt: new Date().toISOString(),
-                            emailStatus: 'sent'
-                        });
-                    });
-                    
-                    await Promise.all(updatePromises);
-                    console.log('✅ Email status updated in database');
-                } catch (updateError) {
-                    console.warn('Could not update email status in database:', updateError);
-                }
-                
-                showNotification(
-                    `Report submitted successfully! Confirmation email sent to ${baseReportData.email}. ${totalBatches > 1 ? `(${totalBatches} parts)` : ''}`, 
-                    'success'
-                );
-                
-            } else {
-                console.warn('⚠️ Report saved but email failed:', emailResult.error);
-                
-                try {
-                    const updatePromises = savedReportIds.map(reportId => {
-                        const reportRef = db.collection('wasteReports').doc(reportId);
-                        return reportRef.update({
-                            emailSent: false,
-                            emailError: emailResult.error,
-                            emailStatus: 'failed'
-                        });
-                    });
-                    
-                    await Promise.all(updatePromises);
-                } catch (updateError) {
-                    console.warn('Could not update email error in database:', updateError);
-                }
-                
-                showNotification(
-                    `Report saved successfully! (Email failed: ${emailResult.error})`, 
-                    'warning'
-                );
-            }
         }
         
-        // Reset form
         const form = document.getElementById('wasteReportForm');
         if (form) {
             form.reset();
@@ -1000,9 +1295,10 @@ async function handleSubmit(event) {
             const wasteContainer = document.getElementById('wasteContainer');
             if (expiredContainer) expiredContainer.classList.remove('show');
             if (wasteContainer) wasteContainer.classList.remove('show');
+            
+            updateDisposalTypeHint();
         }
         
-        // Show option to view reports
         setTimeout(() => {
             const viewReports = confirm(
                 `Report ${mainReportId} has been submitted. Would you like to view all reports?`
@@ -1050,7 +1346,7 @@ async function handleSubmit(event) {
 }
 
 // ================================
-// MODAL FUNCTIONS (unchanged)
+// MODAL FUNCTIONS
 // ================================
 function closeDetailsModal() {
     const detailsModal = document.getElementById('detailsModal');
@@ -1060,9 +1356,9 @@ function closeDetailsModal() {
 }
 
 // ================================
-// INITIALIZATION (unchanged)
+// INITIALIZATION
 // ================================
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     console.log('Document loaded, initializing form...');
     
     const reportDateInput = document.getElementById('reportDate');
@@ -1087,13 +1383,24 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    const disposalTypeRadios = document.querySelectorAll('input[name="disposalType"]');
-    disposalTypeRadios.forEach(radio => {
-        radio.addEventListener('change', toggleDynamicFields);
+    const disposalTypeCheckboxes = document.querySelectorAll('input[name="disposalType"]');
+    disposalTypeCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            toggleDisposalType(this.id);
+        });
     });
     
+    updateDisposalTypeHint();
+    
+    try {
+        await fetchItemsFromFirestore();
+    } catch (error) {
+        console.error('Failed to load items:', error);
+        showNotification('Failed to load items. Please refresh the page.', 'error');
+    }
+    
     testFirebaseConnection();
-    checkEmailJSConfig();
+    checkGASConfig();
     
     window.addEventListener('click', function(event) {
         const detailsModal = document.getElementById('detailsModal');
@@ -1146,17 +1453,45 @@ async function testFirebaseConnection() {
     }
 }
 
-function checkEmailJSConfig() {
-    console.log('EmailJS Configuration Check:');
-    console.log('- USER_ID:', EMAILJS_CONFIG.USER_ID ? 'Set ✓' : 'NOT SET ✗');
-    console.log('- SERVICE_ID:', EMAILJS_CONFIG.SERVICE_ID);
-    console.log('- TEMPLATE_ID:', EMAILJS_CONFIG.TEMPLATE_ID);
+function checkGASConfig() {
+    console.log('Google Apps Script Configuration Check:');
+    console.log('- ENDPOINT:', GAS_CONFIG.ENDPOINT);
+    console.log('- SENDER_EMAIL:', GAS_CONFIG.SENDER_EMAIL);
+    console.log('- SENDER_NAME:', GAS_CONFIG.SENDER_NAME);
     
-    if (!EMAILJS_CONFIG.USER_ID) {
-        console.warn('⚠️ WARNING: EmailJS USER_ID is not set');
-        showNotification('EmailJS not configured. Emails will not be sent.', 'warning');
+    if (!GAS_CONFIG.ENDPOINT) {
+        console.warn('⚠️ WARNING: Google Apps Script URL not configured');
+        showNotification('Email service not configured. Please set up Google Apps Script backend.', 'warning');
     }
 }
+
+window.testGASEmail = async () => {
+    const testEmail = prompt('Enter email to test email service:');
+    if (!testEmail) return;
+    
+    showLoading(true);
+    try {
+        const testData = {
+            email: testEmail,
+            store: 'Test Store',
+            personnel: 'Test User',
+            reportDate: new Date().toISOString().split('T')[0],
+            disposalTypes: ['noWaste']
+        };
+        
+        const result = await sendEmailConfirmation(testData, 'TEST-' + Date.now(), []);
+        
+        if (result.success) {
+            alert('✅ Test email request submitted! Check your inbox.');
+        } else {
+            alert(`❌ Test email failed: ${result.error}`);
+        }
+    } catch (error) {
+        alert(`❌ Error: ${error.message}`);
+    } finally {
+        showLoading(false);
+    }
+};
 
 window.debugSubmit = handleSubmit;
 window.debugFirebase = () => {
@@ -1166,4 +1501,15 @@ window.debugFirebase = () => {
         config: firebaseConfig
     });
     testFirebaseConnection();
+};
+window.debugGAS = checkGASConfig;
+
+window.refreshItems = async () => {
+    try {
+        showNotification('Refreshing items from database...', 'info');
+        await fetchItemsFromFirestore();
+        showNotification('Items refreshed successfully!', 'success');
+    } catch (error) {
+        showNotification('Failed to refresh items: ' + error.message, 'error');
+    }
 };

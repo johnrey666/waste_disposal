@@ -6,6 +6,10 @@
     <title>Submit Waste Report | FG Operations</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Select2 CSS for enhanced dropdown -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <!-- Add this in the <head> section of submit_waste_report.html -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 </head>
 <body>
     <!-- Loading Overlay -->
@@ -91,16 +95,16 @@
                     <input type="date" id="reportDate" name="reportDate" required>
                 </div>
 
-                <!-- Disposal Type -->
+                <!-- Disposal Type Selection (Now checkboxes for multiple selection) -->
                 <div class="form-group">
                     <label>
                         <i class="fas fa-trash"></i> Type of Food Disposal <span class="required">*</span>
                     </label>
-                    <span class="note">Please choose the correct disposal type</span>
+                    <span class="note">Select all that apply to your report</span>
                     
-                    <div class="disposal-options">
+                    <div class="disposal-options multiple">
                         <div class="disposal-option">
-                            <input type="radio" id="expired" name="disposalType" value="expired" required onchange="toggleDynamicFields()">
+                            <input type="checkbox" id="expired" name="disposalType" value="expired" onchange="toggleDisposalType('expired')">
                             <label for="expired" class="disposal-label">
                                 <div class="disposal-icon">
                                     <i class="fas fa-calendar-times"></i>
@@ -111,7 +115,7 @@
                         </div>
                         
                         <div class="disposal-option">
-                            <input type="radio" id="waste" name="disposalType" value="waste" required onchange="toggleDynamicFields()">
+                            <input type="checkbox" id="waste" name="disposalType" value="waste" onchange="toggleDisposalType('waste')">
                             <label for="waste" class="disposal-label">
                                 <div class="disposal-icon">
                                     <i class="fas fa-trash-alt"></i>
@@ -122,7 +126,7 @@
                         </div>
                         
                         <div class="disposal-option">
-                            <input type="radio" id="noWaste" name="disposalType" value="noWaste" required onchange="toggleDynamicFields()">
+                            <input type="checkbox" id="noWaste" name="disposalType" value="noWaste" onchange="toggleDisposalType('noWaste')">
                             <label for="noWaste" class="disposal-label">
                                 <div class="disposal-icon">
                                     <i class="fas fa-check-circle"></i>
@@ -132,6 +136,7 @@
                             </label>
                         </div>
                     </div>
+                    <div class="form-hint" id="disposalTypeHint">Select at least one disposal type</div>
                 </div>
 
                 <!-- Expired Items Container -->
@@ -204,8 +209,12 @@
         </div>
     </div>
 
-    <!-- Add EmailJS Script -->
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <!-- Add jQuery and Select2 for enhanced dropdown -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    
+    <!-- Add Axios for SendGrid API -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     
     <!-- Firebase Scripts -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
