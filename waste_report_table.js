@@ -30,6 +30,10 @@ const Performance = {
                 setTimeout(() => inThrottle = false, limit);
             }
         };
+    },
+    
+    batchUpdate(callback) {
+        requestAnimationFrame(callback);
     }
 };
 
@@ -62,6 +66,7 @@ const firebaseConfig = {
 // GLOBAL VARIABLES
 // ================================
 let db;
+let storage;
 let currentPage = 1;
 const pageSize = 20;
 let lastVisibleDoc = null;
@@ -81,6 +86,9 @@ let currentEditItemId = null;
 let currentRejectionData = null;
 let currentBulkRejectionData = null;
 let currentReportDetailsId = null;
+let currentReportToDelete = null;
+let currentImageToDelete = null;
+let currentImageToDeleteData = null;
 
 // Chart variables
 let storeChart = null;
@@ -149,6 +157,309 @@ const STORE_DISPLAY_NAMES = {
 };
 
 // ================================
+// OPTIMIZED IMAGE FUNCTIONS
+// ================================
+const ImageManager = {
+    // Cache for image URLs to avoid repeated processing
+    urlCache: new Map(),
+    
+    displayImagesInItem(item, index, type) {
+        if (!item.documentation || !Array.isArray(item.documentation) || item.documentation.length === 0) {
+            return '';
+        }
+        
+        const images = item.documentation.filter(doc => doc.type?.startsWith('image/'));
+        if (images.length === 0) {
+            return '';
+        }
+        
+        // Generate HTML with optimized image loading
+        let imagesHTML = `
+            <div class="image-gallery-section">
+                <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
+                    <i class="fas fa-images"></i> ${images.length} image${images.length !== 1 ? 's' : ''}
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        `;
+        
+        images.forEach((doc, docIndex) => {
+            // Use cached URL or generate new one
+            let imageUrl = this.urlCache.get(doc.path);
+            if (!imageUrl) {
+                imageUrl = doc.url || this.getFirebaseStorageUrl(doc.path || doc.fullPath || doc.filePath);
+                this.urlCache.set(doc.path, imageUrl);
+            }
+            
+            const imageName = doc.name || `Image ${docIndex + 1}`;
+            const safeImageName = this.escapeHtml(imageName);
+            const uniqueId = `${type}-${index}-${docIndex}`;
+            
+            imagesHTML += `
+                <div class="thumbnail-container" onclick="ImageManager.openModal('${imageUrl}', '${safeImageName}', '${uniqueId}', ${JSON.stringify(doc).replace(/"/g, '&quot;')}, '${currentReportDetailsId}', ${index}, '${type}', ${docIndex})">
+                    <img src="${imageUrl}" 
+                         alt="${safeImageName}"
+                         loading="lazy"
+                         style="width: 80px; height: 80px; object-fit: cover;"
+                         onerror="ImageManager.handleError(this, '${safeImageName}')">
+                    <div class="thumbnail-index">${docIndex + 1}</div>
+                </div>
+            `;
+        });
+        
+        imagesHTML += `</div></div>`;
+        return imagesHTML;
+    },
+    
+    getFirebaseStorageUrl(storagePath) {
+        if (!storagePath) return null;
+        
+        // Use cached result if available
+        const cached = this.urlCache.get(storagePath);
+        if (cached) return cached;
+        
+        // Process path
+        let cleanPath = storagePath;
+        
+        // Remove leading slash if present
+        if (cleanPath.startsWith('/')) {
+            cleanPath = cleanPath.substring(1);
+        }
+        
+        // Remove bucket prefix if present
+        const bucketPrefix = `gs://${firebaseConfig.storageBucket}/`;
+        if (cleanPath.startsWith(bucketPrefix)) {
+            cleanPath = cleanPath.substring(bucketPrefix.length);
+        }
+        
+        // Remove appspot prefix if present
+        const appspotPrefix = 'disposal-e6b83.appspot.com/';
+        if (cleanPath.startsWith(appspotPrefix)) {
+            cleanPath = cleanPath.substring(appspotPrefix.length);
+        }
+        
+        // Encode and construct URL
+        const encodedPath = encodeURIComponent(cleanPath);
+        const url = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/${encodedPath}?alt=media`;
+        
+        // Cache the result
+        this.urlCache.set(storagePath, url);
+        return url;
+    },
+    
+    openModal(imageUrl, imageName, uniqueId, imageData, reportId, itemIndex, itemType, imageIndex) {
+        const modal = Performance.getElement('#imageModal');
+        const modalImage = Performance.getElement('#modalImage');
+        const imageLoading = Performance.getElement('#imageLoading');
+        const imageInfo = Performance.getElement('#imageInfo');
+        const downloadBtn = Performance.getElement('#downloadImageBtn');
+        const deleteBtn = Performance.getElement('#deleteImageBtn');
+        
+        if (!modal || !modalImage) return;
+        
+        // Reset modal state
+        modalImage.style.display = 'none';
+        modalImage.src = '';
+        if (imageLoading) imageLoading.style.display = 'block';
+        
+        // Update info
+        if (imageInfo) {
+            imageInfo.innerHTML = `
+                <div style="text-align: center;">
+                    <strong>${imageName}</strong><br>
+                    <small>Loading...</small>
+                </div>
+            `;
+        }
+        
+        // Set download handler
+        if (downloadBtn) {
+            downloadBtn.onclick = () => this.downloadImage(imageUrl, imageName);
+        }
+        
+        // Set delete handler if imageData is provided
+        if (deleteBtn && imageData && reportId) {
+            currentImageToDeleteData = {
+                reportId: reportId,
+                itemIndex: itemIndex,
+                itemType: itemType,
+                imageIndex: imageIndex,
+                imageData: imageData
+            };
+            deleteBtn.onclick = () => this.openDeleteImageModal(imageData, reportId, itemIndex, itemType, imageIndex);
+            deleteBtn.style.display = 'inline-block';
+        } else if (deleteBtn) {
+            deleteBtn.style.display = 'none';
+        }
+        
+        // Preload image with timeout
+        const preloadTimer = setTimeout(() => {
+            if (imageLoading) imageLoading.style.display = 'none';
+            modalImage.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="%23f8f9fa"/><text x="200" y="140" font-family="Arial" font-size="14" text-anchor="middle" fill="%23666">Loading...</text></svg>';
+            modalImage.style.display = 'block';
+        }, 5000);
+        
+        const img = new Image();
+        img.onload = () => {
+            clearTimeout(preloadTimer);
+            modalImage.src = imageUrl;
+            modalImage.alt = imageName;
+            modalImage.style.display = 'block';
+            
+            if (imageLoading) imageLoading.style.display = 'none';
+            
+            if (imageInfo) {
+                imageInfo.innerHTML = `
+                    <div style="text-align: center;">
+                        <strong>${imageName}</strong><br>
+                        <small>${img.width} × ${img.height} pixels</small>
+                    </div>
+                `;
+            }
+            
+            if (downloadBtn) {
+                downloadBtn.style.display = 'inline-block';
+            }
+        };
+        
+        img.onerror = () => {
+            clearTimeout(preloadTimer);
+            modalImage.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="%23f8f9fa"/><text x="200" y="140" font-family="Arial" font-size="14" text-anchor="middle" fill="%23666">Image unavailable</text></svg>';
+            modalImage.alt = 'Image not available';
+            modalImage.style.display = 'block';
+            
+            if (imageLoading) imageLoading.style.display = 'none';
+            
+            if (imageInfo) {
+                imageInfo.innerHTML = `
+                    <div style="text-align: center;">
+                        <strong>${imageName}</strong><br>
+                        <small style="color: #dc3545;">Failed to load</small>
+                    </div>
+                `;
+            }
+        };
+        
+        img.src = imageUrl;
+        modal.style.display = 'flex';
+    },
+    
+    closeModal() {
+        const modal = Performance.getElement('#imageModal');
+        if (modal) {
+            modal.style.display = 'none';
+            const modalImage = Performance.getElement('#modalImage');
+            if (modalImage) {
+                modalImage.src = '';
+            }
+        }
+        currentImageToDeleteData = null;
+    },
+    
+    downloadImage(imageUrl, imageName) {
+        if (!imageUrl) return;
+        
+        const link = document.createElement('a');
+        link.href = imageUrl;
+        link.download = (imageName || 'image').replace(/[^a-z0-9.]/gi, '_').toLowerCase() + '.jpg';
+        link.target = '_blank';
+        
+        document.body.appendChild(link);
+        link.click();
+        
+        setTimeout(() => {
+            document.body.removeChild(link);
+        }, 100);
+        
+        showNotification('Download started...', 'info', 2000);
+    },
+    
+    openDeleteImageModal(imageData, reportId, itemIndex, itemType, imageIndex) {
+        currentImageToDelete = { imageData, reportId, itemIndex, itemType, imageIndex };
+        
+        const deleteImageInfo = Performance.getElement('#deleteImageInfo');
+        if (deleteImageInfo) {
+            const imageName = imageData.name || 'Image';
+            deleteImageInfo.innerHTML = `
+                <p><strong>Image:</strong> ${imageName}</p>
+                <p><strong>Report:</strong> ${reportId}</p>
+                <p><strong>Item Type:</strong> ${itemType === 'expired' ? 'Expired' : 'Waste'}</p>
+                <p><strong>Size:</strong> ${imageData.size ? (imageData.size / 1024).toFixed(2) + ' KB' : 'Unknown'}</p>
+            `;
+        }
+        
+        const deleteImageModal = Performance.getElement('#deleteImageModal');
+        if (deleteImageModal) {
+            deleteImageModal.style.display = 'flex';
+        }
+    },
+    
+    closeDeleteImageModal() {
+        currentImageToDelete = null;
+        const deleteImageModal = Performance.getElement('#deleteImageModal');
+        if (deleteImageModal) {
+            deleteImageModal.style.display = 'none';
+        }
+    },
+    
+    async deleteImageFromStorage(imageData) {
+        if (!imageData || !imageData.path) {
+            throw new Error('Invalid image data');
+        }
+        
+        try {
+            // Clean up the path
+            let filePath = imageData.path;
+            
+            // Remove leading slash if present
+            if (filePath.startsWith('/')) {
+                filePath = filePath.substring(1);
+            }
+            
+            // Remove bucket prefix if present
+            const bucketPrefix = `gs://${firebaseConfig.storageBucket}/`;
+            if (filePath.startsWith(bucketPrefix)) {
+                filePath = filePath.substring(bucketPrefix.length);
+            }
+            
+            // Remove appspot prefix if present
+            const appspotPrefix = 'disposal-e6b83.appspot.com/';
+            if (filePath.startsWith(appspotPrefix)) {
+                filePath = filePath.substring(appspotPrefix.length);
+            }
+            
+            // Delete from Firebase Storage
+            const storageRef = storage.ref(filePath);
+            await storageRef.delete();
+            
+            // Remove from cache
+            this.urlCache.delete(imageData.path);
+            
+            return true;
+        } catch (error) {
+            console.error('Error deleting image from storage:', error);
+            throw error;
+        }
+    },
+    
+    handleError(imgElement, imageName) {
+        console.warn(`Failed to load image: ${imageName}`);
+        imgElement.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%23f0f0f0"/><text x="40" y="40" font-family="Arial" font-size="10" text-anchor="middle" fill="%23999">Image</text></svg>';
+        imgElement.style.objectFit = 'contain';
+        imgElement.style.padding = '10px';
+    },
+    
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML.replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+    },
+    
+    clearCache() {
+        this.urlCache.clear();
+    }
+};
+
+// ================================
 // OPTIMIZED LOADING & NOTIFICATION
 // ================================
 function showNotification(message, type = 'success', duration = 3000) {
@@ -179,17 +490,20 @@ function showLoading(show, message = 'Loading...') {
     const overlay = Performance.getElement('#loadingOverlay');
     if (!overlay) return;
     
-    requestAnimationFrame(() => {
+    Performance.batchUpdate(() => {
         overlay.style.display = show ? 'flex' : 'none';
         if (show && message !== 'Loading...') {
             const spinner = overlay.querySelector('.loading-spinner');
             if (spinner) {
-                spinner.style.marginBottom = '15px';
-                spinner.nextElementSibling?.remove();
-                const text = document.createElement('p');
-                text.textContent = message;
-                text.style.cssText = 'color: white; margin: 0; font-size: 14px; text-align: center;';
-                overlay.appendChild(text);
+                const existingText = spinner.nextElementSibling;
+                if (existingText && existingText.tagName === 'P') {
+                    existingText.textContent = message;
+                } else {
+                    const text = document.createElement('p');
+                    text.textContent = message;
+                    text.style.cssText = 'color: white; margin: 15px 0 0; font-size: 14px; text-align: center;';
+                    overlay.appendChild(text);
+                }
             }
         }
     });
@@ -307,6 +621,7 @@ function initializeApp() {
             firebase.initializeApp(firebaseConfig);
         }
         db = firebase.firestore();
+        storage = firebase.storage();
         
         // Enable offline persistence for better performance
         db.enablePersistence()
@@ -364,19 +679,15 @@ function showReportsSection() {
 }
 
 // ================================
-// SIMPLE MINIMAL CHART FUNCTIONS
+// CHART FUNCTIONS - OPTIMIZED
 // ================================
 function initChartTypeSelector() {
     const chartTypeBtns = document.querySelectorAll('.chart-type-btn');
     chartTypeBtns.forEach(btn => {
         btn.addEventListener('click', function() {
-            // Remove active class from all buttons
             chartTypeBtns.forEach(b => b.classList.remove('active'));
-            // Add active class to clicked button
             this.classList.add('active');
-            // Update current chart type
             currentChartType = this.dataset.type;
-            // Refresh chart with new type
             createChartBasedOnType();
         });
     });
@@ -392,7 +703,13 @@ async function loadAllReportsForChart() {
         
         allReportsData = [];
         snapshot.forEach(doc => {
-            allReportsData.push({ id: doc.id, ...doc.data() });
+            const data = doc.data();
+            allReportsData.push({ 
+                id: doc.id, 
+                ...data,
+                disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
+                              data.disposalType ? [data.disposalType] : ['unknown']
+            });
         });
         
         analyzeStorePerformance();
@@ -407,7 +724,6 @@ async function loadAllReportsForChart() {
 }
 
 function analyzeStorePerformance() {
-    // Reset analysis - initialize ALL stores with zero values
     chartAnalysis = {
         stores: {},
         dailyReports: {},
@@ -435,15 +751,16 @@ function analyzeStorePerformance() {
         };
     });
     
-    // Process ALL reports for store performance
+    // Process reports
     allReportsData.forEach(report => {
         const store = report.store;
+        if (!store) return;
+        
         const reportDate = new Date(report.reportDate);
         const monthKey = `${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, '0')}`;
-        const dayKey = report.reportDate; // YYYY-MM-DD format
+        const dayKey = report.reportDate;
         const dateKey = `${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, '0')}-${String(reportDate.getDate()).padStart(2, '0')}`;
         
-        // Make sure store exists in chartAnalysis (in case there are stores not in ALL_STORES)
         if (!chartAnalysis.stores[store]) {
             chartAnalysis.stores[store] = {
                 totalCost: 0,
@@ -461,95 +778,78 @@ function analyzeStorePerformance() {
         
         const storeData = chartAnalysis.stores[store];
         
-        // Calculate total cost - ONLY include approved items
-        let reportCost = 0;
-        let approvedItemCount = 0;
-        
-        // Check if it's a no-waste report (always accepted)
-        if (report.disposalTypes?.includes('noWaste') || report.disposalType === 'noWaste') {
-            // No waste report has 0 cost
-            reportCost = 0;
-            
-            // Count report and add to store data
+        // No waste report
+        if (report.disposalTypes?.includes('noWaste')) {
             storeData.reportCount++;
             storeData.reportDates.add(report.reportDate);
             
-            // Track daily reports
             if (!chartAnalysis.dailyReports[dayKey]) {
                 chartAnalysis.dailyReports[dayKey] = new Set();
             }
             chartAnalysis.dailyReports[dayKey].add(store);
             
-            // Track costs by exact date (even though cost is 0)
             if (!chartAnalysis.dailyCosts[dateKey]) {
                 chartAnalysis.dailyCosts[dateKey] = {};
             }
             if (!chartAnalysis.dailyCosts[dateKey][store]) {
                 chartAnalysis.dailyCosts[dateKey][store] = 0;
             }
-            chartAnalysis.dailyCosts[dateKey][store] += reportCost;
             
-            return; // Skip to next report
+            return;
         }
         
-        // For reports with items, only include APPROVED items in cost calculation
+        // Calculate cost
+        let reportCost = 0;
+        
         if (report.expiredItems) {
             report.expiredItems.forEach(item => {
-                if (item.approvalStatus === 'approved') {
-                    const itemCost = item.itemCost || 0;
-                    const quantity = item.quantity || 0;
-                    reportCost += itemCost * quantity;
-                    approvedItemCount++;
-                    storeData.itemCount++;
-                }
+                const itemCost = item.itemCost || 0;
+                const quantity = item.quantity || 0;
+                reportCost += itemCost * quantity;
+                storeData.itemCount++;
             });
         }
         
         if (report.wasteItems) {
             report.wasteItems.forEach(item => {
-                if (item.approvalStatus === 'approved') {
-                    const itemCost = item.itemCost || 0;
-                    const quantity = item.quantity || 0;
-                    reportCost += itemCost * quantity;
-                    approvedItemCount++;
-                    storeData.itemCount++;
-                }
+                const itemCost = item.itemCost || 0;
+                const quantity = item.quantity || 0;
+                reportCost += itemCost * quantity;
+                storeData.itemCount++;
             });
         }
         
-        // Only count report and add to store data if at least ONE item is approved
-        if (reportCost > 0 || approvedItemCount > 0) {
-            storeData.totalCost += reportCost;
-            storeData.reportCount++;
-            storeData.reportDates.add(report.reportDate);
-            
-            // Track monthly costs
-            if (!storeData.monthlyCosts[monthKey]) {
-                storeData.monthlyCosts[monthKey] = 0;
-            }
-            storeData.monthlyCosts[monthKey] += reportCost;
-            
-            // Track daily costs
-            if (!storeData.dailyCosts[dayKey]) {
-                storeData.dailyCosts[dayKey] = 0;
-            }
-            storeData.dailyCosts[dayKey] += reportCost;
-            
-            // Track daily reports
-            if (!chartAnalysis.dailyReports[dayKey]) {
-                chartAnalysis.dailyReports[dayKey] = new Set();
-            }
-            chartAnalysis.dailyReports[dayKey].add(store);
-            
-            // Track costs by exact date
-            if (!chartAnalysis.dailyCosts[dateKey]) {
-                chartAnalysis.dailyCosts[dateKey] = {};
-            }
-            if (!chartAnalysis.dailyCosts[dateKey][store]) {
-                chartAnalysis.dailyCosts[dateKey][store] = 0;
-            }
-            chartAnalysis.dailyCosts[dateKey][store] += reportCost;
+        // Update store data
+        storeData.totalCost += reportCost;
+        storeData.reportCount++;
+        storeData.reportDates.add(report.reportDate);
+        
+        // Track monthly costs
+        if (!storeData.monthlyCosts[monthKey]) {
+            storeData.monthlyCosts[monthKey] = 0;
         }
+        storeData.monthlyCosts[monthKey] += reportCost;
+        
+        // Track daily costs
+        if (!storeData.dailyCosts[dayKey]) {
+            storeData.dailyCosts[dayKey] = 0;
+        }
+        storeData.dailyCosts[dayKey] += reportCost;
+        
+        // Track daily reports
+        if (!chartAnalysis.dailyReports[dayKey]) {
+            chartAnalysis.dailyReports[dayKey] = new Set();
+        }
+        chartAnalysis.dailyReports[dayKey].add(store);
+        
+        // Track costs by exact date
+        if (!chartAnalysis.dailyCosts[dateKey]) {
+            chartAnalysis.dailyCosts[dateKey] = {};
+        }
+        if (!chartAnalysis.dailyCosts[dateKey][store]) {
+            chartAnalysis.dailyCosts[dateKey][store] = 0;
+        }
+        chartAnalysis.dailyCosts[dateKey][store] += reportCost;
     });
 }
 
@@ -559,7 +859,6 @@ function createChartBasedOnType() {
     const sortOrder = Performance.getElement('#chartSort')?.value || 'desc';
     const datePicker = Performance.getElement('#chartDatePicker');
     
-    // Start with ALL_STORES
     let storeEntries = ALL_STORES.map(store => {
         const data = chartAnalysis.stores[store] || {
             totalCost: 0,
@@ -574,7 +873,6 @@ function createChartBasedOnType() {
             periodCost: 0
         };
         
-        // Reset period-specific counters
         data.periodReportCount = 0;
         data.periodItemCount = 0;
         data.periodCost = 0;
@@ -582,25 +880,19 @@ function createChartBasedOnType() {
         return [store, data];
     });
     
-    // Filter by period and calculate period-specific metrics
+    // Calculate period-specific metrics
     const now = new Date();
     
     if (period === 'today') {
-        const today = now.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const today = now.toISOString().split('T')[0];
         storeEntries.forEach(([store, data]) => {
-            // Count reports from today
             data.reportDates.forEach(dateStr => {
                 if (dateStr === today) {
                     data.periodReportCount++;
                 }
             });
-            
-            // Get cost from today
             data.periodCost = data.dailyCosts[today] || 0;
-            
-            // For item count, we need to filter reports from today
-            // This is a simplified version - in production you might want to track this differently
-            data.periodItemCount = data.itemCount; // This is an approximation
+            data.periodItemCount = data.itemCount;
         });
     } else if (period === 'yesterday') {
         const yesterday = new Date(now);
@@ -614,11 +906,11 @@ function createChartBasedOnType() {
                 }
             });
             data.periodCost = data.dailyCosts[yesterdayKey] || 0;
-            data.periodItemCount = data.itemCount; // Approximation
+            data.periodItemCount = data.itemCount;
         });
     } else if (period === 'thisWeek') {
         const startOfWeek = new Date(now);
-        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Sunday
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
         
         storeEntries.forEach(([store, data]) => {
             let weekCost = 0;
@@ -629,7 +921,6 @@ function createChartBasedOnType() {
                 date.setDate(date.getDate() + i);
                 const dateKey = date.toISOString().split('T')[0];
                 
-                // Check if store has reports on this date
                 if (data.reportDates.has(dateKey)) {
                     weekReportCount++;
                 }
@@ -639,7 +930,7 @@ function createChartBasedOnType() {
             
             data.periodReportCount = weekReportCount;
             data.periodCost = weekCost;
-            data.periodItemCount = data.itemCount; // Approximation
+            data.periodItemCount = data.itemCount;
         });
     } else if (period === 'lastWeek') {
         const startOfLastWeek = new Date(now);
@@ -663,13 +954,12 @@ function createChartBasedOnType() {
             
             data.periodReportCount = weekReportCount;
             data.periodCost = weekCost;
-            data.periodItemCount = data.itemCount; // Approximation
+            data.periodItemCount = data.itemCount;
         });
     } else if (period === 'month') {
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         
         storeEntries.forEach(([store, data]) => {
-            // Count reports from this month
             data.reportDates.forEach(dateStr => {
                 if (dateStr.startsWith(currentMonth)) {
                     data.periodReportCount++;
@@ -677,7 +967,7 @@ function createChartBasedOnType() {
             });
             
             data.periodCost = data.monthlyCosts[currentMonth] || 0;
-            data.periodItemCount = data.itemCount; // Approximation
+            data.periodItemCount = data.itemCount;
         });
     } else if (period === 'lastMonth') {
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -690,7 +980,7 @@ function createChartBasedOnType() {
                 }
             });
             data.periodCost = data.monthlyCosts[lastMonthKey] || 0;
-            data.periodItemCount = data.itemCount; // Approximation
+            data.periodItemCount = data.itemCount;
         });
     } else if (period === 'quarter') {
         const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
@@ -715,7 +1005,7 @@ function createChartBasedOnType() {
             
             data.periodReportCount = quarterReportCount;
             data.periodCost = quarterCost;
-            data.periodItemCount = data.itemCount; // Approximation
+            data.periodItemCount = data.itemCount;
         });
     } else if (period === 'year') {
         const currentYear = now.getFullYear();
@@ -739,7 +1029,7 @@ function createChartBasedOnType() {
             
             data.periodReportCount = yearReportCount;
             data.periodCost = yearCost;
-            data.periodItemCount = data.itemCount; // Approximation
+            data.periodItemCount = data.itemCount;
         });
     } else if (period === 'specificDate' && datePicker && datePicker.value) {
         const selectedDate = datePicker.value;
@@ -751,10 +1041,10 @@ function createChartBasedOnType() {
                 data.periodReportCount = 0;
             }
             data.periodCost = data.dailyCosts[selectedDate] || 0;
-            data.periodItemCount = data.itemCount; // Approximation
+            data.periodItemCount = data.itemCount;
         });
     } else {
-        // All time - use total values
+        // All time
         storeEntries.forEach(([store, data]) => {
             data.periodReportCount = data.reportCount;
             data.periodCost = data.totalCost;
@@ -767,16 +1057,16 @@ function createChartBasedOnType() {
         let metricValue;
         switch(metric) {
             case 'reports':
-                metricValue = data.periodReportCount; // FIXED: Use period-specific report count
+                metricValue = data.periodReportCount;
                 break;
             case 'items':
-                metricValue = data.periodItemCount; // FIXED: Use period-specific item count
+                metricValue = data.periodItemCount;
                 break;
             case 'average':
-                metricValue = data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0; // FIXED: Use period values
+                metricValue = data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0;
                 break;
             default: // cost
-                metricValue = data.periodCost; // FIXED: Use period-specific cost
+                metricValue = data.periodCost;
         }
         return {
             store,
@@ -790,7 +1080,6 @@ function createChartBasedOnType() {
         return sortOrder === 'desc' ? b.metricValue - a.metricValue : a.metricValue - b.metricValue;
     });
     
-    // Convert back to array format
     const sortedStoreEntries = storeEntriesWithValues.map(item => [item.store, item.data]);
     
     // Prepare chart data
@@ -798,20 +1087,17 @@ function createChartBasedOnType() {
     const dataValues = sortedStoreEntries.map(([store, data]) => {
         switch(metric) {
             case 'reports':
-                return data.periodReportCount; // FIXED
+                return data.periodReportCount;
             case 'items':
-                return data.periodItemCount; // FIXED
+                return data.periodItemCount;
             case 'average':
-                return data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0; // FIXED
+                return data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0;
             default: // cost
-                return data.periodCost; // FIXED
+                return data.periodCost;
         }
     });
     
-    // Create chart based on type
     createChart(labels, dataValues, sortedStoreEntries, metric, period);
-    
-    // Update chart statistics
     updateChartStatistics(sortedStoreEntries, metric, period);
 }
 
@@ -819,16 +1105,12 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
     const ctx = document.getElementById('storeChart')?.getContext('2d');
     if (!ctx) return;
     
-    // Destroy existing chart
     if (storeChart) {
         storeChart.destroy();
     }
     
-    // Define chart data based on type
     let chartData, chartOptions;
-    
-    const baseColor = '#2a5934'; // Primary green color
-    const accentColor = '#28a745'; // Success green
+    const baseColor = '#2a5934';
     
     switch(currentChartType) {
         case 'bar':
@@ -848,19 +1130,9 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: {
-                        display: false,
-                    },
+                    legend: { display: false },
                     tooltip: {
                         backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        titleFont: {
-                            size: 13,
-                        },
-                        bodyFont: {
-                            size: 12
-                        },
-                        padding: 10,
-                        cornerRadius: 4,
                         callbacks: {
                             label: function(context) {
                                 return buildChartTooltip(context, storeEntries, metric, period);
@@ -868,7 +1140,7 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                             title: function(context) {
                                 const storeIndex = context[0].dataIndex;
                                 const store = storeEntries[storeIndex][0];
-                                return store; // Show full store name in tooltip
+                                return store;
                             }
                         }
                     }
@@ -876,15 +1148,8 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                 scales: {
                     y: {
                         beginAtZero: true,
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)',
-                            drawBorder: false
-                        },
+                        grid: { color: 'rgba(0, 0, 0, 0.05)' },
                         ticks: {
-                            font: {
-                                size: 11
-                            },
-                            padding: 5,
                             callback: function(value) {
                                 if (metric === 'cost' || metric === 'average') {
                                     return '₱' + value.toLocaleString('en-US', {
@@ -897,18 +1162,10 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                         }
                     },
                     x: {
-                        grid: {
-                            display: false
-                        },
+                        grid: { display: false },
                         ticks: {
-                            font: {
-                                size: 9, // Smaller font for better fit
-                                weight: 'normal'
-                            },
-                            padding: 5,
                             maxRotation: 90,
-                            minRotation: 45,
-                            autoSkip: false
+                            minRotation: 45
                         }
                     }
                 }
@@ -925,12 +1182,7 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                     borderColor: baseColor,
                     borderWidth: 2,
                     fill: true,
-                    tension: 0.1,
-                    pointBackgroundColor: baseColor,
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 1,
-                    pointRadius: 3,
-                    pointHoverRadius: 5
+                    tension: 0.1
                 }]
             };
             
@@ -938,27 +1190,12 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: {
-                        display: false,
-                    },
+                    legend: { display: false },
                     tooltip: {
                         backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        titleFont: {
-                            size: 13,
-                        },
-                        bodyFont: {
-                            size: 12
-                        },
-                        padding: 10,
-                        cornerRadius: 4,
                         callbacks: {
                             label: function(context) {
                                 return buildChartTooltip(context, storeEntries, metric, period);
-                            },
-                            title: function(context) {
-                                const storeIndex = context[0].dataIndex;
-                                const store = storeEntries[storeIndex][0];
-                                return store;
                             }
                         }
                     }
@@ -966,15 +1203,8 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                 scales: {
                     y: {
                         beginAtZero: true,
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)',
-                            drawBorder: false
-                        },
+                        grid: { color: 'rgba(0, 0, 0, 0.05)' },
                         ticks: {
-                            font: {
-                                size: 11
-                            },
-                            padding: 5,
                             callback: function(value) {
                                 if (metric === 'cost' || metric === 'average') {
                                     return '₱' + value.toLocaleString('en-US', {
@@ -987,18 +1217,10 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                         }
                     },
                     x: {
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.02)',
-                            drawBorder: false
-                        },
+                        grid: { color: 'rgba(0, 0, 0, 0.02)' },
                         ticks: {
-                            font: {
-                                size: 9
-                            },
-                            padding: 5,
                             maxRotation: 90,
-                            minRotation: 45,
-                            autoSkip: false
+                            minRotation: 45
                         }
                     }
                 }
@@ -1022,26 +1244,8 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: {
-                            boxWidth: 12,
-                            font: {
-                                size: 9
-                            },
-                            padding: 10
-                        }
-                    },
+                    legend: { position: 'right' },
                     tooltip: {
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        titleFont: {
-                            size: 13,
-                        },
-                        bodyFont: {
-                            size: 12
-                        },
-                        padding: 10,
-                        cornerRadius: 4,
                         callbacks: {
                             label: function(context) {
                                 const label = context.label || '';
@@ -1049,30 +1253,10 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                                 const total = dataValues.reduce((a, b) => a + b, 0);
                                 const percentage = Math.round((value / total) * 100);
                                 
-                                let tooltipText = `${label}: `;
-                                
-                                switch(metric) {
-                                    case 'cost':
-                                        tooltipText += `₱${value.toLocaleString('en-US', {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2
-                                        })} (${percentage}%)`;
-                                        break;
-                                    case 'reports':
-                                        tooltipText += `${value} reports (${percentage}%)`;
-                                        break;
-                                    case 'items':
-                                        tooltipText += `${value} items (${percentage}%)`;
-                                        break;
-                                    case 'average':
-                                        tooltipText += `₱${value.toLocaleString('en-US', {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2
-                                        })} (${percentage}%)`;
-                                        break;
+                                if (metric === 'cost' || metric === 'average') {
+                                    return `${label}: ₱${value.toLocaleString()} (${percentage}%)`;
                                 }
-                                
-                                return tooltipText;
+                                return `${label}: ${value} (${percentage}%)`;
                             }
                         }
                     }
@@ -1081,7 +1265,6 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
             break;
     }
     
-    // Create the chart
     storeChart = new Chart(ctx, {
         type: currentChartType,
         data: chartData,
@@ -1091,24 +1274,21 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
 
 function generateBarColors(values) {
     if (values.length === 0) return [];
-    
-    const max = Math.max(...values) || 1; // Prevent division by zero
+    const max = Math.max(...values) || 1;
     
     return values.map(value => {
-        // For zero values, use a different color
-        if (value === 0) return 'rgba(200, 200, 200, 0.5)'; // Light gray for zero
-        
+        if (value === 0) return 'rgba(200, 200, 200, 0.5)';
         const ratio = max > 0 ? value / max : 0;
         
-        if (ratio > 0.7) return 'rgba(42, 89, 52, 0.9)'; // Dark green for high
-        if (ratio > 0.4) return 'rgba(66, 133, 91, 0.8)'; // Medium green
-        return 'rgba(102, 178, 122, 0.7)'; // Light green for low
+        if (ratio > 0.7) return 'rgba(42, 89, 52, 0.9)';
+        if (ratio > 0.4) return 'rgba(66, 133, 91, 0.8)';
+        return 'rgba(102, 178, 122, 0.7)';
     });
 }
 
 function generatePieColors(count) {
     const colors = [];
-    const baseHue = 120; // Green hue
+    const baseHue = 120;
     const saturation = 60;
     const lightness = 50;
     
@@ -1194,38 +1374,16 @@ function buildChartTooltip(context, storeEntries, metric, period) {
             })}`;
     }
     
-    // Add additional info
     if (metric !== 'reports') {
         label += ` (${storeData.periodReportCount} report${storeData.periodReportCount !== 1 ? 's' : ''} in period)`;
     }
     
-    // Add last report date if available
     const lastReportDate = getLastReportDate(store);
     if (lastReportDate) {
         label += ` • Last: ${lastReportDate}`;
     }
     
     return label;
-}
-
-function getStoreDailyRate(store) {
-    const storeData = chartAnalysis.stores[store];
-    if (!storeData) return 0;
-    
-    const reportDates = Array.from(storeData.reportDates);
-    if (reportDates.length === 0) return 0;
-    
-    // Count unique days with reports in last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const recentReports = reportDates.filter(dateStr => {
-        const reportDate = new Date(dateStr);
-        return reportDate >= thirtyDaysAgo;
-    });
-    
-    const uniqueDays = new Set(recentReports).size;
-    return Math.round((uniqueDays / 30) * 100);
 }
 
 function getLastReportDate(store) {
@@ -1255,7 +1413,7 @@ function updateChartStatistics(storeEntries, metric, period) {
     
     const now = new Date();
     
-    // Top performing store (excluding zeros if needed)
+    // Top performing store
     const topStore = storeEntries[0];
     const topStoreName = Performance.getElement('#topStoreName');
     const topStoreValue = Performance.getElement('#topStoreValue');
@@ -1294,7 +1452,7 @@ function updateChartStatistics(storeEntries, metric, period) {
         reportCountEl.textContent = `${totalReports} report${totalReports !== 1 ? 's' : ''}`;
     }
     
-    // Most consistent store (daily reporting)
+    // Most consistent store
     const consistentStoreEl = Performance.getElement('#consistentStore');
     const consistencyRateEl = Performance.getElement('#consistencyRate');
     
@@ -1322,7 +1480,6 @@ function updateChartStatistics(storeEntries, metric, period) {
         let attentionStore = '';
         let reason = '';
         
-        // Find store with no reports at all
         for (const [store, data] of storeEntries) {
             if (data.periodReportCount === 0) {
                 attentionStore = store;
@@ -1332,7 +1489,6 @@ function updateChartStatistics(storeEntries, metric, period) {
         }
         
         if (!attentionStore) {
-            // If all stores have reports, check for stores with low report counts
             for (const [store, data] of storeEntries) {
                 if (data.periodReportCount < 2) {
                     attentionStore = store;
@@ -1376,6 +1532,25 @@ function updateChartStatistics(storeEntries, metric, period) {
     }
 }
 
+function getStoreDailyRate(store) {
+    const storeData = chartAnalysis.stores[store];
+    if (!storeData) return 0;
+    
+    const reportDates = Array.from(storeData.reportDates);
+    if (reportDates.length === 0) return 0;
+    
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const recentReports = reportDates.filter(dateStr => {
+        const reportDate = new Date(dateStr);
+        return reportDate >= thirtyDaysAgo;
+    });
+    
+    const uniqueDays = new Set(recentReports).size;
+    return Math.round((uniqueDays / 30) * 100);
+}
+
 function refreshChart() {
     loadAllReportsForChart();
 }
@@ -1399,18 +1574,17 @@ function updateChartPeriodControls() {
 }
 
 // ================================
-// CALCULATE REPORT COST
+// UTILITY FUNCTIONS - OPTIMIZED
 // ================================
 function calculateReportCost(report) {
     if (!report) return 0;
     
-    if (report.disposalTypes?.includes('noWaste') || report.disposalType === 'noWaste') {
+    if (report.disposalTypes?.includes('noWaste')) {
         return 0;
     }
     
     let totalCost = 0;
     
-    // Calculate cost from expired items
     if (report.expiredItems) {
         report.expiredItems.forEach(item => {
             const itemCost = item.itemCost || 0;
@@ -1419,7 +1593,6 @@ function calculateReportCost(report) {
         });
     }
     
-    // Calculate cost from waste items
     if (report.wasteItems) {
         report.wasteItems.forEach(item => {
             const itemCost = item.itemCost || 0;
@@ -1438,9 +1611,6 @@ function getCostCellClass(cost) {
     return 'low';
 }
 
-// ================================
-// OPTIMIZED UTILITY FUNCTIONS
-// ================================
 function formatDate(dateString) {
     if (!dateString) return 'N/A';
     try {
@@ -1493,7 +1663,7 @@ function getDisposalTypeBadge(disposalTypes) {
 function getReportApprovalStatus(report) {
     if (!report) return 'pending';
     
-    if (report.disposalTypes?.includes('noWaste') || report.disposalType === 'noWaste') {
+    if (report.disposalTypes?.includes('noWaste')) {
         return 'complete';
     }
     
@@ -1542,279 +1712,7 @@ function getItemCount(report) {
 }
 
 // ================================
-// OPTIMIZED REPORTS LOADING WITH COST - UPDATED FOR DATE RANGE
-// ================================
-async function loadReports() {
-    if (isDataLoading) return;
-    
-    if (!isAuthenticated()) {
-        showNotification('Please authenticate to view reports', 'error');
-        return;
-    }
-    
-    isDataLoading = true;
-    showLoading(true, 'Loading reports...');
-    
-    try {
-        reportsData = [];
-        const tableBody = Performance.getElement('#reportsTableBody');
-        if (!tableBody) return;
-        
-        // Clear table efficiently using innerHTML for better performance
-        tableBody.innerHTML = '';
-        
-        // Get filter values - UPDATED for date range
-        const storeFilter = Performance.getElement('#filterStore');
-        const dateFromFilter = Performance.getElement('#filterDateFrom');
-        const dateToFilter = Performance.getElement('#filterDateTo');
-        const searchEmail = Performance.getElement('#searchEmail');
-        const typeFilter = Performance.getElement('#filterType');
-        const filterStatus = Performance.getElement('#filterStatus');
-        
-        let query = db.collection('wasteReports');
-        
-        // Apply server-side filters
-        if (storeFilter?.value) {
-            query = query.where('store', '==', storeFilter.value);
-        }
-        
-        // FIXED: Date range filtering - we'll filter client-side for range
-        // Firestore doesn't support range queries on different fields easily
-        // So we'll get all reports and filter client-side for date range
-        
-        query = query.orderBy('submittedAt', 'desc').limit(pageSize);
-        
-        if (currentPage > 1 && lastVisibleDoc) {
-            query = query.startAfter(lastVisibleDoc);
-        }
-        
-        const snapshot = await query.get();
-        
-        if (!snapshot.empty) {
-            lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
-        } else {
-            lastVisibleDoc = null;
-        }
-        
-        let expiredCount = 0;
-        let wasteCount = 0;
-        let noWasteCount = 0;
-        let pendingApprovalCount = 0;
-        let rejectedCount = 0;
-        let partialCount = 0;
-        let completeCount = 0;
-        
-        // Build HTML string for better performance
-        let tableHTML = '';
-        
-        snapshot.forEach(doc => {
-            const report = { id: doc.id, ...doc.data() };
-            reportsData.push(report);
-            
-            const disposalTypes = Array.isArray(report.disposalTypes) ? report.disposalTypes : 
-                                report.disposalType ? [report.disposalType] : ['unknown'];
-            
-            // Count for statistics
-            if (disposalTypes.includes('expired')) expiredCount++;
-            if (disposalTypes.includes('waste')) wasteCount++;
-            if (disposalTypes.includes('noWaste')) noWasteCount++;
-            
-            const approvalStatus = getReportApprovalStatus(report);
-            if (approvalStatus === 'pending') pendingApprovalCount++;
-            if (approvalStatus === 'rejected') rejectedCount++;
-            if (approvalStatus === 'partial') partialCount++;
-            if (approvalStatus === 'complete') completeCount++;
-            
-            // Client-side filtering for fields not indexed in Firestore
-            const emailMatch = !searchEmail?.value || 
-                              (report.email && report.email.toLowerCase().includes(searchEmail.value.toLowerCase()));
-            const typeMatch = !typeFilter?.value || 
-                             disposalTypes.includes(typeFilter.value);
-            const statusMatch = !filterStatus?.value || 
-                               approvalStatus === filterStatus.value;
-            
-            // UPDATED: Date range filtering
-            let dateMatch = true;
-            if (dateFromFilter?.value || dateToFilter?.value) {
-                const reportDate = new Date(report.reportDate);
-                
-                if (dateFromFilter?.value) {
-                    const fromDate = new Date(dateFromFilter.value);
-                    fromDate.setHours(0, 0, 0, 0);
-                    if (reportDate < fromDate) {
-                        dateMatch = false;
-                    }
-                }
-                
-                if (dateToFilter?.value) {
-                    const toDate = new Date(dateToFilter.value);
-                    toDate.setHours(23, 59, 59, 999);
-                    if (reportDate > toDate) {
-                        dateMatch = false;
-                    }
-                }
-            }
-            
-            if (emailMatch && typeMatch && statusMatch && dateMatch) {
-                const itemCount = getItemCount(report);
-                const totalCost = calculateReportCost(report);
-                const costCellClass = getCostCellClass(totalCost);
-                
-                tableHTML += `
-                    <tr>
-                        <td>
-                            <div class="report-id">${report.reportId?.substring(0, 12) || report.id.substring(0, 12)}${(report.reportId || report.id).length > 12 ? '...' : ''}</div>
-                        </td>
-                        <td><strong>${report.store || 'N/A'}</strong></td>
-                        <td>${report.personnel || 'N/A'}</td>
-                        <td><strong>${formatDate(report.reportDate)}</strong></td>
-                        <td>${getDisposalTypeBadge(disposalTypes)}</td>
-                        <td>
-                            <div style="font-size: 11px; color: var(--color-gray);">${report.email || 'N/A'}</div>
-                        </td>
-                        <td>
-                            <div style="font-size: 10px; color: var(--color-gray);">${formatDateTime(report.submittedAt)}</div>
-                        </td>
-                        <td>
-                            <div style="text-align: center;">
-                                <span style="background: var(--color-accent); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;">
-                                    ${itemCount} ${itemCount === 1 ? 'item' : 'items'}
-                                </span>
-                            </div>
-                        </td>
-                        <td class="store-cost-cell ${costCellClass}">
-                            <strong>₱${totalCost.toFixed(2)}</strong>
-                        </td>
-                        <td><span class="status-badge status-submitted">Submitted</span></td>
-                        <td>${getApprovalStatusBadge(report)}</td>
-                        <td>
-                            <button class="view-details-btn" onclick="viewReportDetails('${report.id}')" title="View full report">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }
-        });
-        
-        // Set HTML in one operation
-        if (tableHTML) {
-            tableBody.innerHTML = tableHTML;
-        } else {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="12" class="empty-state">
-                        <i class="fas fa-inbox"></i>
-                        <h3>No reports found</h3>
-                        <p>Try changing your filters or submit a new report.</p>
-                    </td>
-                </tr>
-            `;
-        }
-        
-        // Update statistics
-        updateStatistics(reportsData.length, expiredCount, wasteCount, noWasteCount, pendingApprovalCount);
-        updatePageInfo();
-        updatePaginationButtons();
-        
-        // Load chart data if this is the first page (but don't wait for it)
-        if (currentPage === 1) {
-            // Use setTimeout to avoid blocking UI
-            setTimeout(() => {
-                loadAllReportsForChart();
-            }, 100);
-        }
-        
-        // Cache the data
-        reportsCache.data = reportsData;
-        reportsCache.timestamp = Date.now();
-        
-    } catch (error) {
-        console.error('Error loading reports:', error);
-        showNotification('Error loading reports: ' + error.message, 'error');
-    } finally {
-        isDataLoading = false;
-        showLoading(false);
-    }
-}
-
-function updateStatistics(total, expired, waste, noWaste, pending = 0) {
-    const totalEl = Performance.getElement('#totalReports');
-    const expiredEl = Performance.getElement('#expiredCount');
-    const wasteEl = Performance.getElement('#wasteCount');
-    const noWasteEl = Performance.getElement('#noWasteCount');
-    const pendingEl = Performance.getElement('#pendingApprovalCount');
-    
-    if (totalEl) totalEl.textContent = total;
-    if (expiredEl) expiredEl.textContent = expired;
-    if (wasteEl) wasteEl.textContent = waste;
-    if (noWasteEl) noWasteEl.textContent = noWaste;
-    if (pendingEl) pendingEl.textContent = pending;
-}
-
-function updatePageInfo() {
-    const pageInfo = Performance.getElement('#pageInfo');
-    if (pageInfo) {
-        pageInfo.textContent = `Page ${currentPage}`;
-    }
-    
-    const showingCount = Performance.getElement('#showingCount');
-    if (showingCount) {
-        showingCount.textContent = reportsData.length;
-    }
-}
-
-function updatePaginationButtons() {
-    const prevBtn = Performance.getElement('#prevPageBtn');
-    const nextBtn = Performance.getElement('#nextPageBtn');
-    
-    if (prevBtn) {
-        prevBtn.disabled = currentPage <= 1;
-    }
-    
-    if (nextBtn) {
-        nextBtn.disabled = reportsData.length < pageSize;
-    }
-}
-
-function changePage(direction) {
-    currentPage += direction;
-    loadReports();
-}
-
-// ================================
-// OPTIMIZED FILTERS WITH DEBOUNCE - UPDATED FOR DATE RANGE
-// ================================
-function debounceApplyFilters() {
-    Performance.debounce(() => {
-        currentPage = 1;
-        lastVisibleDoc = null;
-        loadReports();
-    }, 300, 'filters')();
-}
-
-function clearFilters() {
-    const storeFilter = Performance.getElement('#filterStore');
-    const typeFilter = Performance.getElement('#filterType');
-    const dateFromFilter = Performance.getElement('#filterDateFrom'); // UPDATED
-    const dateToFilter = Performance.getElement('#filterDateTo'); // UPDATED
-    const searchEmail = Performance.getElement('#searchEmail');
-    const filterStatus = Performance.getElement('#filterStatus');
-    
-    if (storeFilter) storeFilter.value = '';
-    if (typeFilter) typeFilter.value = '';
-    if (dateFromFilter) dateFromFilter.value = ''; // UPDATED
-    if (dateToFilter) dateToFilter.value = ''; // UPDATED
-    if (searchEmail) searchEmail.value = '';
-    if (filterStatus) filterStatus.value = '';
-    
-    currentPage = 1;
-    lastVisibleDoc = null;
-    loadReports();
-}
-
-// ================================
-// OPTIMIZED REPORT DETAILS
+// REPORT DETAILS - OPTIMIZED
 // ================================
 async function viewReportDetails(reportId) {
     if (!isAuthenticated()) {
@@ -1834,7 +1732,14 @@ async function viewReportDetails(reportId) {
             return;
         }
         
-        const report = { id: doc.id, ...doc.data() };
+        const data = doc.data();
+        const report = { 
+            id: doc.id, 
+            ...data,
+            disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
+                          data.disposalType ? [data.disposalType] : ['unknown']
+        };
+        
         await buildModalContent(report);
         
         const detailsModal = Performance.getElement('#detailsModal');
@@ -1856,11 +1761,16 @@ async function buildModalContent(report) {
     
     const content = await buildReportContent(report);
     modalContent.innerHTML = content;
+    
+    // Add delete button handler
+    const deleteReportButton = Performance.getElement('#deleteReportButton');
+    if (deleteReportButton) {
+        deleteReportButton.onclick = () => openDeleteModal(report);
+    }
 }
 
 async function buildReportContent(report) {
-    const disposalTypes = Array.isArray(report.disposalTypes) ? report.disposalTypes : 
-                        report.disposalType ? [report.disposalType] : ['unknown'];
+    const disposalTypes = report.disposalTypes;
     
     let approvedCount = 0;
     let rejectedCount = 0;
@@ -1920,6 +1830,16 @@ async function buildReportContent(report) {
                     <div class="detail-label">Overall Status</div>
                     <div class="detail-value">${getApprovalStatusBadge(report)}</div>
                 </div>
+                ${report.hasImages ? `
+                <div class="detail-item">
+                    <div class="detail-label">Images</div>
+                    <div class="detail-value">
+                        <span style="background: #d1ecf1; color: #0c5460; padding: 2px 8px; border-radius: 10px; font-size: 11px;">
+                            <i class="fas fa-images"></i> ${report.imageCount || 0} images
+                        </span>
+                    </div>
+                </div>
+                ` : ''}
             </div>
             
             <div class="approval-summary">
@@ -1986,7 +1906,7 @@ async function buildReportContent(report) {
         }
     }
     
-    // Add items sections
+    // Add items sections with images
     if (expiredItems.length > 0) {
         content += await buildItemsSection(report, 'expired');
     }
@@ -2083,10 +2003,8 @@ function buildItemContent(item, index, type, reportId) {
         `;
     }
     
-    // Add documentation if exists
-    if (item.documentation?.length > 0) {
-        content += buildDocumentationContent(item.documentation);
-    }
+    // Add images using optimized ImageManager
+    content += ImageManager.displayImagesInItem(item, index, type);
     
     // Add notes if exists
     if (item.notes) {
@@ -2115,30 +2033,6 @@ function buildItemContent(item, index, type, reportId) {
     return content;
 }
 
-function buildDocumentationContent(docs) {
-    let content = `
-        <div style="margin-top: 8px;">
-            <div style="font-size: 11px; color: var(--color-gray); margin-bottom: 4px;">Documentation (${docs.length} files):</div>
-            <div class="image-gallery">
-    `;
-    
-    // Limit to 3 images for performance
-    docs.slice(0, 3).forEach((doc, docIndex) => {
-        if (doc.type?.startsWith('image/')) {
-            content += `
-                <img src="data:${doc.type};base64,${doc.base64}" 
-                     alt="Document ${docIndex + 1}" 
-                     class="image-thumbnail"
-                     onclick="viewImage('data:${doc.type};base64,${doc.base64}')"
-                     style="cursor: pointer; width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin: 2px;">
-            `;
-        }
-    });
-    
-    content += `</div></div>`;
-    return content;
-}
-
 function buildNoWasteContent() {
     return `
         <div class="details-section">
@@ -2162,25 +2056,688 @@ function closeDetailsModal() {
     currentReportDetailsId = null;
 }
 
-function viewImage(src) {
-    const imageModal = Performance.getElement('#imageModal');
-    const modalImage = Performance.getElement('#modalImage');
-    
-    if (imageModal && modalImage) {
-        modalImage.src = src;
-        imageModal.style.display = 'flex';
+// ================================
+// DELETE FUNCTIONALITY
+// ================================
+async function deleteAllImagesFromReport(report) {
+    try {
+        const imagesToDelete = [];
         
-        // Preload image for smoother experience
-        const img = new Image();
-        img.src = src;
+        // Collect all images from expired items
+        if (report.expiredItems) {
+            report.expiredItems.forEach(item => {
+                if (item.documentation && Array.isArray(item.documentation)) {
+                    item.documentation.forEach(doc => {
+                        if (doc.type?.startsWith('image/') && doc.path) {
+                            imagesToDelete.push(doc);
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Collect all images from waste items
+        if (report.wasteItems) {
+            report.wasteItems.forEach(item => {
+                if (item.documentation && Array.isArray(item.documentation)) {
+                    item.documentation.forEach(doc => {
+                        if (doc.type?.startsWith('image/') && doc.path) {
+                            imagesToDelete.push(doc);
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Delete all images
+        for (const image of imagesToDelete) {
+            try {
+                await ImageManager.deleteImageFromStorage(image);
+                console.log(`Deleted image: ${image.path}`);
+            } catch (error) {
+                console.warn(`Failed to delete image ${image.path}:`, error);
+                // Continue deleting other images even if one fails
+            }
+        }
+        
+        console.log(`Deleted ${imagesToDelete.length} images for report ${report.id}`);
+        return imagesToDelete.length;
+        
+    } catch (error) {
+        console.error('Error deleting images:', error);
+        throw error;
     }
 }
 
-function closeImageModal() {
-    const imageModal = Performance.getElement('#imageModal');
-    if (imageModal) {
-        imageModal.style.display = 'none';
+async function deleteReport(reportId) {
+    if (!isAuthenticated()) {
+        showNotification('Please authenticate to delete reports', 'error');
+        return;
     }
+    
+    showLoading(true, 'Deleting report and images...');
+    
+    try {
+        // Get the report data first to find and delete images
+        const reportDoc = await db.collection('wasteReports').doc(reportId).get();
+        if (!reportDoc.exists) {
+            showNotification('Report not found', 'error');
+            return;
+        }
+        
+        const report = { id: reportDoc.id, ...reportDoc.data() };
+        
+        // Delete all images from storage
+        const imagesDeleted = await deleteAllImagesFromReport(report);
+        
+        // Delete the report document from Firestore
+        await db.collection('wasteReports').doc(reportId).delete();
+        
+        // Update UI
+        const index = reportsData.findIndex(r => r.id === reportId);
+        if (index !== -1) {
+            reportsData.splice(index, 1);
+        }
+        
+        // Reload reports
+        await loadReports();
+        
+        // Close modals
+        closeDeleteModal();
+        closeDetailsModal();
+        
+        showNotification(`Report deleted successfully. ${imagesDeleted} images removed from storage.`, 'success');
+        
+        // Refresh chart data
+        setTimeout(() => {
+            loadAllReportsForChart();
+        }, 500);
+        
+    } catch (error) {
+        console.error('Error deleting report:', error);
+        showNotification('Error deleting report: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function deleteAllReports(applyFilters = false) {
+    if (!isAuthenticated()) {
+        showNotification('Please authenticate to delete reports', 'error');
+        return;
+    }
+    
+    showLoading(true, 'Deleting reports and images...');
+    
+    try {
+        let query = db.collection('wasteReports');
+        
+        // Apply filters if requested
+        if (applyFilters) {
+            const storeFilter = Performance.getElement('#filterStore');
+            const dateFromFilter = Performance.getElement('#filterDateFrom');
+            const dateToFilter = Performance.getElement('#filterDateTo');
+            const typeFilter = Performance.getElement('#filterType');
+            const filterStatus = Performance.getElement('#filterStatus');
+            
+            if (storeFilter?.value) {
+                query = query.where('store', '==', storeFilter.value);
+            }
+        }
+        
+        const snapshot = await query.get();
+        
+        if (snapshot.empty) {
+            showNotification('No reports found to delete', 'warning');
+            return;
+        }
+        
+        const totalReports = snapshot.size;
+        let deletedReports = 0;
+        let deletedImages = 0;
+        
+        // Process reports in batches to avoid overwhelming the system
+        const batchSize = 5;
+        const reports = [];
+        
+        snapshot.forEach(doc => {
+            reports.push({ id: doc.id, ...doc.data() });
+        });
+        
+        for (let i = 0; i < reports.length; i += batchSize) {
+            const batch = reports.slice(i, i + batchSize);
+            
+            // Delete images and reports in parallel for this batch
+            const deletePromises = batch.map(async (report) => {
+                try {
+                    // Delete images first
+                    const imagesCount = await deleteAllImagesFromReport(report);
+                    deletedImages += imagesCount;
+                    
+                    // Then delete the report document
+                    await db.collection('wasteReports').doc(report.id).delete();
+                    deletedReports++;
+                    
+                    // Update progress
+                    if (deletedReports % 10 === 0 || deletedReports === totalReports) {
+                        showLoading(true, `Deleting ${deletedReports}/${totalReports} reports...`);
+                    }
+                    
+                } catch (error) {
+                    console.error(`Error deleting report ${report.id}:`, error);
+                    // Continue with other reports even if one fails
+                }
+            });
+            
+            await Promise.all(deletePromises);
+            
+            // Small delay between batches to prevent overwhelming Firebase
+            if (i + batchSize < reports.length) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+        
+        // Clear local data
+        reportsData = [];
+        
+        // Reload reports
+        await loadReports();
+        
+        // Close modal
+        closeDeleteAllModal();
+        
+        showNotification(`Deleted ${deletedReports} reports and ${deletedImages} images from storage.`, 'success');
+        
+        // Refresh chart data
+        setTimeout(() => {
+            loadAllReportsForChart();
+        }, 1000);
+        
+    } catch (error) {
+        console.error('Error deleting all reports:', error);
+        showNotification('Error deleting reports: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function deleteSingleImage(reportId, itemIndex, itemType, imageIndex) {
+    if (!isAuthenticated()) {
+        showNotification('Please authenticate to delete images', 'error');
+        return;
+    }
+    
+    showLoading(true, 'Deleting image...');
+    
+    try {
+        // Get the report
+        const reportDoc = await db.collection('wasteReports').doc(reportId).get();
+        if (!reportDoc.exists) {
+            showNotification('Report not found', 'error');
+            return;
+        }
+        
+        const report = { id: reportDoc.id, ...reportDoc.data() };
+        const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
+        
+        if (!items || itemIndex >= items.length) {
+            showNotification('Item not found', 'error');
+            return;
+        }
+        
+        const item = items[itemIndex];
+        if (!item.documentation || !Array.isArray(item.documentation) || imageIndex >= item.documentation.length) {
+            showNotification('Image not found', 'error');
+            return;
+        }
+        
+        const imageToDelete = item.documentation[imageIndex];
+        
+        // Delete image from storage
+        await ImageManager.deleteImageFromStorage(imageToDelete);
+        
+        // Remove image from documentation array
+        item.documentation.splice(imageIndex, 1);
+        
+        // Update the item in Firestore
+        const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
+        await db.collection('wasteReports').doc(reportId).update({
+            [field]: items
+        });
+        
+        showNotification('Image deleted successfully', 'success');
+        
+        // Refresh the details modal
+        if (currentReportDetailsId === reportId) {
+            await viewReportDetails(reportId);
+        }
+        
+        // Refresh reports list
+        loadReports();
+        
+        // Close modals
+        ImageManager.closeDeleteImageModal();
+        ImageManager.closeModal();
+        
+    } catch (error) {
+        console.error('Error deleting image:', error);
+        showNotification('Error deleting image: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function openDeleteModal(report) {
+    currentReportToDelete = report;
+    
+    const deleteReportInfo = Performance.getElement('#deleteReportInfo');
+    if (deleteReportInfo) {
+        const totalCost = calculateReportCost(report);
+        const itemCount = getItemCount(report);
+        
+        let imageCount = 0;
+        const countImages = (items) => {
+            if (!items) return;
+            items.forEach(item => {
+                if (item.documentation && Array.isArray(item.documentation)) {
+                    imageCount += item.documentation.filter(doc => doc.type?.startsWith('image/')).length;
+                }
+            });
+        };
+        countImages(report.expiredItems);
+        countImages(report.wasteItems);
+        
+        deleteReportInfo.innerHTML = `
+            <p><strong>Report ID:</strong> ${report.reportId || report.id.substring(0, 8)}...</p>
+            <p><strong>Store:</strong> ${report.store || 'N/A'}</p>
+            <p><strong>Date:</strong> ${formatDate(report.reportDate)}</p>
+            <p><strong>Items:</strong> ${itemCount} items (₱${totalCost.toFixed(2)})</p>
+            <p><strong>Images:</strong> ${imageCount} images will be deleted</p>
+        `;
+    }
+    
+    const deleteConfirmation = Performance.getElement('#deleteConfirmation');
+    const confirmDeleteButton = Performance.getElement('#confirmDeleteButton');
+    
+    if (deleteConfirmation && confirmDeleteButton) {
+        deleteConfirmation.value = '';
+        confirmDeleteButton.disabled = true;
+        
+        deleteConfirmation.addEventListener('input', function() {
+            confirmDeleteButton.disabled = this.value.toUpperCase() !== 'DELETE';
+        });
+    }
+    
+    const deleteModal = Performance.getElement('#deleteModal');
+    if (deleteModal) {
+        deleteModal.style.display = 'flex';
+        deleteConfirmation?.focus();
+    }
+}
+
+function closeDeleteModal() {
+    currentReportToDelete = null;
+    const deleteModal = Performance.getElement('#deleteModal');
+    if (deleteModal) {
+        deleteModal.style.display = 'none';
+    }
+}
+
+function openDeleteAllModal() {
+    if (!isAuthenticated()) {
+        showNotification('Please authenticate to delete reports', 'error');
+        return;
+    }
+    
+    const deleteAllCount = Performance.getElement('#deleteAllCount');
+    const deleteAllConfirmation = Performance.getElement('#deleteAllConfirmation');
+    const confirmDeleteAllButton = Performance.getElement('#confirmDeleteAllButton');
+    const applyFiltersCheckbox = Performance.getElement('#applyFiltersToDeleteAll');
+    
+    if (deleteAllCount) {
+        // Count all reports (or filtered reports)
+        const count = applyFiltersCheckbox?.checked ? reportsData.length : allReportsData.length;
+        deleteAllCount.textContent = count;
+    }
+    
+    if (deleteAllConfirmation && confirmDeleteAllButton) {
+        deleteAllConfirmation.value = '';
+        confirmDeleteAllButton.disabled = true;
+        
+        deleteAllConfirmation.addEventListener('input', function() {
+            confirmDeleteAllButton.disabled = this.value.toUpperCase() !== 'DELETE ALL';
+        });
+    }
+    
+    if (applyFiltersCheckbox) {
+        applyFiltersCheckbox.checked = false;
+    }
+    
+    const deleteAllModal = Performance.getElement('#deleteAllModal');
+    if (deleteAllModal) {
+        deleteAllModal.style.display = 'flex';
+        deleteAllConfirmation?.focus();
+    }
+}
+
+function closeDeleteAllModal() {
+    const deleteAllModal = Performance.getElement('#deleteAllModal');
+    if (deleteAllModal) {
+        deleteAllModal.style.display = 'none';
+    }
+}
+
+function confirmDelete() {
+    if (currentReportToDelete) {
+        deleteReport(currentReportToDelete.id);
+    }
+}
+
+function confirmDeleteAll() {
+    const applyFilters = Performance.getElement('#applyFiltersToDeleteAll')?.checked || false;
+    deleteAllReports(applyFilters);
+}
+
+// ================================
+// REPORTS LOADING - OPTIMIZED
+// ================================
+async function loadReports() {
+    if (isDataLoading) return;
+    
+    if (!isAuthenticated()) {
+        showNotification('Please authenticate to view reports', 'error');
+        return;
+    }
+    
+    isDataLoading = true;
+    showLoading(true, 'Loading reports...');
+    
+    try {
+        reportsData = [];
+        const tableBody = Performance.getElement('#reportsTableBody');
+        if (!tableBody) return;
+        
+        tableBody.innerHTML = '';
+        
+        // Get filter values
+        const storeFilter = Performance.getElement('#filterStore');
+        const dateFromFilter = Performance.getElement('#filterDateFrom');
+        const dateToFilter = Performance.getElement('#filterDateTo');
+        const searchInput = Performance.getElement('#searchInput');
+        const typeFilter = Performance.getElement('#filterType');
+        const filterStatus = Performance.getElement('#filterStatus');
+        
+        let query = db.collection('wasteReports');
+        
+        // Apply server-side filters
+        if (storeFilter?.value) {
+            query = query.where('store', '==', storeFilter.value);
+        }
+        
+        query = query.orderBy('submittedAt', 'desc').limit(pageSize);
+        
+        if (currentPage > 1 && lastVisibleDoc) {
+            query = query.startAfter(lastVisibleDoc);
+        }
+        
+        const snapshot = await query.get();
+        
+        if (!snapshot.empty) {
+            lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
+        } else {
+            lastVisibleDoc = null;
+        }
+        
+        let expiredCount = 0;
+        let wasteCount = 0;
+        let noWasteCount = 0;
+        let pendingApprovalCount = 0;
+        let rejectedCount = 0;
+        let partialCount = 0;
+        let completeCount = 0;
+        
+        // Build HTML with DocumentFragment for better performance
+        const fragment = document.createDocumentFragment();
+        
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const report = { 
+                id: doc.id, 
+                ...data,
+                disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
+                              data.disposalType ? [data.disposalType] : ['unknown']
+            };
+            
+            reportsData.push(report);
+            
+            const disposalTypes = report.disposalTypes;
+            
+            // Count for statistics
+            if (disposalTypes.includes('expired')) expiredCount++;
+            if (disposalTypes.includes('waste')) wasteCount++;
+            if (disposalTypes.includes('noWaste')) noWasteCount++;
+            
+            const approvalStatus = getReportApprovalStatus(report);
+            if (approvalStatus === 'pending') pendingApprovalCount++;
+            if (approvalStatus === 'rejected') rejectedCount++;
+            if (approvalStatus === 'partial') partialCount++;
+            if (approvalStatus === 'complete') completeCount++;
+            
+            // Client-side filtering
+            const searchMatch = !searchInput?.value || 
+                              (report.reportId && report.reportId.toLowerCase().includes(searchInput.value.toLowerCase())) ||
+                              (report.email && report.email.toLowerCase().includes(searchInput.value.toLowerCase())) ||
+                              (report.personnel && report.personnel.toLowerCase().includes(searchInput.value.toLowerCase())) ||
+                              (report.store && report.store.toLowerCase().includes(searchInput.value.toLowerCase()));
+            
+            const typeMatch = !typeFilter?.value || 
+                             disposalTypes.includes(typeFilter.value);
+            const statusMatch = !filterStatus?.value || 
+                               approvalStatus === filterStatus.value;
+            
+            // Date range filtering
+            let dateMatch = true;
+            if (dateFromFilter?.value || dateToFilter?.value) {
+                const reportDate = new Date(report.reportDate);
+                
+                if (dateFromFilter?.value) {
+                    const fromDate = new Date(dateFromFilter.value);
+                    fromDate.setHours(0, 0, 0, 0);
+                    if (reportDate < fromDate) {
+                        dateMatch = false;
+                    }
+                }
+                
+                if (dateToFilter?.value) {
+                    const toDate = new Date(dateToFilter.value);
+                    toDate.setHours(23, 59, 59, 999);
+                    if (reportDate > toDate) {
+                        dateMatch = false;
+                    }
+                }
+            }
+            
+            if (searchMatch && typeMatch && statusMatch && dateMatch) {
+                const row = createTableRow(report);
+                fragment.appendChild(row);
+            }
+        });
+        
+        // Append all rows at once
+        if (fragment.childNodes.length > 0) {
+            tableBody.appendChild(fragment);
+        } else {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="12" class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <h3>No reports found</h3>
+                        <p>Try changing your filters or submit a new report.</p>
+                    </td>
+                </tr>
+            `;
+        }
+        
+        // Update statistics
+        updateStatistics(reportsData.length, expiredCount, wasteCount, noWasteCount, pendingApprovalCount);
+        updatePageInfo();
+        updatePaginationButtons();
+        
+        // Load chart data if this is the first page
+        if (currentPage === 1) {
+            setTimeout(() => {
+                loadAllReportsForChart();
+            }, 100);
+        }
+        
+        // Cache the data
+        reportsCache.data = reportsData;
+        reportsCache.timestamp = Date.now();
+        
+    } catch (error) {
+        console.error('Error loading reports:', error);
+        showNotification('Error loading reports: ' + error.message, 'error');
+    } finally {
+        isDataLoading = false;
+        showLoading(false);
+    }
+}
+
+function createTableRow(report) {
+    const row = document.createElement('tr');
+    const itemCount = getItemCount(report);
+    const totalCost = calculateReportCost(report);
+    const costCellClass = getCostCellClass(totalCost);
+    
+    // Count images
+    let imageCount = 0;
+    const countImages = (items) => {
+        if (!items) return;
+        items.forEach(item => {
+            if (item.documentation && Array.isArray(item.documentation)) {
+                imageCount += item.documentation.filter(doc => doc.type?.startsWith('image/')).length;
+            }
+        });
+    };
+    countImages(report.expiredItems);
+    countImages(report.wasteItems);
+    
+    row.innerHTML = `
+        <td>
+            <div class="report-id">${report.reportId?.substring(0, 12) || report.id.substring(0, 12)}${(report.reportId || report.id).length > 12 ? '...' : ''}</div>
+        </td>
+        <td><strong>${report.store || 'N/A'}</strong></td>
+        <td>${report.personnel || 'N/A'}</td>
+        <td><strong>${formatDate(report.reportDate)}</strong></td>
+        <td>${getDisposalTypeBadge(report.disposalTypes)}</td>
+        <td>
+            <div style="font-size: 11px; color: var(--color-gray);">${report.email || 'N/A'}</div>
+        </td>
+        <td>
+            <div style="font-size: 10px; color: var(--color-gray);">${formatDateTime(report.submittedAt)}</div>
+        </td>
+        <td>
+            <div style="text-align: center;">
+                <span style="background: var(--color-accent); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;">
+                    ${itemCount} ${itemCount === 1 ? 'item' : 'items'}
+                </span>
+                ${imageCount > 0 ? `
+                <div style="margin-top: 4px;">
+                    <span style="background: #d1ecf1; color: #0c5460; padding: 2px 6px; border-radius: 10px; font-size: 9px;">
+                        <i class="fas fa-images"></i> ${imageCount}
+                    </span>
+                </div>
+                ` : ''}
+            </div>
+        </td>
+        <td class="store-cost-cell ${costCellClass}">
+            <strong>₱${totalCost.toFixed(2)}</strong>
+        </td>
+        <td><span class="status-badge status-submitted">Submitted</span></td>
+        <td>${getApprovalStatusBadge(report)}</td>
+        <td>
+            <div style="display: flex; gap: 4px;">
+                <button class="view-details-btn" onclick="viewReportDetails('${report.id}')" title="${imageCount > 0 ? `View (${imageCount} images)` : 'View'}">
+                    <i class="fas fa-eye"></i> View
+                </button>
+                <button class="delete-btn-small" onclick="openDeleteModal(${JSON.stringify(report).replace(/"/g, '&quot;')})" title="Delete report and images">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+        </td>
+    `;
+    
+    return row;
+}
+
+function updateStatistics(total, expired, waste, noWaste, pending = 0) {
+    const setText = (id, text) => {
+        const el = Performance.getElement(id);
+        if (el) el.textContent = text;
+    };
+    
+    setText('#totalReports', total);
+    setText('#expiredCount', expired);
+    setText('#wasteCount', waste);
+    setText('#noWasteCount', noWaste);
+    setText('#pendingApprovalCount', pending);
+}
+
+function updatePageInfo() {
+    const pageInfo = Performance.getElement('#pageInfo');
+    if (pageInfo) {
+        pageInfo.textContent = `Page ${currentPage}`;
+    }
+    
+    const showingCount = Performance.getElement('#showingCount');
+    if (showingCount) {
+        showingCount.textContent = reportsData.length;
+    }
+}
+
+function updatePaginationButtons() {
+    const prevBtn = Performance.getElement('#prevPageBtn');
+    const nextBtn = Performance.getElement('#nextPageBtn');
+    
+    if (prevBtn) {
+        prevBtn.disabled = currentPage <= 1;
+    }
+    
+    if (nextBtn) {
+        nextBtn.disabled = reportsData.length < pageSize;
+    }
+}
+
+function changePage(direction) {
+    currentPage += direction;
+    loadReports();
+}
+
+// ================================
+// FILTERS - OPTIMIZED
+// ================================
+function debounceApplyFilters() {
+    Performance.debounce(() => {
+        currentPage = 1;
+        lastVisibleDoc = null;
+        loadReports();
+    }, 300, 'filters')();
+}
+
+function clearFilters() {
+    const filters = [
+        '#filterStore', '#filterType', '#filterDateFrom', '#filterDateTo', 
+        '#searchInput', '#filterStatus'
+    ];
+    
+    filters.forEach(selector => {
+        const el = Performance.getElement(selector);
+        if (el) el.value = '';
+    });
+    
+    currentPage = 1;
+    lastVisibleDoc = null;
+    loadReports();
 }
 
 // ================================
@@ -2408,27 +2965,28 @@ async function bulkRejectItems(reportId, itemType, reason) {
     }
 }
 
-// ================================
-// OPTIMIZED UI UPDATING
-// ================================
 async function updateReportAfterApproval(reportId) {
     try {
-        // Get updated report
         const doc = await db.collection('wasteReports').doc(reportId).get();
         if (!doc.exists) return;
         
-        const updatedReport = { id: doc.id, ...doc.data() };
+        const data = doc.data();
+        const updatedReport = { 
+            id: doc.id, 
+            ...data,
+            disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
+                          data.disposalType ? [data.disposalType] : ['unknown']
+        };
         
         // Update the table row if the report is in the current view
         const rowIndex = reportsData.findIndex(r => r.id === reportId);
         if (rowIndex !== -1) {
             reportsData[rowIndex] = updatedReport;
             
-            // Update the specific row in the table
             const tableBody = Performance.getElement('#reportsTableBody');
             if (tableBody && tableBody.children[rowIndex]) {
                 const row = tableBody.children[rowIndex];
-                const approvalCell = row.cells[9]; // Approval status cell
+                const approvalCell = row.cells[9];
                 if (approvalCell) {
                     approvalCell.innerHTML = getApprovalStatusBadge(updatedReport);
                 }
@@ -2443,14 +3001,13 @@ async function updateReportAfterApproval(reportId) {
         // Refresh statistics
         updateStatisticsFromReports();
         
-        // Refresh chart data if report status changed (since we now track approved items)
+        // Refresh chart data
         setTimeout(() => {
             loadAllReportsForChart();
         }, 500);
         
     } catch (error) {
         console.error('Error updating UI after approval:', error);
-        // Fall back to full reload if partial update fails
         loadReports();
     }
 }
@@ -2462,8 +3019,7 @@ function updateStatisticsFromReports() {
     let pendingApprovalCount = 0;
     
     reportsData.forEach(report => {
-        const disposalTypes = Array.isArray(report.disposalTypes) ? report.disposalTypes : 
-                            report.disposalType ? [report.disposalType] : ['unknown'];
+        const disposalTypes = report.disposalTypes;
         
         if (disposalTypes.includes('expired')) expiredCount++;
         if (disposalTypes.includes('waste')) wasteCount++;
@@ -2585,7 +3141,6 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType,
         const itemsArray = itemType === 'expired' ? reportData.expiredItems : reportData.wasteItems;
         const rejectedItem = itemsArray[itemNumber - 1];
 
-        // Prepare email data
         const emailData = {
             emailType: 'rejection',
             to: toEmail,
@@ -2611,29 +3166,23 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType,
             })
         };
 
-        console.log('Sending rejection email with data:', emailData);
-
         const formData = new FormData();
         Object.keys(emailData).forEach(key => {
             formData.append(key, emailData[key]);
         });
 
-        // Try different approaches
         let success = false;
         
-        // Approach 1: Using fetch with form data
         try {
             await fetch(GAS_CONFIG.ENDPOINT, {
                 method: 'POST',
                 body: formData,
-                mode: 'no-cors' // Using no-cors for GAS
+                mode: 'no-cors'
             });
-            console.log('Rejection email sent via form data');
             success = true;
         } catch (error) {
-            console.warn('Form data approach failed, trying URL params:', error);
+            console.warn('Form data approach failed:', error);
             
-            // Approach 2: Using URL parameters
             try {
                 const params = new URLSearchParams();
                 Object.keys(emailData).forEach(key => {
@@ -2644,26 +3193,9 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType,
                     method: 'GET',
                     mode: 'no-cors'
                 });
-                console.log('Rejection email sent via URL params');
                 success = true;
             } catch (error2) {
                 console.error('URL params approach also failed:', error2);
-                
-                // Approach 3: Try JSON POST
-                try {
-                    await fetch(GAS_CONFIG.ENDPOINT, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(emailData),
-                        mode: 'no-cors'
-                    });
-                    console.log('Rejection email sent via JSON');
-                    success = true;
-                } catch (error3) {
-                    console.error('All email sending approaches failed:', error3);
-                }
             }
         }
 
@@ -2703,8 +3235,6 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
             })
         };
 
-        console.log('Sending bulk rejection email with data:', emailData);
-
         const formData = new FormData();
         Object.keys(emailData).forEach(key => {
             formData.append(key, emailData[key]);
@@ -2712,17 +3242,15 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
 
         let success = false;
         
-        // Try different approaches
         try {
             await fetch(GAS_CONFIG.ENDPOINT, {
                 method: 'POST',
                 body: formData,
                 mode: 'no-cors'
             });
-            console.log('Bulk rejection email sent via form data');
             success = true;
         } catch (error) {
-            console.warn('Form data approach failed, trying URL params:', error);
+            console.warn('Form data approach failed:', error);
             
             try {
                 const params = new URLSearchParams();
@@ -2734,25 +3262,9 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
                     method: 'GET',
                     mode: 'no-cors'
                 });
-                console.log('Bulk rejection email sent via URL params');
                 success = true;
             } catch (error2) {
                 console.error('URL params approach also failed:', error2);
-                
-                try {
-                    await fetch(GAS_CONFIG.ENDPOINT, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(emailData),
-                        mode: 'no-cors'
-                    });
-                    console.log('Bulk rejection email sent via JSON');
-                    success = true;
-                } catch (error3) {
-                    console.error('All bulk email sending approaches failed:', error3);
-                }
             }
         }
 
@@ -2771,7 +3283,7 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
 }
 
 // ================================
-// EXPORT FUNCTIONS - UPDATED FOR DATE RANGE
+// EXPORT FUNCTIONS
 // ================================
 async function exportReports(type = 'current') {
     if (!isAuthenticated()) {
@@ -2790,7 +3302,6 @@ async function exportReports(type = 'current') {
         let query = db.collection('wasteReports').orderBy('submittedAt', 'desc');
         
         if (type === 'current') {
-            // Apply current filters - UPDATED for date range
             const storeFilter = Performance.getElement('#filterStore');
             const dateFromFilter = Performance.getElement('#filterDateFrom');
             const dateToFilter = Performance.getElement('#filterDateTo');
@@ -2798,8 +3309,6 @@ async function exportReports(type = 'current') {
             if (storeFilter?.value) {
                 query = query.where('store', '==', storeFilter.value);
             }
-            
-            // Note: We'll filter by date range client-side for export too
         }
         
         const snapshot = await query.get();
@@ -2811,7 +3320,13 @@ async function exportReports(type = 'current') {
         
         let reports = [];
         snapshot.forEach(doc => {
-            reports.push({ id: doc.id, ...doc.data() });
+            const data = doc.data();
+            reports.push({ 
+                id: doc.id, 
+                ...data,
+                disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
+                              data.disposalType ? [data.disposalType] : ['unknown']
+            });
         });
         
         // Apply date range filter client-side for export
@@ -2882,7 +3397,13 @@ async function exportReportsByDate() {
         
         const reports = [];
         snapshot.forEach(doc => {
-            reports.push({ id: doc.id, ...doc.data() });
+            const data = doc.data();
+            reports.push({ 
+                id: doc.id, 
+                ...data,
+                disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
+                              data.disposalType ? [data.disposalType] : ['unknown']
+            });
         });
         
         await exportToExcel(reports, `Reports_${exportDate}`);
@@ -2972,7 +3493,7 @@ function hideExportDate() {
 }
 
 // ================================
-// OPTIMIZED ITEMS MANAGEMENT
+// ITEMS MANAGEMENT FUNCTIONS
 // ================================
 function openItemsManagement() {
     if (!isAuthenticated()) {
@@ -3359,7 +3880,7 @@ function applyItemsFilters() {
 }
 
 // ================================
-// ENHANCED EVENT LISTENERS WITH CHART TYPE SELECTOR - UPDATED FOR DATE RANGE
+// EVENT LISTENERS - OPTIMIZED
 // ================================
 function setupEventListeners() {
     // Password section
@@ -3378,6 +3899,12 @@ function setupEventListeners() {
         lockButton.addEventListener('click', lockReports);
     }
     
+    // Delete All button
+    const deleteAllButton = Performance.getElement('#deleteAllButton');
+    if (deleteAllButton) {
+        deleteAllButton.addEventListener('click', openDeleteAllModal);
+    }
+    
     // Initialize chart type selector
     initChartTypeSelector();
     
@@ -3394,16 +3921,16 @@ function setupEventListeners() {
     if (refreshChartBtn) refreshChartBtn.addEventListener('click', refreshChart);
     if (chartDatePicker) chartDatePicker.addEventListener('change', createChartBasedOnType);
     
-    // Reports filters with debounce - UPDATED for date range
-    const searchEmail = Performance.getElement('#searchEmail');
+    // Reports filters with debounce
+    const searchInput = Performance.getElement('#searchInput');
     const filterStore = Performance.getElement('#filterStore');
     const filterType = Performance.getElement('#filterType');
-    const filterDateFrom = Performance.getElement('#filterDateFrom'); // UPDATED
-    const filterDateTo = Performance.getElement('#filterDateTo'); // UPDATED
+    const filterDateFrom = Performance.getElement('#filterDateFrom');
+    const filterDateTo = Performance.getElement('#filterDateTo');
     const filterStatus = Performance.getElement('#filterStatus');
     const clearFiltersBtn = Performance.getElement('#clearFilters');
     
-    [searchEmail, filterStore, filterType, filterDateFrom, filterDateTo, filterStatus].forEach(el => {
+    [searchInput, filterStore, filterType, filterDateFrom, filterDateTo, filterStatus].forEach(el => {
         if (el) {
             el.addEventListener('change', Performance.debounce(debounceApplyFilters, 300, 'filters'));
             if (el.tagName === 'INPUT') {
@@ -3494,8 +4021,8 @@ function setupEventListeners() {
     const closeImageModalBtn = Performance.getElement('#closeImageModal');
     const closeImageModalButton = Performance.getElement('#closeImageModalButton');
     
-    if (closeImageModalBtn) closeImageModalBtn.addEventListener('click', closeImageModal);
-    if (closeImageModalButton) closeImageModalButton.addEventListener('click', closeImageModal);
+    if (closeImageModalBtn) closeImageModalBtn.addEventListener('click', ImageManager.closeModal);
+    if (closeImageModalButton) closeImageModalButton.addEventListener('click', ImageManager.closeModal);
     
     // Rejection modals
     const closeRejectionModalBtn = Performance.getElement('#closeRejectionModal');
@@ -3542,17 +4069,52 @@ function setupEventListeners() {
         });
     }
     
+    // Delete modals
+    const closeDeleteModalBtn = Performance.getElement('#closeDeleteModal');
+    const cancelDeleteButton = Performance.getElement('#cancelDeleteButton');
+    const confirmDeleteButton = Performance.getElement('#confirmDeleteButton');
+    const closeDeleteAllModalBtn = Performance.getElement('#closeDeleteAllModal');
+    const cancelDeleteAllButton = Performance.getElement('#cancelDeleteAllButton');
+    const confirmDeleteAllButton = Performance.getElement('#confirmDeleteAllButton');
+    const closeDeleteImageModalBtn = Performance.getElement('#closeDeleteImageModal');
+    const cancelDeleteImageButton = Performance.getElement('#cancelDeleteImageButton');
+    const confirmDeleteImageButton = Performance.getElement('#confirmDeleteImageButton');
+    
+    if (closeDeleteModalBtn) closeDeleteModalBtn.addEventListener('click', closeDeleteModal);
+    if (cancelDeleteButton) cancelDeleteButton.addEventListener('click', closeDeleteModal);
+    if (confirmDeleteButton) confirmDeleteButton.addEventListener('click', confirmDelete);
+    
+    if (closeDeleteAllModalBtn) closeDeleteAllModalBtn.addEventListener('click', closeDeleteAllModal);
+    if (cancelDeleteAllButton) cancelDeleteAllButton.addEventListener('click', closeDeleteAllModal);
+    if (confirmDeleteAllButton) confirmDeleteAllButton.addEventListener('click', confirmDeleteAll);
+    
+    if (closeDeleteImageModalBtn) closeDeleteImageModalBtn.addEventListener('click', ImageManager.closeDeleteImageModal);
+    if (cancelDeleteImageButton) cancelDeleteImageButton.addEventListener('click', ImageManager.closeDeleteImageModal);
+    if (confirmDeleteImageButton) confirmDeleteImageButton.addEventListener('click', () => {
+        if (currentImageToDelete) {
+            deleteSingleImage(
+                currentImageToDelete.reportId,
+                currentImageToDelete.itemIndex,
+                currentImageToDelete.itemType,
+                currentImageToDelete.imageIndex
+            );
+        }
+    });
+    
     // Modal close on backdrop click
     const modals = document.querySelectorAll('.modal');
     modals.forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 if (modal.id === 'detailsModal') closeDetailsModal();
-                else if (modal.id === 'imageModal') closeImageModal();
+                else if (modal.id === 'imageModal') ImageManager.closeModal();
                 else if (modal.id === 'rejectionModal') closeRejectionModal();
                 else if (modal.id === 'bulkRejectionModal') closeBulkRejectionModal();
                 else if (modal.id === 'itemsManagementModal') closeItemsManagement();
                 else if (modal.id === 'editItemModal') closeEditItemModal();
+                else if (modal.id === 'deleteModal') closeDeleteModal();
+                else if (modal.id === 'deleteAllModal') closeDeleteAllModal();
+                else if (modal.id === 'deleteImageModal') ImageManager.closeDeleteImageModal();
             }
         });
     });
@@ -3561,11 +4123,14 @@ function setupEventListeners() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeDetailsModal();
-            closeImageModal();
+            ImageManager.closeModal();
             closeRejectionModal();
             closeBulkRejectionModal();
             closeItemsManagement();
             closeEditItemModal();
+            closeDeleteModal();
+            closeDeleteAllModal();
+            ImageManager.closeDeleteImageModal();
         }
     });
     
@@ -3578,7 +4143,7 @@ function setupEventListeners() {
                 showNotification('Session expired. Please login again.', 'info');
             }
         }
-    }, 60000); // Check every minute
+    }, 60000);
 }
 
 // ================================
@@ -3603,8 +4168,20 @@ window.exportReportsByDate = exportReportsByDate;
 window.hideExportDate = hideExportDate;
 window.viewReportDetails = viewReportDetails;
 window.closeDetailsModal = closeDetailsModal;
-window.viewImage = viewImage;
-window.closeImageModal = closeImageModal;
+window.viewImage = ImageManager.openModal;
+window.closeImageModal = ImageManager.closeModal;
+window.downloadCurrentImage = ImageManager.downloadImage;
+window.deleteCurrentImage = () => {
+    if (currentImageToDeleteData) {
+        ImageManager.openDeleteImageModal(
+            currentImageToDeleteData.imageData,
+            currentImageToDeleteData.reportId,
+            currentImageToDeleteData.itemIndex,
+            currentImageToDeleteData.itemType,
+            currentImageToDeleteData.imageIndex
+        );
+    }
+};
 window.approveItem = approveItem;
 window.bulkApproveItems = bulkApproveItems;
 window.openRejectionModal = openRejectionModal;
@@ -3625,3 +4202,12 @@ window.deleteItem = deleteItem;
 window.refreshChart = refreshChart;
 window.createChartBasedOnType = createChartBasedOnType;
 window.updateChartPeriodControls = updateChartPeriodControls;
+window.viewReportImages = viewReportDetails;
+window.ImageManager = ImageManager;
+window.openDeleteModal = openDeleteModal;
+window.closeDeleteModal = closeDeleteModal;
+window.openDeleteAllModal = openDeleteAllModal;
+window.closeDeleteAllModal = closeDeleteAllModal;
+window.confirmDelete = confirmDelete;
+window.confirmDeleteAll = confirmDeleteAll;
+window.deleteSingleImage = deleteSingleImage;

@@ -21,18 +21,28 @@ const GAS_CONFIG = {
 };
 
 // ================================
+// FILE SIZE LIMITS (UPDATED TO 5MB)
+// ================================
+const FILE_CONFIG = {
+    MAX_SIZE_PER_FILE: 5 * 1024 * 1024, // 5MB per file
+    MAX_TOTAL_SIZE: 10 * 1024 * 1024,   // 10MB total per item
+    MAX_FILES_PER_ITEM: 3               // Max 3 files per item
+};
+
+// ================================
 // ITEMS LIST FOR DROPDOWN
 // ================================
 let ITEMS_LIST = [];
 let itemsLoaded = false;
 
 // Initialize Firebase
-let db;
+let db, storage;
 try {
     if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
     }
     db = firebase.firestore();
+    storage = firebase.storage();
     console.log('✅ Firebase initialized successfully');
 } catch (error) {
     console.error('❌ Firebase initialization error:', error);
@@ -55,10 +65,46 @@ function showNotification(message, type = 'success') {
     }, 5000);
 }
 
-function showLoading(show) {
+function showLoading(show, message = '') {
     const overlay = document.getElementById('loadingOverlay');
     if (overlay) {
         overlay.style.display = show ? 'flex' : 'none';
+        
+        // Update loading message if provided
+        if (message) {
+            const progressText = document.getElementById('progressText');
+            if (progressText) {
+                progressText.textContent = message;
+            }
+        }
+    }
+}
+
+function showUploadProgress(show, current = 0, total = 0, fileName = '') {
+    const progressContainer = document.getElementById('uploadProgress');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const progressDetails = document.getElementById('progressDetails');
+    
+    if (!progressContainer || !progressFill || !progressText) return;
+    
+    if (show) {
+        progressContainer.style.display = 'block';
+        
+        if (total > 0) {
+            const percentage = Math.round((current / total) * 100);
+            progressFill.style.width = `${percentage}%`;
+            progressText.textContent = `Uploading: ${percentage}%`;
+            
+            if (fileName) {
+                progressDetails.textContent = `File: ${fileName}`;
+            }
+        }
+    } else {
+        progressContainer.style.display = 'none';
+        progressFill.style.width = '0%';
+        progressText.textContent = 'Uploading: 0%';
+        progressDetails.textContent = '';
     }
 }
 
@@ -72,28 +118,12 @@ function formatDate(dateString) {
     });
 }
 
-function formatDateTime(timestamp) {
-    if (!timestamp) return 'N/A';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-}
-
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-function calculateObjectSize(obj) {
-    return new TextEncoder().encode(JSON.stringify(obj)).length;
 }
 
 // ================================
@@ -172,6 +202,21 @@ function initializeAllSelect2Dropdowns() {
         if (selectId) {
             initSelect2Dropdown(selectId);
         }
+    });
+}
+
+function initSelect2Dropdown(selectElementId) {
+    if (ITEMS_LIST.length === 0) {
+        console.log('Items not loaded yet, delaying Select2 initialization for:', selectElementId);
+        return;
+    }
+    
+    $(`#${selectElementId}`).select2({
+        data: ITEMS_LIST.map(item => ({ id: item, text: item })),
+        placeholder: "Select or type to search...",
+        allowClear: false,
+        width: '100%',
+        dropdownParent: $(`#${selectElementId}`).parent()
     });
 }
 
@@ -300,7 +345,7 @@ function validateDisposalTypeSelection() {
 // ================================
 // IMAGE COMPRESSION FUNCTIONS
 // ================================
-function compressImage(file, quality = 0.5, maxWidth = 800) {
+function compressImage(file, quality = 0.7, maxWidth = 1200) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -314,6 +359,7 @@ function compressImage(file, quality = 0.5, maxWidth = 800) {
                 let width = img.width;
                 let height = img.height;
                 
+                // Only resize if image is larger than maxWidth
                 if (width > maxWidth) {
                     height = Math.round((height * maxWidth) / width);
                     width = maxWidth;
@@ -349,55 +395,133 @@ function compressImage(file, quality = 0.5, maxWidth = 800) {
     });
 }
 
-async function fileToBase64(file) {
-    return new Promise(async (resolve, reject) => {
+async function prepareFileForUpload(file) {
+    let fileToUpload = file;
+    let compressionInfo = null;
+    
+    // Only compress images that are too large
+    if (file.type.startsWith('image/') && file.size > FILE_CONFIG.MAX_SIZE_PER_FILE) {
+        console.log(`Compressing large image: ${file.name} (${Math.round(file.size / (1024 * 1024) * 100) / 100} MB)`);
+        
+        // Calculate compression ratio based on file size
+        let quality = 0.6;
+        let maxWidth = 800;
+        
+        if (file.size > 3 * 1024 * 1024) { // Over 3MB
+            quality = 0.5;
+            maxWidth = 600;
+        }
+        if (file.size > 4 * 1024 * 1024) { // Over 4MB
+            quality = 0.4;
+            maxWidth = 500;
+        }
+        
         try {
-            let fileToProcess = file;
-            let isCompressed = false;
-            let originalSize = file.size;
-            
-            if (file.type.startsWith('image/')) {
-                console.log(`Compressing image: ${file.name} (${Math.round(file.size / 1024)} KB)`);
-                
-                if (file.size > 150 * 1024) {
-                    let quality = 0.6;
-                    let maxWidth = 600;
-                    
-                    if (file.size > 500 * 1024) {
-                        quality = 0.5;
-                        maxWidth = 500;
+            fileToUpload = await compressImage(file, quality, maxWidth);
+            compressionInfo = {
+                originalSize: file.size,
+                compressedSize: fileToUpload.size,
+                compressionRatio: Math.round((fileToUpload.size / file.size) * 100)
+            };
+            console.log(`Compressed from ${Math.round(file.size / 1024)}KB to ${Math.round(fileToUpload.size / 1024)}KB (${compressionInfo.compressionRatio}%)`);
+        } catch (error) {
+            console.error('Compression failed, using original:', error);
+        }
+    }
+    
+    return {
+        file: fileToUpload,
+        compressionInfo: compressionInfo
+    };
+}
+
+// ================================
+// FIREBASE STORAGE FUNCTIONS
+// ================================
+async function uploadFileToStorage(file, reportId, itemId, index) {
+    try {
+        if (!storage) {
+            throw new Error('Firebase Storage not initialized');
+        }
+        
+        // Create a unique filename
+        const timestamp = Date.now();
+        const randomString = Math.random().toString(36).substring(7);
+        const fileExtension = file.name.split('.').pop();
+        const fileName = `${reportId}/${itemId}/${timestamp}_${randomString}.${fileExtension}`;
+        
+        // Create storage reference
+        const storageRef = storage.ref().child(fileName);
+        
+        // Upload file
+        const uploadTask = storageRef.put(file);
+        
+        // Return a promise that resolves with download URL
+        return new Promise((resolve, reject) => {
+            uploadTask.on(
+                'state_changed',
+                (snapshot) => {
+                    // Show upload progress
+                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    showUploadProgress(true, snapshot.bytesTransferred, snapshot.totalBytes, file.name);
+                },
+                (error) => {
+                    console.error('Upload error:', error);
+                    reject(error);
+                },
+                async () => {
+                    try {
+                        // Get download URL
+                        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                        
+                        resolve({
+                            url: downloadURL,
+                            name: file.name,
+                            type: file.type,
+                            size: file.size,
+                            path: fileName,
+                            storagePath: storageRef.fullPath
+                        });
+                    } catch (urlError) {
+                        reject(urlError);
                     }
-                    if (file.size > 1000 * 1024) {
-                        quality = 0.4;
-                        maxWidth = 400;
-                    }
-                    
-                    fileToProcess = await compressImage(file, quality, maxWidth);
-                    isCompressed = true;
-                    console.log(`Compressed from ${Math.round(file.size / 1024)}KB to ${Math.round(fileToProcess.size / 1024)}KB`);
                 }
+            );
+        });
+        
+    } catch (error) {
+        console.error('Error in uploadFileToStorage:', error);
+        throw error;
+    }
+}
+
+async function uploadFilesForItem(files, reportId, itemId) {
+    const uploadedFiles = [];
+    
+    for (let i = 0; i < files.length; i++) {
+        try {
+            const preparedFile = await prepareFileForUpload(files[i]);
+            const uploadResult = await uploadFileToStorage(
+                preparedFile.file, 
+                reportId, 
+                itemId, 
+                i
+            );
+            
+            // Add compression info if available
+            if (preparedFile.compressionInfo) {
+                uploadResult.compressionInfo = preparedFile.compressionInfo;
             }
             
-            const reader = new FileReader();
-            reader.readAsDataURL(fileToProcess);
-            
-            reader.onload = () => resolve({
-                name: file.name,
-                type: fileToProcess.type,
-                size: fileToProcess.size,
-                base64: reader.result.split(',')[1],
-                dataUrl: reader.result,
-                originalSize: originalSize,
-                isCompressed: isCompressed,
-                compressionRatio: isCompressed ? Math.round((fileToProcess.size / originalSize) * 100) : 100
-            });
-            
-            reader.onerror = error => reject(error);
+            uploadedFiles.push(uploadResult);
             
         } catch (error) {
-            reject(error);
+            console.error(`Failed to upload file ${files[i].name}:`, error);
+            throw new Error(`Failed to upload ${files[i].name}: ${error.message}`);
         }
-    });
+    }
+    
+    return uploadedFiles;
 }
 
 // ================================
@@ -475,7 +599,7 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
             submissionTime: submissionTime,
             reportId: reportId,
             totalBatches: reportData.totalBatches || 1,
-            hasAttachments: reportData.originalFileSize > 0
+            hasAttachments: reportData.hasImages || false
         };
         
         console.log('📤 Sending email to:', emailData.to);
@@ -621,22 +745,6 @@ function removeFileFromInput(fileInput, index) {
     fileInput.dispatchEvent(new Event('change'));
 }
 
-function initSelect2Dropdown(selectElementId) {
-    if (ITEMS_LIST.length === 0) {
-        console.log('Items not loaded yet, delaying Select2 initialization for:', selectElementId);
-        return;
-    }
-    
-    // SIMPLE DROPDOWN WITHOUT COST DISPLAY
-    $(`#${selectElementId}`).select2({
-        data: ITEMS_LIST.map(item => ({ id: item, text: item })),
-        placeholder: "Select or type to search...",
-        allowClear: false,
-        width: '100%',
-        dropdownParent: $(`#${selectElementId}`).parent()
-    });
-}
-
 function addExpiredItem() {
     const expiredFields = document.getElementById('expiredFields');
     if (!expiredFields) return;
@@ -699,7 +807,7 @@ function addExpiredItem() {
                        required accept="image/*,.pdf" multiple 
                        onchange="createFilePreview(this, 'documentation-${itemId}-preview')">
                 <div id="documentation-${itemId}-preview" class="file-preview"></div>
-                <span class="note">Upload photos or PDFs (Max 1MB per file, 3 files max)</span>
+                <span class="note">Upload photos or PDFs (Max 5MB per file, 3 files max)</span>
             </div>
             <div class="form-group">
                 <label for="notes-${itemId}">Additional Notes</label>
@@ -777,7 +885,7 @@ function addWasteItem() {
                        required accept="image/*,.pdf" multiple 
                        onchange="createFilePreview(this, 'wasteDocumentation-${itemId}-preview')">
                 <div id="wasteDocumentation-${itemId}-preview" class="file-preview"></div>
-                <span class="note">Upload photos or PDFs (Max 1MB per file, 3 files max)</span>
+                <span class="note">Upload photos or PDFs (Max 5MB per file, 3 files max)</span>
             </div>
             <div class="form-group">
                 <label for="wasteNotes-${itemId}">Additional Notes</label>
@@ -801,17 +909,25 @@ function removeField(fieldId) {
 }
 
 function validateFiles(fileInput) {
-    const maxSize = 1 * 1024 * 1024;
-    const maxFiles = 3;
+    const maxSize = FILE_CONFIG.MAX_SIZE_PER_FILE; // 5MB
+    const maxFiles = FILE_CONFIG.MAX_FILES_PER_ITEM; // 3 files
+    const maxTotalSize = FILE_CONFIG.MAX_TOTAL_SIZE; // 10MB total
     
     if (fileInput.files.length > maxFiles) {
         return `Maximum ${maxFiles} files allowed`;
     }
     
+    let totalSize = 0;
+    
     for (let file of fileInput.files) {
         if (file.size > maxSize) {
-            return `File "${file.name}" exceeds 1MB limit (${formatFileSize(file.size)})`;
+            return `File "${file.name}" exceeds ${formatFileSize(maxSize)} limit (${formatFileSize(file.size)})`;
         }
+        totalSize += file.size;
+    }
+    
+    if (totalSize > maxTotalSize) {
+        return `Total file size (${formatFileSize(totalSize)}) exceeds ${formatFileSize(maxTotalSize)} limit`;
     }
     
     return null;
@@ -896,78 +1012,7 @@ function validateDynamicFields() {
 }
 
 // ================================
-// BATCH PROCESSING FUNCTIONS
-// ================================
-function splitIntoBatches(items, maxBatchSize = 800 * 1024) {
-    const batches = [];
-    let currentBatch = [];
-    let currentBatchSize = 0;
-    
-    for (const item of items) {
-        const itemSize = calculateObjectSize(item);
-        
-        if (currentBatchSize + itemSize > maxBatchSize && currentBatch.length > 0) {
-            batches.push([...currentBatch]);
-            currentBatch = [item];
-            currentBatchSize = itemSize;
-        } else {
-            currentBatch.push(item);
-            currentBatchSize += itemSize;
-        }
-    }
-    
-    if (currentBatch.length > 0) {
-        batches.push(currentBatch);
-    }
-    
-    return batches;
-}
-
-async function saveReportInBatches(mainReportId, baseReportData, items) {
-    const batches = splitIntoBatches(items);
-    const totalBatches = batches.length;
-    
-    console.log(`Splitting report into ${totalBatches} batches`);
-    
-    for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-        const batchReportId = `${mainReportId}_BATCH${i + 1}`;
-        
-        const batchReport = {
-            ...baseReportData,
-            reportId: batchReportId,
-            batchNumber: i + 1,
-            totalBatches: totalBatches,
-            mainReportId: mainReportId,
-            itemCount: batch.length
-        };
-        
-        const expiredBatch = batch.filter(item => item.type === 'expired');
-        const wasteBatch = batch.filter(item => item.type === 'waste');
-        
-        if (expiredBatch.length > 0) {
-            batchReport.expiredItems = expiredBatch;
-        }
-        if (wasteBatch.length > 0) {
-            batchReport.wasteItems = wasteBatch;
-        }
-        
-        const batchSize = calculateObjectSize(batchReport);
-        batchReport.reportSizeKB = Math.round(batchSize / 1024);
-        
-        console.log(`Saving batch ${i + 1}/${totalBatches}: ${batchReport.reportSizeKB}KB, ${batch.length} items`);
-        
-        const docRef = db.collection('wasteReports').doc(batchReportId);
-        await docRef.set(batchReport);
-        
-        console.log(`✅ Batch ${i + 1} saved with ID: ${batchReportId}`);
-    }
-    
-    return totalBatches;
-}
-
-// ================================
-// FORM SUBMISSION HANDLER
+// FORM SUBMISSION HANDLER - WITH FIREBASE STORAGE
 // ================================
 async function handleSubmit(event) {
     console.log('Form submission started...');
@@ -977,7 +1022,7 @@ async function handleSubmit(event) {
         event.stopPropagation();
     }
     
-    if (!db) {
+    if (!db || !storage) {
         showNotification('Error: Firebase not initialized. Cannot submit report.', 'error');
         console.error('Firebase not initialized');
         return;
@@ -1018,7 +1063,8 @@ async function handleSubmit(event) {
     
     submitBtn.textContent = 'Submitting...';
     submitBtn.disabled = true;
-    showLoading(true);
+    showLoading(true, 'Preparing submission...');
+    showUploadProgress(false);
     
     const disposalTypes = [];
     const disposalTypeCheckboxes = document.querySelectorAll('input[name="disposalType"]:checked');
@@ -1026,18 +1072,25 @@ async function handleSubmit(event) {
         disposalTypes.push(checkbox.value);
     });
     
+    const mainReportId = 'REPORT-' + Date.now().toString();
+    
     const baseReportData = {
         email: document.getElementById('email').value.trim(),
         store: document.getElementById('store').value,
         personnel: document.getElementById('personnel').value.trim(),
         reportDate: document.getElementById('reportDate').value,
         disposalTypes: disposalTypes,
+        reportId: mainReportId,
         submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
         status: 'submitted',
         createdAt: new Date().toISOString(),
         emailSent: false,
         emailSentAt: null,
-        emailError: null
+        emailError: null,
+        hasImages: false,
+        imageCount: 0,
+        storageUsed: 0,
+        originalFileSize: 0
     };
     
     if (disposalTypes.includes('noWaste')) {
@@ -1046,17 +1099,13 @@ async function handleSubmit(event) {
     }
     
     try {
-        const mainReportId = 'REPORT-' + Date.now().toString();
-        baseReportData.reportId = mainReportId;
-        
         console.log('Processing report data for ID:', mainReportId);
         
-        let totalOriginalSize = 0;
-        let totalCompressedSize = 0;
         let allItems = [];
-        let savedReportIds = [mainReportId];
-        let totalBatches = 1;
+        let totalOriginalSize = 0;
+        let totalStorageUsed = 0;
         
+        // Process expired items
         if (disposalTypes.includes('expired')) {
             const expiredFields = document.querySelectorAll('#expiredFields .field-group');
             console.log(`Found ${expiredFields.length} expired items`);
@@ -1064,23 +1113,6 @@ async function handleSubmit(event) {
             for (let field of expiredFields) {
                 const itemId = field.id.split('-')[1];
                 const fileInput = document.getElementById(`documentation-${itemId}`);
-                
-                const filesBase64 = [];
-                if (fileInput && fileInput.files.length > 0) {
-                    for (let i = 0; i < fileInput.files.length; i++) {
-                        try {
-                            const file = fileInput.files[i];
-                            totalOriginalSize += file.size;
-                            
-                            const fileData = await fileToBase64(file);
-                            filesBase64.push(fileData);
-                            totalCompressedSize += fileData.size;
-                            
-                        } catch (fileError) {
-                            console.error('Error processing file:', fileError);
-                        }
-                    }
-                }
                 
                 const dropdown = document.getElementById(`expiredItem-${itemId}`);
                 let selectedItem = '';
@@ -1093,10 +1125,11 @@ async function handleSubmit(event) {
                     }
                 }
                 
-                // GET AND SAVE THE COST
+                // Get item cost
                 const itemCost = await getItemCost(selectedItem);
                 console.log(`Item: ${selectedItem}, Cost: ₱${itemCost.toFixed(2)}`);
                 
+                // Create base item data
                 const expiredItem = {
                     type: 'expired',
                     item: selectedItem,
@@ -1105,13 +1138,44 @@ async function handleSubmit(event) {
                     expirationDate: document.getElementById(`expirationDate-${itemId}`).value,
                     quantity: parseFloat(document.getElementById(`quantity-${itemId}`).value) || 0,
                     unit: document.getElementById(`unit-${itemId}`).value,
-                    documentation: filesBase64,
                     notes: document.getElementById(`notes-${itemId}`).value.trim() || '',
                     itemId: itemId,
-                    totalFiles: fileInput ? fileInput.files.length : 0,
-                    // SAVE COST TO FIRESTORE
-                    itemCost: itemCost
+                    itemCost: itemCost,
+                    documentation: [] // Will be populated with upload results
                 };
+                
+                // Upload files if any
+                if (fileInput && fileInput.files.length > 0) {
+                    showLoading(true, 'Uploading files...');
+                    
+                    // Calculate original size
+                    for (let file of fileInput.files) {
+                        totalOriginalSize += file.size;
+                    }
+                    
+                    try {
+                        const uploadedFiles = await uploadFilesForItem(
+                            Array.from(fileInput.files),
+                            mainReportId,
+                            `expired-${itemId}`
+                        );
+                        
+                        expiredItem.documentation = uploadedFiles;
+                        expiredItem.totalFiles = uploadedFiles.length;
+                        
+                        // Calculate storage used
+                        uploadedFiles.forEach(file => {
+                            totalStorageUsed += file.size || 0;
+                        });
+                        
+                        console.log(`✅ Uploaded ${uploadedFiles.length} files for expired item ${itemId}`);
+                        
+                    } catch (uploadError) {
+                        console.error(`Failed to upload files for expired item ${itemId}:`, uploadError);
+                        showNotification(`Failed to upload files for ${selectedItem}. Please try again.`, 'error');
+                        throw uploadError;
+                    }
+                }
                 
                 allItems.push(expiredItem);
             }
@@ -1119,6 +1183,7 @@ async function handleSubmit(event) {
             baseReportData.totalExpiredItems = allItems.filter(item => item.type === 'expired').length;
         }
         
+        // Process waste items
         if (disposalTypes.includes('waste')) {
             const wasteFields = document.querySelectorAll('#wasteFields .field-group');
             console.log(`Found ${wasteFields.length} waste items`);
@@ -1126,23 +1191,6 @@ async function handleSubmit(event) {
             for (let field of wasteFields) {
                 const itemId = field.id.split('-')[1];
                 const fileInput = document.getElementById(`wasteDocumentation-${itemId}`);
-                
-                const filesBase64 = [];
-                if (fileInput && fileInput.files.length > 0) {
-                    for (let i = 0; i < fileInput.files.length; i++) {
-                        try {
-                            const file = fileInput.files[i];
-                            totalOriginalSize += file.size;
-                            
-                            const fileData = await fileToBase64(file);
-                            filesBase64.push(fileData);
-                            totalCompressedSize += fileData.size;
-                            
-                        } catch (fileError) {
-                            console.error('Error processing file:', fileError);
-                        }
-                    }
-                }
                 
                 const dropdown = document.getElementById(`wasteItem-${itemId}`);
                 let selectedItem = '';
@@ -1155,23 +1203,55 @@ async function handleSubmit(event) {
                     }
                 }
                 
-                // GET AND SAVE THE COST
+                // Get item cost
                 const itemCost = await getItemCost(selectedItem);
                 console.log(`Item: ${selectedItem}, Cost: ₱${itemCost.toFixed(2)}`);
                 
+                // Create base item data
                 const wasteItem = {
                     type: 'waste',
                     item: selectedItem,
                     reason: document.getElementById(`reason-${itemId}`).value,
                     quantity: parseFloat(document.getElementById(`wasteQuantity-${itemId}`).value) || 0,
                     unit: document.getElementById(`wasteUnit-${itemId}`).value,
-                    documentation: filesBase64,
                     notes: document.getElementById(`wasteNotes-${itemId}`).value.trim() || '',
                     itemId: itemId,
-                    totalFiles: fileInput ? fileInput.files.length : 0,
-                    // SAVE COST TO FIRESTORE
-                    itemCost: itemCost
+                    itemCost: itemCost,
+                    documentation: [] // Will be populated with upload results
                 };
+                
+                // Upload files if any
+                if (fileInput && fileInput.files.length > 0) {
+                    showLoading(true, 'Uploading files...');
+                    
+                    // Calculate original size
+                    for (let file of fileInput.files) {
+                        totalOriginalSize += file.size;
+                    }
+                    
+                    try {
+                        const uploadedFiles = await uploadFilesForItem(
+                            Array.from(fileInput.files),
+                            mainReportId,
+                            `waste-${itemId}`
+                        );
+                        
+                        wasteItem.documentation = uploadedFiles;
+                        wasteItem.totalFiles = uploadedFiles.length;
+                        
+                        // Calculate storage used
+                        uploadedFiles.forEach(file => {
+                            totalStorageUsed += file.size || 0;
+                        });
+                        
+                        console.log(`✅ Uploaded ${uploadedFiles.length} files for waste item ${itemId}`);
+                        
+                    } catch (uploadError) {
+                        console.error(`Failed to upload files for waste item ${itemId}:`, uploadError);
+                        showNotification(`Failed to upload files for ${selectedItem}. Please try again.`, 'error');
+                        throw uploadError;
+                    }
+                }
                 
                 allItems.push(wasteItem);
             }
@@ -1179,50 +1259,35 @@ async function handleSubmit(event) {
             baseReportData.totalWasteItems = allItems.filter(item => item.type === 'waste').length;
         }
         
-        if (allItems.length > 0) {
-            baseReportData.originalFileSize = totalOriginalSize;
-            baseReportData.compressedFileSize = totalCompressedSize;
+        // Update report data with storage information
+        baseReportData.originalFileSize = totalOriginalSize;
+        baseReportData.storageUsed = totalStorageUsed;
+        baseReportData.hasImages = allItems.some(item => item.documentation.length > 0);
+        baseReportData.imageCount = allItems.reduce((sum, item) => sum + (item.documentation?.length || 0), 0);
+        
+        // Add items to report data
+        const expiredItems = allItems.filter(item => item.type === 'expired');
+        const wasteItems = allItems.filter(item => item.type === 'waste');
+        
+        if (expiredItems.length > 0) {
+            baseReportData.expiredItems = expiredItems;
+        }
+        if (wasteItems.length > 0) {
+            baseReportData.wasteItems = wasteItems;
         }
         
-        const estimatedReportSize = calculateObjectSize({
-            ...baseReportData,
-            items: allItems
-        });
+        // Save the report to Firestore
+        console.log('Saving report to Firestore...');
+        showLoading(true, 'Saving report...');
         
-        if (estimatedReportSize > 800 * 1024) {
-            console.log('Report is large, splitting into batches...');
-            totalBatches = await saveReportInBatches(mainReportId, baseReportData, allItems);
-            savedReportIds = [];
-            for (let i = 1; i <= totalBatches; i++) {
-                savedReportIds.push(`${mainReportId}_BATCH${i}`);
-            }
-        } else {
-            console.log('Report fits in single document, saving...');
-            
-            const expiredItems = allItems.filter(item => item.type === 'expired');
-            const wasteItems = allItems.filter(item => item.type === 'waste');
-            
-            if (expiredItems.length > 0) {
-                baseReportData.expiredItems = expiredItems;
-            }
-            if (wasteItems.length > 0) {
-                baseReportData.wasteItems = wasteItems;
-            }
-            
-            const finalSize = calculateObjectSize(baseReportData);
-            baseReportData.reportSizeKB = Math.round(finalSize / 1024);
-            
-            console.log('Final report size:', baseReportData.reportSizeKB, 'KB');
-            
-            const docRef = db.collection('wasteReports').doc(mainReportId);
-            await docRef.set(baseReportData);
-            
-            console.log('✅ Report saved to Firestore with ID:', mainReportId);
-        }
+        const docRef = db.collection('wasteReports').doc(mainReportId);
+        await docRef.set(baseReportData);
         
-        baseReportData.totalBatches = totalBatches;
-
+        console.log('✅ Report saved to Firestore with ID:', mainReportId);
+        
+        // Send email confirmation
         console.log('Attempting to send email confirmation...');
+        showLoading(true, 'Sending email confirmation...');
         
         const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems);
         
@@ -1230,24 +1295,19 @@ async function handleSubmit(event) {
             console.log('✅ Email confirmation request submitted');
             
             try {
-                const updatePromises = savedReportIds.map(reportId => {
-                    const reportRef = db.collection('wasteReports').doc(reportId);
-                    return reportRef.update({
-                        emailSent: true,
-                        emailSentAt: new Date().toISOString(),
-                        emailStatus: 'sent',
-                        emailService: 'Google Apps Script'
-                    });
+                await docRef.update({
+                    emailSent: true,
+                    emailSentAt: new Date().toISOString(),
+                    emailStatus: 'sent',
+                    emailService: 'Google Apps Script'
                 });
-                
-                await Promise.all(updatePromises);
                 console.log('✅ Email status updated in database');
             } catch (updateError) {
                 console.warn('Could not update email status in database:', updateError);
             }
             
             showNotification(
-                `✅ Report submitted successfully! Confirmation email sent. ${totalBatches > 1 ? `(${totalBatches} parts)` : ''}`, 
+                `✅ Report submitted successfully! Confirmation email sent.`, 
                 'success'
             );
             
@@ -1255,17 +1315,12 @@ async function handleSubmit(event) {
             console.warn('⚠️ Report saved but email failed:', emailResult.error);
             
             try {
-                const updatePromises = savedReportIds.map(reportId => {
-                    const reportRef = db.collection('wasteReports').doc(reportId);
-                    return reportRef.update({
-                        emailSent: false,
-                        emailError: emailResult.error,
-                        emailStatus: 'failed',
-                        lastEmailAttempt: new Date().toISOString()
-                    });
+                await docRef.update({
+                    emailSent: false,
+                    emailError: emailResult.error,
+                    emailStatus: 'failed',
+                    lastEmailAttempt: new Date().toISOString()
                 });
-                
-                await Promise.all(updatePromises);
             } catch (updateError) {
                 console.warn('Could not update email error in database:', updateError);
             }
@@ -1276,6 +1331,7 @@ async function handleSubmit(event) {
             );
         }
         
+        // Reset form
         const form = document.getElementById('wasteReportForm');
         if (form) {
             form.reset();
@@ -1299,6 +1355,7 @@ async function handleSubmit(event) {
             updateDisposalTypeHint();
         }
         
+        // Ask user to view reports
         setTimeout(() => {
             const viewReports = confirm(
                 `Report ${mainReportId} has been submitted. Would you like to view all reports?`
@@ -1317,14 +1374,17 @@ async function handleSubmit(event) {
             errorMessage += 'Permission denied. Check Firebase rules.';
         } else if (error.code === 'unavailable') {
             errorMessage += 'Network error. Please check your connection.';
-        } else if (error.code === 'failed-precondition') {
-            errorMessage += 'Document too large. Please reduce file sizes.';
+        } else if (error.code === 'storage/unauthorized') {
+            errorMessage += 'Storage permission denied. Check Firebase Storage rules.';
+        } else if (error.code === 'storage/retry-limit-exceeded') {
+            errorMessage += 'Upload failed after multiple attempts. Please try again.';
         } else {
-            errorMessage += error.message;
+            errorMessage += error.message || 'Unknown error';
         }
         
         showNotification(errorMessage, 'error');
         
+        // Save to localStorage as backup
         try {
             const reports = JSON.parse(localStorage.getItem('wasteReports_backup') || '[]');
             reports.push({
@@ -1342,6 +1402,7 @@ async function handleSubmit(event) {
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
         showLoading(false);
+        showUploadProgress(false);
     }
 }
 
@@ -1425,15 +1486,25 @@ async function testFirebaseConnection() {
         
         console.log('Testing Firebase connection...');
         
+        // Test Firestore
         const testRef = db.collection('_test').doc('connection');
         await testRef.set({
             test: true,
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
         
-        console.log('✅ Firebase write test successful');
+        console.log('✅ Firebase Firestore write test successful');
         
         await testRef.delete();
+        
+        // Test Storage
+        const storageRef = storage.ref().child('_test/test.txt');
+        const testBlob = new Blob(['Firebase Storage Test'], { type: 'text/plain' });
+        await storageRef.put(testBlob);
+        
+        console.log('✅ Firebase Storage write test successful');
+        
+        await storageRef.delete();
         
         console.log('✅ Firebase connection test complete');
         
@@ -1442,7 +1513,7 @@ async function testFirebaseConnection() {
         
         let errorMessage = 'Firebase connection issue: ';
         if (error.code === 'permission-denied') {
-            errorMessage += 'Permission denied. Please check Firebase Firestore rules.';
+            errorMessage += 'Permission denied. Please check Firebase rules.';
         } else if (error.code === 'unavailable') {
             errorMessage += 'Network error. Please check your internet connection.';
         } else {
@@ -1469,7 +1540,7 @@ window.testGASEmail = async () => {
     const testEmail = prompt('Enter email to test email service:');
     if (!testEmail) return;
     
-    showLoading(true);
+    showLoading(true, 'Sending test email...');
     try {
         const testData = {
             email: testEmail,
@@ -1498,6 +1569,7 @@ window.debugFirebase = () => {
     console.log('Firebase status:', {
         initialized: !!firebase.apps.length,
         db: !!db,
+        storage: !!storage,
         config: firebaseConfig
     });
     testFirebaseConnection();
@@ -1512,4 +1584,29 @@ window.refreshItems = async () => {
     } catch (error) {
         showNotification('Failed to refresh items: ' + error.message, 'error');
     }
+};
+
+window.testStorageUpload = async () => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    
+    fileInput.onchange = async (e) => {
+        if (e.target.files.length > 0) {
+            const file = e.target.files[0];
+            showLoading(true, 'Testing storage upload...');
+            
+            try {
+                const result = await uploadFileToStorage(file, 'TEST-' + Date.now(), 'test-item', 0);
+                alert(`✅ Storage upload successful!\nURL: ${result.url}`);
+                console.log('Storage upload result:', result);
+            } catch (error) {
+                alert(`❌ Storage upload failed: ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+    };
+    
+    fileInput.click();
 };
