@@ -21,10 +21,10 @@ const GAS_CONFIG = {
 };
 
 // ================================
-// FILE SIZE LIMITS (UPDATED TO 5MB)
+// FILE SIZE LIMITS (UPDATED TO 10MB)
 // ================================
 const FILE_CONFIG = {
-    MAX_SIZE_PER_FILE: 5 * 1024 * 1024, // 5MB per file
+    MAX_SIZE_PER_FILE: 10 * 1024 * 1024, // 10MB per file
     MAX_TOTAL_SIZE: 10 * 1024 * 1024,   // 10MB total per item
     MAX_FILES_PER_ITEM: 3               // Max 3 files per item
 };
@@ -807,7 +807,7 @@ function addExpiredItem() {
                        required accept="image/*,.pdf" multiple 
                        onchange="createFilePreview(this, 'documentation-${itemId}-preview')">
                 <div id="documentation-${itemId}-preview" class="file-preview"></div>
-                <span class="note">Upload photos or PDFs (Max 5MB per file, 3 files max)</span>
+                <span class="note">Upload photos or PDFs (Max 10MB per file, 3 files max)</span>
             </div>
             <div class="form-group">
                 <label for="notes-${itemId}">Additional Notes</label>
@@ -885,7 +885,7 @@ function addWasteItem() {
                        required accept="image/*,.pdf" multiple 
                        onchange="createFilePreview(this, 'wasteDocumentation-${itemId}-preview')">
                 <div id="wasteDocumentation-${itemId}-preview" class="file-preview"></div>
-                <span class="note">Upload photos or PDFs (Max 5MB per file, 3 files max)</span>
+                <span class="note">Upload photos or PDFs (Max 10MB per file, 3 files max)</span>
             </div>
             <div class="form-group">
                 <label for="wasteNotes-${itemId}">Additional Notes</label>
@@ -909,7 +909,7 @@ function removeField(fieldId) {
 }
 
 function validateFiles(fileInput) {
-    const maxSize = FILE_CONFIG.MAX_SIZE_PER_FILE; // 5MB
+    const maxSize = FILE_CONFIG.MAX_SIZE_PER_FILE; // 10MB
     const maxFiles = FILE_CONFIG.MAX_FILES_PER_ITEM; // 3 files
     const maxTotalSize = FILE_CONFIG.MAX_TOTAL_SIZE; // 10MB total
     
