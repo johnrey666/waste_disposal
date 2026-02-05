@@ -52,6 +52,18 @@
             </div>
 
             <form id="wasteReportForm" class="report-form">
+                <!-- Item ID Field (Optional - for resubmitting rejected items) -->
+                <div class="form-group">
+                    <label for="itemId">
+                        <i class="fas fa-id-card"></i> Item ID (Optional)
+                    </label>
+                    <input type="text" id="itemId" name="itemId" placeholder="Enter Item ID from rejection email">
+                    <span class="note">Only enter if resubmitting a rejected item. Leave blank for new reports.</span>
+                    <button type="button" class="btn btn-secondary" id="loadItemButton" onclick="loadRejectedItem()" style="margin-top: 5px; padding: 5px 10px; font-size: 12px;">
+                        <i class="fas fa-search"></i> Load Rejected Item
+                    </button>
+                </div>
+
                 <!-- Email -->
                 <div class="form-group">
                     <label for="email">

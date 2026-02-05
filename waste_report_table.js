@@ -3334,12 +3334,18 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
             return;
         }
         
+        // Generate unique item ID for resubmission
+        const uniqueItemId = `${reportId}_${itemType}_${itemIndex}_${Date.now()}`;
+        
+        // Update the item with rejection info
         items[itemIndex] = {
             ...items[itemIndex],
             approvalStatus: 'rejected',
             rejectedAt: new Date().toISOString(),
             rejectedBy: 'Administrator',
-            rejectionReason: reason.trim()
+            rejectionReason: reason.trim(),
+            itemId: uniqueItemId, // THIS LINE IS CRITICAL
+            canResubmit: true
         };
         
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
@@ -3350,8 +3356,16 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
         // Update UI without full reload
         updateReportAfterApproval(reportId);
         
-        // Send email notification
-        await sendRejectionEmailViaGAS(report.email, report.reportId || reportId, itemIndex + 1, itemType, reason.trim(), report);
+        // Send email notification with edit link AND ITEM ID
+        await sendRejectionEmailViaGAS(
+            report.email, 
+            report.reportId || reportId, 
+            itemIndex, 
+            itemType, 
+            reason.trim(), 
+            report, 
+            uniqueItemId // PASS THE ITEM ID
+        );
         
     } catch (error) {
         console.error('Error rejecting item:', error);
@@ -3445,14 +3459,27 @@ async function bulkRejectItems(reportId, itemType, reason) {
             return;
         }
         
-        const updatedItems = items.map(item => {
+        const rejectedItems = [];
+        const updatedItems = items.map((item, index) => {
             if (!item.approvalStatus || item.approvalStatus === 'pending') {
+                // Generate unique item ID for each rejected item
+                const uniqueItemId = `${reportId}_${itemType}_${index}_${Date.now()}`;
+                
+                // Store for individual emails (you might want to send separate emails for each)
+                rejectedItems.push({
+                    item: item,
+                    index: index,
+                    itemId: uniqueItemId
+                });
+                
                 return {
                     ...item,
                     approvalStatus: 'rejected',
                     rejectedAt: new Date().toISOString(),
                     rejectedBy: 'Administrator',
-                    rejectionReason: reason.trim()
+                    rejectionReason: reason.trim(),
+                    itemId: uniqueItemId,
+                    canResubmit: true
                 };
             }
             return item;
@@ -3467,7 +3494,26 @@ async function bulkRejectItems(reportId, itemType, reason) {
         updateReportAfterApproval(reportId);
         
         // Send bulk rejection email
-        await sendBulkRejectionEmailViaGAS(report.email, report.reportId || reportId, updatedItems.filter(i => i.approvalStatus === 'rejected').length, reason.trim(), report);
+        await sendBulkRejectionEmailViaGAS(
+            report.email, 
+            report.reportId || reportId, 
+            rejectedItems.length, 
+            reason.trim(), 
+            report
+        );
+        
+        // Optionally send individual emails with item IDs
+        // for (const rejectedItem of rejectedItems) {
+        //     await sendRejectionEmailViaGAS(
+        //         report.email,
+        //         report.reportId || reportId,
+        //         rejectedItem.index,
+        //         itemType,
+        //         reason.trim(),
+        //         report,
+        //         rejectedItem.itemId
+        //     );
+        // }
         
     } catch (error) {
         console.error('Error bulk rejecting items:', error);
@@ -3476,7 +3522,6 @@ async function bulkRejectItems(reportId, itemType, reason) {
         showLoading(false);
     }
 }
-
 async function updateReportAfterApproval(reportId) {
     try {
         const doc = await db.collection('wasteReports').doc(reportId).get();
@@ -3646,36 +3691,51 @@ function handleBulkItemRejection() {
 }
 
 // ================================
-// EMAIL SENDING FUNCTIONS
+// EMAIL SENDING FUNCTIONS - UPDATED WITH EDIT LINK
 // ================================
-async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType, reason, reportData) {
+async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, reason, reportData, itemId) {
     try {
         const itemsArray = itemType === 'expired' ? reportData.expiredItems : reportData.wasteItems;
-        const rejectedItem = itemsArray[itemNumber - 1];
-
+        const rejectedItem = itemsArray[itemIndex];
+        
+        // Create edit link with item ID
+        const editLink = `https://waste-disposal-six.vercel.app/submit_waste_report.html`;
+        
+        // Get item details for email
+        const itemName = rejectedItem?.item || 'N/A';
+        const itemQuantity = rejectedItem?.quantity || 0;
+        const itemUnit = rejectedItem?.unit || 'units';
+        const itemCost = `₱${((rejectedItem?.itemCost || 0) * (rejectedItem?.quantity || 0)).toFixed(2)}`;
+        const expirationDate = itemType === 'expired' ? formatDate(rejectedItem?.expirationDate) : 'N/A';
+        const wasteReason = itemType === 'waste' ? rejectedItem?.reason || 'N/A' : 'N/A';
+        
         const emailData = {
             emailType: 'rejection',
             to: toEmail,
-            subject: `Waste Report Item Rejected - ${reportId}`,
+            subject: `Item Rejected - ${itemName}`,
             store: reportData.store || 'N/A',
             personnel: reportData.personnel || 'Team Member',
             reportDate: formatDate(reportData.reportDate) || 'N/A',
-            disposalType: getDisposalTypeText(reportData.disposalTypes), // FIXED: Use correct disposal type
+            disposalType: getDisposalTypeText(reportData.disposalTypes),
             reportId: reportId,
-            itemName: rejectedItem?.item || 'N/A',
-            itemQuantity: rejectedItem?.quantity || 0,
-            itemUnit: rejectedItem?.unit || 'units',
-            itemCost: `₱${((rejectedItem?.itemCost || 0) * (rejectedItem?.quantity || 0)).toFixed(2)}`,
-            itemReason: itemType === 'waste' ? rejectedItem?.reason || 'N/A' : 'N/A',
-            expirationDate: itemType === 'expired' ? formatDate(rejectedItem?.expirationDate) : 'N/A',
+            itemId: itemId, // THIS IS CRITICAL - MUST BE INCLUDED
+            itemName: itemName,
+            itemQuantity: itemQuantity,
+            itemUnit: itemUnit,
+            itemCost: itemCost,
+            itemReason: wasteReason,
+            expirationDate: expirationDate,
             rejectionReason: reason,
+            editLink: editLink,
             rejectedAt: new Date().toLocaleString('en-US', { 
                 year: 'numeric', 
                 month: 'short', 
                 day: 'numeric', 
                 hour: '2-digit', 
                 minute: '2-digit' 
-            })
+            }),
+            // Add clear instructions about the Item ID
+            specialInstructions: `ITEM ID FOR RESUBMISSION: ${itemId}`
         };
 
         const formData = new FormData();
@@ -3712,7 +3772,7 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType,
         }
 
         if (success) {
-            console.log('✅ Rejection email sent successfully');
+            console.log('✅ Rejection email sent with edit link and Item ID');
             return { success: true };
         } else {
             console.warn('⚠️ Email sending failed, but item was still rejected');
@@ -3727,6 +3787,8 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType,
 
 async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, reason, reportData) {
     try {
+        const editLink = 'https://waste-disposal-six.vercel.app/submit_waste_report.html';
+        
         const emailData = {
             emailType: 'bulk_rejection',
             to: toEmail,
@@ -3734,10 +3796,11 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
             store: reportData.store || 'N/A',
             personnel: reportData.personnel || 'Team Member',
             reportDate: formatDate(reportData.reportDate) || 'N/A',
-            disposalType: getDisposalTypeText(reportData.disposalTypes), // FIXED: Use correct disposal type
+            disposalType: getDisposalTypeText(reportData.disposalTypes),
             reportId: reportId,
             rejectedCount: rejectedCount,
             rejectionReason: reason,
+            editLink: editLink,
             rejectedAt: new Date().toLocaleString('en-US', { 
                 year: 'numeric', 
                 month: 'short', 

@@ -34,6 +34,8 @@ const FILE_CONFIG = {
 // ================================
 let ITEMS_LIST = [];
 let itemsLoaded = false;
+let isResubmitting = false;
+let originalItemData = null;
 
 // Initialize Firebase
 let db, storage;
@@ -221,6 +223,331 @@ function initSelect2Dropdown(selectElementId) {
 }
 
 // ================================
+// LOAD REJECTED ITEM FUNCTION
+// ================================
+async function loadRejectedItem() {
+    const itemIdInput = document.getElementById('itemId');
+    const itemId = itemIdInput ? itemIdInput.value.trim() : '';
+    
+    if (!itemId) {
+        showNotification('Please enter an Item ID', 'error');
+        return;
+    }
+    
+    showLoading(true, 'Searching for rejected item...');
+    
+    try {
+        // Parse the item ID to extract report ID and item info
+        // Format: {reportId}_{itemType}_{itemIndex}_{timestamp}
+        const parts = itemId.split('_');
+        if (parts.length < 3) {
+            showNotification('Invalid Item ID format', 'error');
+            return;
+        }
+        
+        const reportId = parts[0];
+        const itemType = parts[1];
+        const itemIndex = parseInt(parts[2]);
+        
+        // Get the report from Firestore
+        const reportDoc = await db.collection('wasteReports').doc(reportId).get();
+        
+        if (!reportDoc.exists) {
+            showNotification('Report not found', 'error');
+            return;
+        }
+        
+        const report = reportDoc.data();
+        const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
+        
+        if (!items || itemIndex >= items.length) {
+            showNotification('Item not found in report', 'error');
+            return;
+        }
+        
+        const rejectedItem = items[itemIndex];
+        
+        // Check if item is actually rejected
+        if (rejectedItem.approvalStatus !== 'rejected') {
+            showNotification('This item is not rejected', 'warning');
+            return;
+        }
+        
+        // Store original item data
+        originalItemData = {
+            reportId: reportId,
+            itemType: itemType,
+            itemIndex: itemIndex,
+            originalItem: rejectedItem
+        };
+        
+        // Populate form fields
+        isResubmitting = true;
+        
+        // Set basic form fields
+        document.getElementById('email').value = report.email || '';
+        document.getElementById('store').value = report.store || '';
+        document.getElementById('personnel').value = report.personnel || '';
+        document.getElementById('reportDate').value = new Date().toISOString().split('T')[0];
+        
+        // Set disposal type
+        const disposalTypes = report.disposalTypes || [];
+        if (disposalTypes.includes('expired')) {
+            document.getElementById('expired').checked = true;
+            toggleDisposalType('expired');
+        }
+        if (disposalTypes.includes('waste')) {
+            document.getElementById('waste').checked = true;
+            toggleDisposalType('waste');
+        }
+        
+        // Clear existing fields
+        const expiredFields = document.getElementById('expiredFields');
+        const wasteFields = document.getElementById('wasteFields');
+        if (expiredFields) expiredFields.innerHTML = '';
+        if (wasteFields) wasteFields.innerHTML = '';
+        
+        // Add item to appropriate container
+        if (itemType === 'expired') {
+            addExpiredItemWithData(rejectedItem);
+        } else {
+            addWasteItemWithData(rejectedItem);
+        }
+        
+        showNotification('Rejected item loaded. Please review and edit the information.', 'success');
+        
+        // Scroll to the item section
+        if (itemType === 'expired') {
+            document.getElementById('expiredContainer').scrollIntoView({ behavior: 'smooth' });
+        } else {
+            document.getElementById('wasteContainer').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+    } catch (error) {
+        console.error('Error loading rejected item:', error);
+        showNotification('Error loading item: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ================================
+// ADD ITEM WITH PRE-POPULATED DATA
+// ================================
+function addExpiredItemWithData(itemData) {
+    const expiredFields = document.getElementById('expiredFields');
+    if (!expiredFields) return;
+    
+    const itemId = Date.now() + Math.random().toString(36).substr(2, 9);
+    const today = new Date().toISOString().split('T')[0];
+    
+    const fieldGroup = document.createElement('div');
+    fieldGroup.className = 'field-group';
+    fieldGroup.id = `expired-${itemId}`;
+    
+    fieldGroup.innerHTML = `
+        <div class="field-header">
+            <div class="field-title">Expired Item (Resubmitting)</div>
+            <button type="button" class="remove-btn" onclick="removeField('expired-${itemId}')">×</button>
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="expiredItem-${itemId}">Item Name <span class="required">*</span></label>
+                <select class="item-dropdown" id="expiredItem-${itemId}" name="expiredItems[${itemId}][item]" required>
+                    <option value="" disabled>Select or type to search...</option>
+                    <option value="${itemData.item}" selected>${itemData.item}</option>
+                </select>
+                <span class="note">Type to search or select from dropdown</span>
+            </div>
+            <div class="form-group">
+                <label for="deliveredDate-${itemId}">Delivered Date <span class="required">*</span></label>
+                <input type="date" id="deliveredDate-${itemId}" name="expiredItems[${itemId}][deliveredDate]" required value="${itemData.deliveredDate || today}">
+            </div>
+            <div class="form-group">
+                <label for="manufacturedDate-${itemId}">Manufactured Date <span class="required">*</span></label>
+                <input type="date" id="manufacturedDate-${itemId}" name="expiredItems[${itemId}][manufacturedDate]" required value="${itemData.manufacturedDate || ''}">
+            </div>
+            <div class="form-group">
+                <label for="expirationDate-${itemId}">Expiration Date <span class="required">*</span></label>
+                <input type="date" id="expirationDate-${itemId}" name="expiredItems[${itemId}][expirationDate]" required value="${itemData.expirationDate || ''}">
+            </div>
+            <div class="form-group">
+                <label for="quantity-${itemId}">Quantity <span class="required">*</span></label>
+                <input type="number" id="quantity-${itemId}" name="expiredItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00" value="${itemData.quantity || 0}">
+            </div>
+            <div class="form-group">
+                <label for="unit-${itemId}">Unit of Measure <span class="required">*</span></label>
+                <select id="unit-${itemId}" name="expiredItems[${itemId}][unit]" required>
+                    <option value="" disabled>Select unit</option>
+                    <option value="pieces" ${itemData.unit === 'pieces' ? 'selected' : ''}>Pieces</option>
+                    <option value="packs" ${itemData.unit === 'packs' ? 'selected' : ''}>Packs</option>
+                    <option value="kilogram" ${itemData.unit === 'kilogram' ? 'selected' : ''}>Kilogram</option>
+                    <option value="servings" ${itemData.unit === 'servings' ? 'selected' : ''}>Servings</option>
+                </select>
+            </div>
+            <div class="form-group file-upload-container">
+                <label for="documentation-${itemId}">Documentation <span class="required">*</span></label>
+                <input type="file" id="documentation-${itemId}" name="expiredItems[${itemId}][documentation]" 
+                       required accept="image/*,.pdf" multiple 
+                       onchange="createFilePreview(this, 'documentation-${itemId}-preview')">
+                <div id="documentation-${itemId}-preview" class="file-preview"></div>
+                <span class="note">Upload photos or PDFs (Max 10MB per file, 3 files max)</span>
+                ${itemData.documentation && itemData.documentation.length > 0 ? `
+                <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                    <i class="fas fa-info-circle"></i> Previous documentation: ${itemData.documentation.length} file(s)
+                </div>
+                ` : ''}
+            </div>
+            <div class="form-group">
+                <label for="notes-${itemId}">Additional Notes</label>
+                <textarea id="notes-${itemId}" name="expiredItems[${itemId}][notes]" rows="2" placeholder="Any additional information">${itemData.notes || ''}</textarea>
+            </div>
+            ${itemData.rejectionReason ? `
+            <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Previous Rejection Reason</label>
+                <div style="background: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ffc107;">
+                    <strong><i class="fas fa-exclamation-triangle"></i> ${itemData.rejectionReason}</strong>
+                </div>
+            </div>
+            ` : ''}
+        </div>
+    `;
+    
+    expiredFields.appendChild(fieldGroup);
+    
+    setTimeout(() => {
+        initSelect2Dropdown(`expiredItem-${itemId}`);
+    }, 100);
+}
+
+function addWasteItemWithData(itemData) {
+    const wasteFields = document.getElementById('wasteFields');
+    if (!wasteFields) return;
+    
+    const itemId = Date.now() + Math.random().toString(36).substr(2, 9);
+    
+    const fieldGroup = document.createElement('div');
+    fieldGroup.className = 'field-group';
+    fieldGroup.id = `waste-${itemId}`;
+    
+    fieldGroup.innerHTML = `
+        <div class="field-header">
+            <div class="field-title">Waste Item (Resubmitting)</div>
+                <button type="button" class="remove-btn" onclick="removeField('waste-${itemId}')">×</button>
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="wasteItem-${itemId}">Item/Description <span class="required">*</span></label>
+                <select class="item-dropdown" id="wasteItem-${itemId}" name="wasteItems[${itemId}][item]" required>
+                    <option value="" disabled>Select or type to search...</option>
+                    <option value="${itemData.item}" selected>${itemData.item}</option>
+                </select>
+                <span class="note">Type to search or select from dropdown</span>
+            </div>
+            <div class="form-group">
+                <label for="reason-${itemId}">Reason for Waste <span class="required">*</span></label>
+                <select id="reason-${itemId}" name="wasteItems[${itemId}][reason]" required onchange="toggleAdditionalNotesRequirement('${itemId}')">
+                    <option value="" disabled>Select reason</option>
+                    <option value="spoilage" ${itemData.reason === 'spoilage' ? 'selected' : ''}>Spoilage</option>
+                    <option value="damaged" ${itemData.reason === 'damaged' ? 'selected' : ''}>Damaged Packaging</option>
+                    <option value="overproduction" ${itemData.reason === 'overproduction' ? 'selected' : ''}>Overproduction</option>
+                    <option value="customer_return" ${itemData.reason === 'customer_return' ? 'selected' : ''}>Customer Return</option>
+                    <option value="quality_issue" ${itemData.reason === 'quality_issue' ? 'selected' : ''}>Quality Issue</option>
+                    <option value="other" ${itemData.reason === 'other' ? 'selected' : ''}>Other</option>
+                </select>
+                <div id="reason-note-${itemId}" class="note" style="margin-top: 5px; font-size: 12px; color: #666;"></div>
+            </div>
+            <div class="form-group">
+                <label for="wasteQuantity-${itemId}">Quantity <span class="required">*</span></label>
+                <input type="number" id="wasteQuantity-${itemId}" name="wasteItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00" value="${itemData.quantity || 0}">
+            </div>
+            <div class="form-group">
+                <label for="wasteUnit-${itemId}">Unit of Measure <span class="required">*</span></label>
+                <select id="wasteUnit-${itemId}" name="wasteItems[${itemId}][unit]" required>
+                    <option value="" disabled>Select unit</option>
+                    <option value="pieces" ${itemData.unit === 'pieces' ? 'selected' : ''}>Pieces</option>
+                    <option value="packs" ${itemData.unit === 'packs' ? 'selected' : ''}>Packs</option>
+                    <option value="kilogram" ${itemData.unit === 'kilogram' ? 'selected' : ''}>Kilogram</option>
+                    <option value="servings" ${itemData.unit === 'servings' ? 'selected' : ''}>Servings</option>
+                </select>
+            </div>
+            <div class="form-group file-upload-container">
+                <label for="wasteDocumentation-${itemId}">Documentation <span class="required">*</span></label>
+                <input type="file" id="wasteDocumentation-${itemId}" name="wasteItems[${itemId}][documentation]" 
+                       required accept="image/*,.pdf" multiple 
+                       onchange="createFilePreview(this, 'wasteDocumentation-${itemId}-preview')">
+                <div id="wasteDocumentation-${itemId}-preview" class="file-preview"></div>
+                <span class="note">Upload photos or PDFs (Max 10MB per file, 3 files max)</span>
+                ${itemData.documentation && itemData.documentation.length > 0 ? `
+                <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                    <i class="fas fa-info-circle"></i> Previous documentation: ${itemData.documentation.length} file(s)
+                </div>
+                ` : ''}
+            </div>
+            <div class="form-group">
+                <label for="wasteNotes-${itemId}">Additional Notes <span id="notes-required-${itemId}" class="required" style="display: none;">*</span></label>
+                <textarea id="wasteNotes-${itemId}" name="wasteItems[${itemId}][notes]" rows="2" placeholder="Any additional information">${itemData.notes || ''}</textarea>
+                <span id="notes-note-${itemId}" class="note" style="margin-top: 5px; font-size: 12px; color: #666;"></span>
+            </div>
+            ${itemData.rejectionReason ? `
+            <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Previous Rejection Reason</label>
+                <div style="background: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ffc107;">
+                    <strong><i class="fas fa-exclamation-triangle"></i> ${itemData.rejectionReason}</strong>
+                </div>
+            </div>
+            ` : ''}
+        </div>
+    `;
+    
+    wasteFields.appendChild(fieldGroup);
+    
+    setTimeout(() => {
+        initSelect2Dropdown(`wasteItem-${itemId}`);
+        toggleAdditionalNotesRequirement(itemId);
+    }, 100);
+}
+
+// ================================
+// TOGGLE ADDITIONAL NOTES REQUIREMENT
+// ================================
+function toggleAdditionalNotesRequirement(itemId) {
+    const reasonSelect = document.getElementById(`reason-${itemId}`);
+    const notesRequired = document.getElementById(`notes-required-${itemId}`);
+    const reasonNote = document.getElementById(`reason-note-${itemId}`);
+    const notesNote = document.getElementById(`notes-note-${itemId}`);
+    
+    if (!reasonSelect) return;
+    
+    const selectedReason = reasonSelect.value;
+    
+    // Clear previous messages
+    if (reasonNote) reasonNote.textContent = '';
+    if (notesNote) notesNote.textContent = '';
+    
+    // Show/hide required asterisk and set appropriate messages
+    if (selectedReason === 'customer_return' || selectedReason === 'quality_issue' || selectedReason === 'other') {
+        // Show required asterisk for notes
+        if (notesRequired) notesRequired.style.display = 'inline';
+        
+        // Set specific messages based on reason
+        if (selectedReason === 'customer_return') {
+            if (reasonNote) reasonNote.textContent = '⚠️ Additional notes required: Please explain why the item was returned';
+            if (notesNote) notesNote.textContent = 'Required: Explain the reason for customer return (e.g., wrong order, customer dissatisfaction, etc.)';
+        } else if (selectedReason === 'quality_issue') {
+            if (reasonNote) reasonNote.textContent = '⚠️ Additional notes required: Please describe the quality issue';
+            if (notesNote) notesNote.textContent = 'Required: Describe the specific quality problem (e.g., off-taste, wrong color, texture issue, etc.)';
+        } else if (selectedReason === 'other') {
+            if (reasonNote) reasonNote.textContent = '⚠️ Additional notes required: Please specify the reason';
+            if (notesNote) notesNote.textContent = 'Required: Specify the exact reason for waste disposal';
+        }
+    } else {
+        // Hide required asterisk for notes
+        if (notesRequired) notesRequired.style.display = 'none';
+    }
+}
+
+// ================================
 // DISPOSAL TYPE TOGGLE FUNCTIONS
 // ================================
 function toggleDisposalType(checkboxId) {
@@ -252,7 +579,7 @@ function toggleDisposalType(checkboxId) {
         if (checkboxId === 'expired' && expiredCheckbox.checked) {
             if (expiredContainer) expiredContainer.classList.add('show');
             const expiredFields = document.getElementById('expiredFields');
-            if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0) {
+            if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0 && !isResubmitting) {
                 addExpiredItem();
             }
         }
@@ -260,7 +587,7 @@ function toggleDisposalType(checkboxId) {
         if (checkboxId === 'waste' && wasteCheckbox.checked) {
             if (wasteContainer) wasteContainer.classList.add('show');
             const wasteFields = document.getElementById('wasteFields');
-            if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0) {
+            if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0 && !isResubmitting) {
                 addWasteItem();
             }
         }
@@ -280,14 +607,14 @@ function toggleDisposalType(checkboxId) {
             if (expiredCheckbox.checked && expiredContainer) {
                 expiredContainer.classList.add('show');
                 const expiredFields = document.getElementById('expiredFields');
-                if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0) {
+                if (expiredFields && expiredFields.querySelectorAll('.field-group').length === 0 && !isResubmitting) {
                     addExpiredItem();
                 }
             }
             if (wasteCheckbox.checked && wasteContainer) {
                 wasteContainer.classList.add('show');
                 const wasteFields = document.getElementById('wasteFields');
-                if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0) {
+                if (wasteFields && wasteFields.querySelectorAll('.field-group').length === 0 && !isResubmitting) {
                     addWasteItem();
                 }
             }
@@ -599,7 +926,8 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
             submissionTime: submissionTime,
             reportId: reportId,
             totalBatches: reportData.totalBatches || 1,
-            hasAttachments: reportData.hasImages || false
+            hasAttachments: reportData.hasImages || false,
+            isResubmission: isResubmitting || false
         };
         
         console.log('📤 Sending email to:', emailData.to);
@@ -789,16 +1117,10 @@ function addExpiredItem() {
                 <label for="unit-${itemId}">Unit of Measure <span class="required">*</span></label>
                 <select id="unit-${itemId}" name="expiredItems[${itemId}][unit]" required>
                     <option value="" disabled selected>Select unit</option>
-                    <option value="pcs">Pieces (pcs)</option>
-                    <option value="kg">Kilograms (kg)</option>
-                    <option value="g">Grams (g)</option>
-                    <option value="L">Liters (L)</option>
-                    <option value="ml">Milliliters (ml)</option>
-                    <option value="boxes">Boxes</option>
+                    <option value="pieces">Pieces</option>
                     <option value="packs">Packs</option>
-                    <option value="cans">Cans</option>
-                    <option value="bottles">Bottles</option>
-                    <option value="bags">Bags</option>
+                    <option value="kilogram">Kilogram</option>
+                    <option value="servings">Servings</option>
                 </select>
             </div>
             <div class="form-group file-upload-container">
@@ -848,16 +1170,16 @@ function addWasteItem() {
             </div>
             <div class="form-group">
                 <label for="reason-${itemId}">Reason for Waste <span class="required">*</span></label>
-                <select id="reason-${itemId}" name="wasteItems[${itemId}][reason]" required>
+                <select id="reason-${itemId}" name="wasteItems[${itemId}][reason]" required onchange="toggleAdditionalNotesRequirement('${itemId}')">
                     <option value="" disabled selected>Select reason</option>
                     <option value="spoilage">Spoilage</option>
-                    <option value="preparation_waste">Preparation Waste</option>
                     <option value="damaged">Damaged Packaging</option>
                     <option value="overproduction">Overproduction</option>
                     <option value="customer_return">Customer Return</option>
                     <option value="quality_issue">Quality Issue</option>
                     <option value="other">Other</option>
                 </select>
+                <div id="reason-note-${itemId}" class="note" style="margin-top: 5px; font-size: 12px; color: #666;"></div>
             </div>
             <div class="form-group">
                 <label for="wasteQuantity-${itemId}">Quantity <span class="required">*</span></label>
@@ -867,16 +1189,10 @@ function addWasteItem() {
                 <label for="wasteUnit-${itemId}">Unit of Measure <span class="required">*</span></label>
                 <select id="wasteUnit-${itemId}" name="wasteItems[${itemId}][unit]" required>
                     <option value="" disabled selected>Select unit</option>
-                    <option value="pcs">Pieces (pcs)</option>
-                    <option value="kg">Kilograms (kg)</option>
-                    <option value="g">Grams (g)</option>
-                    <option value="L">Liters (L)</option>
-                    <option value="ml">Milliliters (ml)</option>
-                    <option value="boxes">Boxes</option>
+                    <option value="pieces">Pieces</option>
                     <option value="packs">Packs</option>
-                    <option value="cans">Cans</option>
-                    <option value="bottles">Bottles</option>
-                    <option value="bags">Bags</option>
+                    <option value="kilogram">Kilogram</option>
+                    <option value="servings">Servings</option>
                 </select>
             </div>
             <div class="form-group file-upload-container">
@@ -888,8 +1204,9 @@ function addWasteItem() {
                 <span class="note">Upload photos or PDFs (Max 10MB per file, 3 files max)</span>
             </div>
             <div class="form-group">
-                <label for="wasteNotes-${itemId}">Additional Notes</label>
+                <label for="wasteNotes-${itemId}">Additional Notes <span id="notes-required-${itemId}" class="required" style="display: none;">*</span></label>
                 <textarea id="wasteNotes-${itemId}" name="wasteItems[${itemId}][notes]" rows="2" placeholder="Any additional information"></textarea>
+                <span id="notes-note-${itemId}" class="note" style="margin-top: 5px; font-size: 12px; color: #666;"></span>
             </div>
         </div>
     `;
@@ -898,6 +1215,7 @@ function addWasteItem() {
     
     setTimeout(() => {
         initSelect2Dropdown(`wasteItem-${itemId}`);
+        toggleAdditionalNotesRequirement(itemId);
     }, 100);
 }
 
@@ -1005,6 +1323,32 @@ function validateDynamicFields() {
                     return false;
                 }
             }
+            
+            // Validate additional notes for specific reasons
+            const itemId = item.id.split('-')[1];
+            const reasonSelect = document.getElementById(`reason-${itemId}`);
+            const notesTextarea = document.getElementById(`wasteNotes-${itemId}`);
+            
+            if (reasonSelect && notesTextarea) {
+                const selectedReason = reasonSelect.value;
+                
+                if ((selectedReason === 'customer_return' || selectedReason === 'quality_issue' || selectedReason === 'other') && 
+                    (!notesTextarea.value || notesTextarea.value.trim() === '')) {
+                    
+                    let reasonText = '';
+                    if (selectedReason === 'customer_return') {
+                        reasonText = 'customer return';
+                    } else if (selectedReason === 'quality_issue') {
+                        reasonText = 'quality issue';
+                    } else if (selectedReason === 'other') {
+                        reasonText = 'other';
+                    }
+                    
+                    showNotification(`Additional notes are required for ${reasonText}. Please explain the reason.`, 'error');
+                    notesTextarea.focus();
+                    return false;
+                }
+            }
         }
     }
     
@@ -1012,7 +1356,7 @@ function validateDynamicFields() {
 }
 
 // ================================
-// FORM SUBMISSION HANDLER - WITH FIREBASE STORAGE
+// FORM SUBMISSION HANDLER - WITH RESUBMISSION SUPPORT
 // ================================
 async function handleSubmit(event) {
     console.log('Form submission started...');
@@ -1090,7 +1434,9 @@ async function handleSubmit(event) {
         hasImages: false,
         imageCount: 0,
         storageUsed: 0,
-        originalFileSize: 0
+        originalFileSize: 0,
+        isResubmission: isResubmitting,
+        originalItemId: isResubmitting ? document.getElementById('itemId').value.trim() : null
     };
     
     if (disposalTypes.includes('noWaste')) {
@@ -1141,8 +1487,18 @@ async function handleSubmit(event) {
                     notes: document.getElementById(`notes-${itemId}`).value.trim() || '',
                     itemId: itemId,
                     itemCost: itemCost,
-                    documentation: [] // Will be populated with upload results
+                    documentation: [], // Will be populated with upload results
+                    approvalStatus: 'pending', // Always set to pending for resubmissions
+                    submittedAt: new Date().toISOString()
                 };
+                
+                // If this is a resubmission, add original rejection info
+                if (isResubmitting && originalItemData) {
+                    expiredItem.originalRejectionReason = originalItemData.originalItem.rejectionReason;
+                    expiredItem.originalRejectedAt = originalItemData.originalItem.rejectedAt;
+                    expiredItem.resubmitted = true;
+                    expiredItem.resubmittedAt = new Date().toISOString();
+                }
                 
                 // Upload files if any
                 if (fileInput && fileInput.files.length > 0) {
@@ -1217,8 +1573,18 @@ async function handleSubmit(event) {
                     notes: document.getElementById(`wasteNotes-${itemId}`).value.trim() || '',
                     itemId: itemId,
                     itemCost: itemCost,
-                    documentation: [] // Will be populated with upload results
+                    documentation: [], // Will be populated with upload results
+                    approvalStatus: 'pending', // Always set to pending for resubmissions
+                    submittedAt: new Date().toISOString()
                 };
+                
+                // If this is a resubmission, add original rejection info
+                if (isResubmitting && originalItemData) {
+                    wasteItem.originalRejectionReason = originalItemData.originalItem.rejectionReason;
+                    wasteItem.originalRejectedAt = originalItemData.originalItem.rejectedAt;
+                    wasteItem.resubmitted = true;
+                    wasteItem.resubmittedAt = new Date().toISOString();
+                }
                 
                 // Upload files if any
                 if (fileInput && fileInput.files.length > 0) {
@@ -1285,6 +1651,34 @@ async function handleSubmit(event) {
         
         console.log('✅ Report saved to Firestore with ID:', mainReportId);
         
+        // If this is a resubmission, update the original item status
+        if (isResubmitting && originalItemData) {
+            try {
+                const originalReportRef = db.collection('wasteReports').doc(originalItemData.reportId);
+                const originalReportDoc = await originalReportRef.get();
+                
+                if (originalReportDoc.exists) {
+                    const originalReport = originalReportDoc.data();
+                    const itemsField = originalItemData.itemType === 'expired' ? 'expiredItems' : 'wasteItems';
+                    const originalItems = originalReport[itemsField] || [];
+                    
+                    if (originalItems[originalItemData.itemIndex]) {
+                        originalItems[originalItemData.itemIndex].resubmitted = true;
+                        originalItems[originalItemData.itemIndex].resubmissionId = mainReportId;
+                        originalItems[originalItemData.itemIndex].resubmittedAt = new Date().toISOString();
+                        
+                        await originalReportRef.update({
+                            [itemsField]: originalItems
+                        });
+                        
+                        console.log('✅ Original item marked as resubmitted');
+                    }
+                }
+            } catch (updateError) {
+                console.warn('Could not update original item status:', updateError);
+            }
+        }
+        
         // Send email confirmation
         console.log('Attempting to send email confirmation...');
         showLoading(true, 'Sending email confirmation...');
@@ -1306,10 +1700,11 @@ async function handleSubmit(event) {
                 console.warn('Could not update email status in database:', updateError);
             }
             
-            showNotification(
-                `✅ Report submitted successfully! Confirmation email sent.`, 
-                'success'
-            );
+            const successMessage = isResubmitting 
+                ? `✅ Resubmission successful! Your item is now pending approval again. Confirmation email sent.`
+                : `✅ Report submitted successfully! Confirmation email sent.`;
+            
+            showNotification(successMessage, 'success');
             
         } else {
             console.warn('⚠️ Report saved but email failed:', emailResult.error);
@@ -1325,10 +1720,11 @@ async function handleSubmit(event) {
                 console.warn('Could not update email error in database:', updateError);
             }
             
-            showNotification(
-                `⚠️ Report saved successfully! (Email failed: ${emailResult.error || 'Check connection'})`, 
-                'warning'
-            );
+            const warningMessage = isResubmitting
+                ? `⚠️ Resubmission saved successfully! (Email failed: ${emailResult.error || 'Check connection'})`
+                : `⚠️ Report saved successfully! (Email failed: ${emailResult.error || 'Check connection'})`;
+            
+            showNotification(warningMessage, 'warning');
         }
         
         // Reset form
@@ -1353,6 +1749,10 @@ async function handleSubmit(event) {
             if (wasteContainer) wasteContainer.classList.remove('show');
             
             updateDisposalTypeHint();
+            
+            // Reset resubmission state
+            isResubmitting = false;
+            originalItemData = null;
         }
         
         // Ask user to view reports
@@ -1369,7 +1769,7 @@ async function handleSubmit(event) {
         console.error('❌ Error submitting report:', error);
         console.error('Error details:', error.message, error.stack);
         
-        let errorMessage = 'Error submitting report: ';
+        let errorMessage = isResubmitting ? 'Error resubmitting item: ' : 'Error submitting report: ';
         if (error.code === 'permission-denied') {
             errorMessage += 'Permission denied. Check Firebase rules.';
         } else if (error.code === 'unavailable') {
@@ -1413,6 +1813,29 @@ function closeDetailsModal() {
     const detailsModal = document.getElementById('detailsModal');
     if (detailsModal) {
         detailsModal.style.display = 'none';
+    }
+}
+
+// ================================
+// CHECK URL PARAMETERS FOR ITEM ID
+// ================================
+function checkUrlParameters() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const itemId = urlParams.get('itemId');
+    
+    if (itemId) {
+        document.getElementById('itemId').value = itemId;
+        showNotification('Item ID detected from URL. Click "Load Rejected Item" to populate the form.', 'info');
+        
+        // Auto-load after a short delay if user doesn't click
+        setTimeout(() => {
+            if (!isResubmitting) {
+                const loadBtn = document.getElementById('loadItemButton');
+                if (loadBtn) {
+                    loadBtn.focus();
+                }
+            }
+        }, 1000);
     }
 }
 
@@ -1462,6 +1885,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     testFirebaseConnection();
     checkGASConfig();
+    
+    // Check URL parameters for item ID
+    checkUrlParameters();
     
     window.addEventListener('click', function(event) {
         const detailsModal = document.getElementById('detailsModal');
@@ -1610,3 +2036,11 @@ window.testStorageUpload = async () => {
     
     fileInput.click();
 };
+
+// Export functions for global access
+window.loadRejectedItem = loadRejectedItem;
+window.addExpiredItem = addExpiredItem;
+window.addWasteItem = addWasteItem;
+window.removeField = removeField;
+window.toggleDisposalType = toggleDisposalType;
+window.toggleAdditionalNotesRequirement = toggleAdditionalNotesRequirement;
