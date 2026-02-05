@@ -98,7 +98,8 @@ let chartAnalysis = {
     stores: {},
     dailyReports: {},
     monthlyCosts: {},
-    dailyCosts: {}
+    dailyCosts: {},
+    timeSeriesData: {} // NEW: For line chart time series
 };
 
 // Cache for reports to reduce database calls
@@ -688,9 +689,30 @@ function initChartTypeSelector() {
             chartTypeBtns.forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             currentChartType = this.dataset.type;
+            updateChartControlsVisibility();
             createChartBasedOnType();
         });
     });
+}
+
+function updateChartControlsVisibility() {
+    const storeSelectorContainer = Performance.getElement('#storeSelectorContainer');
+    const dateRangePickerContainer = Performance.getElement('#dateRangePickerContainer');
+    const chartPeriod = Performance.getElement('#chartPeriod');
+    
+    if (currentChartType === 'line') {
+        // Show store selector for line chart
+        if (storeSelectorContainer) storeSelectorContainer.style.display = 'block';
+        
+        // Show date range picker if specificDateRange is selected
+        if (dateRangePickerContainer && chartPeriod) {
+            dateRangePickerContainer.style.display = chartPeriod.value === 'specificDateRange' ? 'block' : 'none';
+        }
+    } else {
+        // Hide store selector for bar and pie charts
+        if (storeSelectorContainer) storeSelectorContainer.style.display = 'none';
+        if (dateRangePickerContainer) dateRangePickerContainer.style.display = 'none';
+    }
 }
 
 async function loadAllReportsForChart() {
@@ -728,7 +750,8 @@ function analyzeStorePerformance() {
         stores: {},
         dailyReports: {},
         monthlyCosts: {},
-        dailyCosts: {}
+        dailyCosts: {},
+        timeSeriesData: {} // For line chart time series
     };
     
     const now = new Date();
@@ -741,13 +764,19 @@ function analyzeStorePerformance() {
             totalCost: 0,
             reportCount: 0,
             itemCount: 0,
+            approvedItemCount: 0,
+            approvedCost: 0,
             reportDates: new Set(),
             monthlyCosts: {},
             dailyCosts: {},
+            dailyTotalCosts: {}, // NEW: Track total costs (including pending/rejected)
             currentMetric: 0,
             periodReportCount: 0,
             periodItemCount: 0,
-            periodCost: 0
+            periodCost: 0,
+            periodApprovedCost: 0,
+            periodApprovedItemCount: 0,
+            periodTotalCost: 0 // NEW: Track period total cost (all items)
         };
     });
     
@@ -766,13 +795,19 @@ function analyzeStorePerformance() {
                 totalCost: 0,
                 reportCount: 0,
                 itemCount: 0,
+                approvedItemCount: 0,
+                approvedCost: 0,
                 reportDates: new Set(),
                 monthlyCosts: {},
                 dailyCosts: {},
+                dailyTotalCosts: {},
                 currentMetric: 0,
                 periodReportCount: 0,
                 periodItemCount: 0,
-                periodCost: 0
+                periodCost: 0,
+                periodApprovedCost: 0,
+                periodApprovedItemCount: 0,
+                periodTotalCost: 0
             };
         }
         
@@ -798,15 +833,30 @@ function analyzeStorePerformance() {
             return;
         }
         
-        // Calculate cost
+        // Calculate cost - BOTH approved and total
         let reportCost = 0;
+        let approvedReportCost = 0;
+        let approvedItemCount = 0;
+        let totalItemCount = 0;
         
         if (report.expiredItems) {
             report.expiredItems.forEach(item => {
                 const itemCost = item.itemCost || 0;
                 const quantity = item.quantity || 0;
-                reportCost += itemCost * quantity;
+                const itemTotalCost = itemCost * quantity;
+                
+                // Count all items
+                totalItemCount++;
                 storeData.itemCount++;
+                
+                // Only count approved items for approved cost calculation
+                if (item.approvalStatus === 'approved') {
+                    approvedItemCount++;
+                    approvedReportCost += itemTotalCost;
+                }
+                
+                // Count all items for total cost (including pending/rejected)
+                reportCost += itemTotalCost;
             });
         }
         
@@ -814,27 +864,55 @@ function analyzeStorePerformance() {
             report.wasteItems.forEach(item => {
                 const itemCost = item.itemCost || 0;
                 const quantity = item.quantity || 0;
-                reportCost += itemCost * quantity;
+                const itemTotalCost = itemCost * quantity;
+                
+                // Count all items
+                totalItemCount++;
                 storeData.itemCount++;
+                
+                // Only count approved items for approved cost calculation
+                if (item.approvalStatus === 'approved') {
+                    approvedItemCount++;
+                    approvedReportCost += itemTotalCost;
+                }
+                
+                // Count all items for total cost (including pending/rejected)
+                reportCost += itemTotalCost;
             });
         }
         
         // Update store data
-        storeData.totalCost += reportCost;
+        storeData.totalCost += reportCost; // Total cost (all items)
+        storeData.approvedCost += approvedReportCost; // Approved cost only
+        storeData.approvedItemCount += approvedItemCount;
         storeData.reportCount++;
         storeData.reportDates.add(report.reportDate);
         
-        // Track monthly costs
+        // Track monthly costs - BOTH approved and total
         if (!storeData.monthlyCosts[monthKey]) {
-            storeData.monthlyCosts[monthKey] = 0;
+            storeData.monthlyCosts[monthKey] = {
+                approved: 0,
+                total: 0
+            };
         }
-        storeData.monthlyCosts[monthKey] += reportCost;
+        storeData.monthlyCosts[monthKey].approved += approvedReportCost;
+        storeData.monthlyCosts[monthKey].total += reportCost;
         
-        // Track daily costs
+        // Track daily costs - BOTH approved and total
         if (!storeData.dailyCosts[dayKey]) {
-            storeData.dailyCosts[dayKey] = 0;
+            storeData.dailyCosts[dayKey] = {
+                approved: 0,
+                total: 0
+            };
         }
-        storeData.dailyCosts[dayKey] += reportCost;
+        storeData.dailyCosts[dayKey].approved += approvedReportCost;
+        storeData.dailyCosts[dayKey].total += reportCost;
+        
+        // Track daily total costs separately for time series
+        if (!storeData.dailyTotalCosts[dayKey]) {
+            storeData.dailyTotalCosts[dayKey] = 0;
+        }
+        storeData.dailyTotalCosts[dayKey] += reportCost;
         
         // Track daily reports
         if (!chartAnalysis.dailyReports[dayKey]) {
@@ -847,210 +925,82 @@ function analyzeStorePerformance() {
             chartAnalysis.dailyCosts[dateKey] = {};
         }
         if (!chartAnalysis.dailyCosts[dateKey][store]) {
-            chartAnalysis.dailyCosts[dateKey][store] = 0;
+            chartAnalysis.dailyCosts[dateKey][store] = {
+                approved: 0,
+                total: 0
+            };
         }
-        chartAnalysis.dailyCosts[dateKey][store] += reportCost;
+        chartAnalysis.dailyCosts[dateKey][store].approved += approvedReportCost;
+        chartAnalysis.dailyCosts[dateKey][store].total += reportCost;
+        
+        // Build time series data for line chart
+        if (!chartAnalysis.timeSeriesData[dayKey]) {
+            chartAnalysis.timeSeriesData[dayKey] = {};
+        }
+        if (!chartAnalysis.timeSeriesData[dayKey][store]) {
+            chartAnalysis.timeSeriesData[dayKey][store] = {
+                approved: 0,
+                total: 0,
+                reports: 0,
+                items: 0,
+                approvedItems: 0
+            };
+        }
+        chartAnalysis.timeSeriesData[dayKey][store].approved += approvedReportCost;
+        chartAnalysis.timeSeriesData[dayKey][store].total += reportCost;
+        chartAnalysis.timeSeriesData[dayKey][store].reports += 1;
+        chartAnalysis.timeSeriesData[dayKey][store].items += totalItemCount;
+        chartAnalysis.timeSeriesData[dayKey][store].approvedItems += approvedItemCount;
     });
 }
 
 function createChartBasedOnType() {
-    const period = Performance.getElement('#chartPeriod')?.value || 'all';
+    const period = Performance.getElement('#chartPeriod')?.value || 'last7days';
     const metric = Performance.getElement('#chartMetric')?.value || 'cost';
     const sortOrder = Performance.getElement('#chartSort')?.value || 'desc';
-    const datePicker = Performance.getElement('#chartDatePicker');
+    const chartStore = Performance.getElement('#chartStore')?.value || 'all';
     
+    if (currentChartType === 'line') {
+        createLineChart(period, metric, chartStore);
+    } else {
+        createBarOrPieChart(period, metric, sortOrder);
+    }
+}
+
+function createBarOrPieChart(period, metric, sortOrder) {
     let storeEntries = ALL_STORES.map(store => {
         const data = chartAnalysis.stores[store] || {
             totalCost: 0,
             reportCount: 0,
             itemCount: 0,
+            approvedItemCount: 0,
+            approvedCost: 0,
             reportDates: new Set(),
             monthlyCosts: {},
             dailyCosts: {},
+            dailyTotalCosts: {},
             currentMetric: 0,
             periodReportCount: 0,
             periodItemCount: 0,
-            periodCost: 0
+            periodCost: 0,
+            periodApprovedCost: 0,
+            periodApprovedItemCount: 0,
+            periodTotalCost: 0
         };
         
+        // Initialize period metrics
         data.periodReportCount = 0;
         data.periodItemCount = 0;
         data.periodCost = 0;
+        data.periodApprovedCost = 0;
+        data.periodApprovedItemCount = 0;
+        data.periodTotalCost = 0;
         
         return [store, data];
     });
     
     // Calculate period-specific metrics
-    const now = new Date();
-    
-    if (period === 'today') {
-        const today = now.toISOString().split('T')[0];
-        storeEntries.forEach(([store, data]) => {
-            data.reportDates.forEach(dateStr => {
-                if (dateStr === today) {
-                    data.periodReportCount++;
-                }
-            });
-            data.periodCost = data.dailyCosts[today] || 0;
-            data.periodItemCount = data.itemCount;
-        });
-    } else if (period === 'yesterday') {
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayKey = yesterday.toISOString().split('T')[0];
-        
-        storeEntries.forEach(([store, data]) => {
-            data.reportDates.forEach(dateStr => {
-                if (dateStr === yesterdayKey) {
-                    data.periodReportCount++;
-                }
-            });
-            data.periodCost = data.dailyCosts[yesterdayKey] || 0;
-            data.periodItemCount = data.itemCount;
-        });
-    } else if (period === 'thisWeek') {
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-        
-        storeEntries.forEach(([store, data]) => {
-            let weekCost = 0;
-            let weekReportCount = 0;
-            
-            for (let i = 0; i < 7; i++) {
-                const date = new Date(startOfWeek);
-                date.setDate(date.getDate() + i);
-                const dateKey = date.toISOString().split('T')[0];
-                
-                if (data.reportDates.has(dateKey)) {
-                    weekReportCount++;
-                }
-                
-                weekCost += data.dailyCosts[dateKey] || 0;
-            }
-            
-            data.periodReportCount = weekReportCount;
-            data.periodCost = weekCost;
-            data.periodItemCount = data.itemCount;
-        });
-    } else if (period === 'lastWeek') {
-        const startOfLastWeek = new Date(now);
-        startOfLastWeek.setDate(startOfLastWeek.getDate() - startOfLastWeek.getDay() - 7);
-        
-        storeEntries.forEach(([store, data]) => {
-            let weekCost = 0;
-            let weekReportCount = 0;
-            
-            for (let i = 0; i < 7; i++) {
-                const date = new Date(startOfLastWeek);
-                date.setDate(date.getDate() + i);
-                const dateKey = date.toISOString().split('T')[0];
-                
-                if (data.reportDates.has(dateKey)) {
-                    weekReportCount++;
-                }
-                
-                weekCost += data.dailyCosts[dateKey] || 0;
-            }
-            
-            data.periodReportCount = weekReportCount;
-            data.periodCost = weekCost;
-            data.periodItemCount = data.itemCount;
-        });
-    } else if (period === 'month') {
-        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        
-        storeEntries.forEach(([store, data]) => {
-            data.reportDates.forEach(dateStr => {
-                if (dateStr.startsWith(currentMonth)) {
-                    data.periodReportCount++;
-                }
-            });
-            
-            data.periodCost = data.monthlyCosts[currentMonth] || 0;
-            data.periodItemCount = data.itemCount;
-        });
-    } else if (period === 'lastMonth') {
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const lastMonthKey = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
-        
-        storeEntries.forEach(([store, data]) => {
-            data.reportDates.forEach(dateStr => {
-                if (dateStr.startsWith(lastMonthKey)) {
-                    data.periodReportCount++;
-                }
-            });
-            data.periodCost = data.monthlyCosts[lastMonthKey] || 0;
-            data.periodItemCount = data.itemCount;
-        });
-    } else if (period === 'quarter') {
-        const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
-        const quarterEnd = new Date(quarterStart.getFullYear(), quarterStart.getMonth() + 3, 0);
-        
-        storeEntries.forEach(([store, data]) => {
-            let quarterCost = 0;
-            let quarterReportCount = 0;
-            
-            data.reportDates.forEach(dateStr => {
-                const reportDate = new Date(dateStr);
-                if (reportDate >= quarterStart && reportDate <= quarterEnd) {
-                    quarterReportCount++;
-                }
-            });
-            
-            for (let i = 0; i < 3; i++) {
-                const month = new Date(quarterStart.getFullYear(), quarterStart.getMonth() + i, 1);
-                const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
-                quarterCost += data.monthlyCosts[monthKey] || 0;
-            }
-            
-            data.periodReportCount = quarterReportCount;
-            data.periodCost = quarterCost;
-            data.periodItemCount = data.itemCount;
-        });
-    } else if (period === 'year') {
-        const currentYear = now.getFullYear();
-        const yearStart = new Date(currentYear, 0, 1);
-        const yearEnd = new Date(currentYear, 11, 31);
-        
-        storeEntries.forEach(([store, data]) => {
-            let yearCost = 0;
-            let yearReportCount = 0;
-            
-            data.reportDates.forEach(dateStr => {
-                if (dateStr.startsWith(currentYear.toString())) {
-                    yearReportCount++;
-                }
-            });
-            
-            for (let i = 1; i <= 12; i++) {
-                const monthKey = `${currentYear}-${String(i).padStart(2, '0')}`;
-                yearCost += data.monthlyCosts[monthKey] || 0;
-            }
-            
-            data.periodReportCount = yearReportCount;
-            data.periodCost = yearCost;
-            data.periodItemCount = data.itemCount;
-        });
-    } else if (period === 'specificDate' && datePicker && datePicker.value) {
-        const selectedDate = datePicker.value;
-        
-        storeEntries.forEach(([store, data]) => {
-            if (data.reportDates.has(selectedDate)) {
-                data.periodReportCount = 1;
-            } else {
-                data.periodReportCount = 0;
-            }
-            data.periodCost = data.dailyCosts[selectedDate] || 0;
-            data.periodItemCount = data.itemCount;
-        });
-    } else {
-        // All time
-        storeEntries.forEach(([store, data]) => {
-            data.periodReportCount = data.reportCount;
-            data.periodCost = data.totalCost;
-            data.periodItemCount = data.itemCount;
-        });
-    }
+    calculatePeriodMetrics(storeEntries, period);
     
     // Calculate metric values for sorting
     const storeEntriesWithValues = storeEntries.map(([store, data]) => {
@@ -1060,13 +1010,22 @@ function createChartBasedOnType() {
                 metricValue = data.periodReportCount;
                 break;
             case 'items':
+                metricValue = data.periodApprovedItemCount;
+                break;
+            case 'totalItems':
                 metricValue = data.periodItemCount;
                 break;
             case 'average':
-                metricValue = data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0;
+                metricValue = data.periodReportCount > 0 ? data.periodApprovedCost / data.periodReportCount : 0;
                 break;
-            default: // cost
-                metricValue = data.periodCost;
+            case 'averageTotal':
+                metricValue = data.periodReportCount > 0 ? data.periodTotalCost / data.periodReportCount : 0;
+                break;
+            case 'totalCost':
+                metricValue = data.periodTotalCost;
+                break;
+            default: // cost (approved only)
+                metricValue = data.periodApprovedCost;
         }
         return {
             store,
@@ -1089,16 +1048,463 @@ function createChartBasedOnType() {
             case 'reports':
                 return data.periodReportCount;
             case 'items':
+                return data.periodApprovedItemCount;
+            case 'totalItems':
                 return data.periodItemCount;
             case 'average':
-                return data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0;
-            default: // cost
-                return data.periodCost;
+                return data.periodReportCount > 0 ? data.periodApprovedCost / data.periodReportCount : 0;
+            case 'averageTotal':
+                return data.periodReportCount > 0 ? data.periodTotalCost / data.periodReportCount : 0;
+            case 'totalCost':
+                return data.periodTotalCost;
+            default: // cost (approved only)
+                return data.periodApprovedCost;
         }
     });
     
     createChart(labels, dataValues, sortedStoreEntries, metric, period);
     updateChartStatistics(sortedStoreEntries, metric, period);
+}
+
+function calculatePeriodMetrics(storeEntries, period) {
+    const now = new Date();
+    let startDate, endDate;
+    
+    switch(period) {
+        case 'last7days':
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - 7);
+            endDate = new Date(now);
+            break;
+        case 'last30days':
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - 30);
+            endDate = new Date(now);
+            break;
+        case 'thisWeek':
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - startDate.getDay());
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 6);
+            break;
+        case 'lastWeek':
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - startDate.getDay() - 7);
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 6);
+            break;
+        case 'thisMonth':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+        case 'lastMonth':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+        case 'thisQuarter':
+            const quarter = Math.floor(now.getMonth() / 3);
+            startDate = new Date(now.getFullYear(), quarter * 3, 1);
+            endDate = new Date(now.getFullYear(), (quarter + 1) * 3, 0);
+            break;
+        case 'thisYear':
+            startDate = new Date(now.getFullYear(), 0, 1);
+            endDate = new Date(now.getFullYear(), 11, 31);
+            break;
+        case 'specificDateRange':
+            const dateFrom = Performance.getElement('#chartDateFrom')?.value;
+            const dateTo = Performance.getElement('#chartDateTo')?.value;
+            if (dateFrom && dateTo) {
+                startDate = new Date(dateFrom);
+                endDate = new Date(dateTo);
+            } else {
+                // Default to last 30 days if no dates selected
+                startDate = new Date(now);
+                startDate.setDate(startDate.getDate() - 30);
+                endDate = new Date(now);
+            }
+            break;
+        default: // all
+            startDate = new Date(0); // Beginning of time
+            endDate = new Date(8640000000000000); // Far future
+    }
+    
+    // Adjust dates to include whole days
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+    
+    storeEntries.forEach(([store, data]) => {
+        let periodApprovedCost = 0;
+        let periodTotalCost = 0;
+        let periodReportCount = 0;
+        let periodItemCount = 0;
+        let periodApprovedItemCount = 0;
+        
+        // Iterate through all dates in the period
+        const currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+            const dateKey = currentDate.toISOString().split('T')[0];
+            const monthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+            
+            // Check if store has reports on this date
+            if (data.reportDates.has(dateKey)) {
+                periodReportCount++;
+            }
+            
+            // Add daily costs
+            if (data.dailyCosts[dateKey]) {
+                periodApprovedCost += data.dailyCosts[dateKey].approved || 0;
+                periodTotalCost += data.dailyCosts[dateKey].total || 0;
+            }
+            
+            // Add daily total costs
+            if (data.dailyTotalCosts[dateKey]) {
+                // Already included in periodTotalCost above
+            }
+            
+            // Count items for this date
+            periodItemCount += calculateItemsForDate(store, dateKey);
+            periodApprovedItemCount += calculateApprovedItemsForDate(store, dateKey);
+            
+            // Move to next day
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        data.periodReportCount = periodReportCount;
+        data.periodApprovedCost = periodApprovedCost;
+        data.periodTotalCost = periodTotalCost;
+        data.periodItemCount = periodItemCount;
+        data.periodApprovedItemCount = periodApprovedItemCount;
+        data.periodCost = periodApprovedCost; // For backward compatibility
+    });
+}
+
+function createLineChart(period, metric, selectedStore) {
+    const ctx = document.getElementById('storeChart')?.getContext('2d');
+    if (!ctx) return;
+    
+    if (storeChart) {
+        storeChart.destroy();
+    }
+    
+    // Get date range based on period
+    const now = new Date();
+    let startDate, endDate;
+    let dateFormat = 'MMM dd';
+    
+    switch(period) {
+        case 'last7days':
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - 7);
+            endDate = new Date(now);
+            break;
+        case 'last30days':
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - 30);
+            endDate = new Date(now);
+            break;
+        case 'thisWeek':
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - startDate.getDay());
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 6);
+            break;
+        case 'lastWeek':
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - startDate.getDay() - 7);
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 6);
+            break;
+        case 'thisMonth':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            dateFormat = 'MMM dd';
+            break;
+        case 'lastMonth':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            dateFormat = 'MMM dd';
+            break;
+        case 'thisQuarter':
+            const quarter = Math.floor(now.getMonth() / 3);
+            startDate = new Date(now.getFullYear(), quarter * 3, 1);
+            endDate = new Date(now.getFullYear(), (quarter + 1) * 3, 0);
+            dateFormat = 'MMM dd';
+            break;
+        case 'thisYear':
+            startDate = new Date(now.getFullYear(), 0, 1);
+            endDate = new Date(now.getFullYear(), 11, 31);
+            dateFormat = 'MMM';
+            break;
+        case 'specificDateRange':
+            const dateFrom = Performance.getElement('#chartDateFrom')?.value;
+            const dateTo = Performance.getElement('#chartDateTo')?.value;
+            if (dateFrom && dateTo) {
+                startDate = new Date(dateFrom);
+                endDate = new Date(dateTo);
+                // Adjust format based on date range length
+                const dayDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+                dateFormat = dayDiff > 90 ? 'MMM' : 'MMM dd';
+            } else {
+                // Default to last 30 days
+                startDate = new Date(now);
+                startDate.setDate(startDate.getDate() - 30);
+                endDate = new Date(now);
+            }
+            break;
+        default: // all
+            // Find earliest and latest dates from data
+            const allDates = Object.keys(chartAnalysis.timeSeriesData).sort();
+            if (allDates.length > 0) {
+                startDate = new Date(allDates[0]);
+                endDate = new Date(allDates[allDates.length - 1]);
+                const dayDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+                dateFormat = dayDiff > 90 ? 'MMM yyyy' : 'MMM dd';
+            } else {
+                startDate = new Date(now);
+                startDate.setDate(startDate.getDate() - 30);
+                endDate = new Date(now);
+            }
+    }
+    
+    // Adjust dates to include whole days
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+    
+    // Generate date labels
+    const labels = [];
+    const currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        let label;
+        
+        switch(dateFormat) {
+            case 'MMM':
+                label = currentDate.toLocaleDateString('en-US', { month: 'short' });
+                break;
+            case 'MMM yyyy':
+                label = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                break;
+            default: // 'MMM dd'
+                label = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+        
+        labels.push(label);
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Prepare datasets based on selected stores
+    const datasets = [];
+    const colors = [
+        '#2a5934', '#3a7d5a', '#4aa180', '#5abfa6', '#6addcc',
+        '#ff6b6b', '#ff8e6b', '#ffb16b', '#ffd46b', '#fff76b',
+        '#6b83ff', '#8e6bff', '#b16bff', '#d46bff', '#f76bff'
+    ];
+    
+    let storesToShow = [];
+    if (selectedStore === 'all') {
+        // Show all stores
+        storesToShow = ALL_STORES;
+    } else {
+        // Show only selected store
+        storesToShow = [selectedStore];
+    }
+    
+    storesToShow.forEach((store, index) => {
+        // Generate data for this store
+        const data = [];
+        const currentDate = new Date(startDate);
+        let dataIndex = 0;
+        
+        while (currentDate <= endDate) {
+            const dateKey = currentDate.toISOString().split('T')[0];
+            let value = 0;
+            
+            if (chartAnalysis.timeSeriesData[dateKey] && chartAnalysis.timeSeriesData[dateKey][store]) {
+                const storeData = chartAnalysis.timeSeriesData[dateKey][store];
+                
+                switch(metric) {
+                    case 'reports':
+                        value = storeData.reports || 0;
+                        break;
+                    case 'items':
+                        value = storeData.approvedItems || 0;
+                        break;
+                    case 'totalItems':
+                        value = storeData.items || 0;
+                        break;
+                    case 'average':
+                        value = storeData.reports > 0 ? (storeData.approved || 0) / storeData.reports : 0;
+                        break;
+                    case 'averageTotal':
+                        value = storeData.reports > 0 ? (storeData.total || 0) / storeData.reports : 0;
+                        break;
+                    case 'totalCost':
+                        value = storeData.total || 0;
+                        break;
+                    default: // cost (approved only)
+                        value = storeData.approved || 0;
+                }
+            }
+            
+            data.push(value);
+            currentDate.setDate(currentDate.getDate() + 1);
+            dataIndex++;
+        }
+        
+        // Only add dataset if there's any data
+        if (data.some(v => v > 0) || storesToShow.length === 1) {
+            const colorIndex = index % colors.length;
+            datasets.push({
+                label: STORE_DISPLAY_NAMES[store] || STORE_ABBREVIATIONS[store] || store,
+                data: data,
+                borderColor: colors[colorIndex],
+                backgroundColor: colors[colorIndex] + '20',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.1
+            });
+        }
+    });
+    
+    // Create the chart
+    const chartData = {
+        labels: labels,
+        datasets: datasets
+    };
+    
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: datasets.length > 1,
+                position: 'top'
+            },
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+                callbacks: {
+                    label: function(context) {
+                        let label = context.dataset.label || '';
+                        if (label) {
+                            label += ': ';
+                        }
+                        
+                        const value = context.raw;
+                        if (metric === 'cost' || metric === 'totalCost' || metric === 'average' || metric === 'averageTotal') {
+                            label += '₱' + value.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            });
+                        } else {
+                            label += value;
+                        }
+                        
+                        return label;
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                ticks: {
+                    callback: function(value) {
+                        if (metric === 'cost' || metric === 'totalCost' || metric === 'average' || metric === 'averageTotal') {
+                            return '₱' + value.toLocaleString('en-US', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0
+                            });
+                        }
+                        return value;
+                    }
+                },
+                title: {
+                    display: true,
+                    text: getYAxisTitle(metric)
+                }
+            },
+            x: {
+                grid: { color: 'rgba(0, 0, 0, 0.02)' },
+                ticks: {
+                    maxRotation: 45,
+                    minRotation: 0
+                }
+            }
+        },
+        interaction: {
+            intersect: false,
+            mode: 'index'
+        }
+    };
+    
+    storeChart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: chartOptions
+    });
+    
+    // Update statistics for line chart
+    updateLineChartStatistics(period, metric, selectedStore);
+}
+
+function getYAxisTitle(metric) {
+    switch(metric) {
+        case 'reports': return 'Number of Reports';
+        case 'items': return 'Approved Items Count';
+        case 'totalItems': return 'All Items Count';
+        case 'average': return 'Average Approved Cost (₱)';
+        case 'averageTotal': return 'Average Total Cost (₱)';
+        case 'totalCost': return 'Total Cost (₱)';
+        default: return 'Approved Cost (₱)';
+    }
+}
+
+function calculateItemsForDate(store, dateKey) {
+    let itemCount = 0;
+    
+    allReportsData.forEach(report => {
+        if (report.store === store && report.reportDate === dateKey) {
+            if (report.disposalTypes?.includes('noWaste')) {
+                return;
+            }
+            
+            itemCount += (report.expiredItems?.length || 0) + (report.wasteItems?.length || 0);
+        }
+    });
+    
+    return itemCount;
+}
+
+function calculateApprovedItemsForDate(store, dateKey) {
+    let approvedCount = 0;
+    
+    allReportsData.forEach(report => {
+        if (report.store === store && report.reportDate === dateKey) {
+            if (report.disposalTypes?.includes('noWaste')) {
+                return;
+            }
+            
+            if (report.expiredItems) {
+                report.expiredItems.forEach(item => {
+                    if (item.approvalStatus === 'approved') {
+                        approvedCount++;
+                    }
+                });
+            }
+            
+            if (report.wasteItems) {
+                report.wasteItems.forEach(item => {
+                    if (item.approvalStatus === 'approved') {
+                        approvedCount++;
+                    }
+                });
+            }
+        }
+    });
+    
+    return approvedCount;
 }
 
 function createChart(labels, dataValues, storeEntries, metric, period) {
@@ -1151,7 +1557,7 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                         grid: { color: 'rgba(0, 0, 0, 0.05)' },
                         ticks: {
                             callback: function(value) {
-                                if (metric === 'cost' || metric === 'average') {
+                                if (metric === 'cost' || metric === 'totalCost' || metric === 'average' || metric === 'averageTotal') {
                                     return '₱' + value.toLocaleString('en-US', {
                                         minimumFractionDigits: 0,
                                         maximumFractionDigits: 0
@@ -1163,61 +1569,6 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                     },
                     x: {
                         grid: { display: false },
-                        ticks: {
-                            maxRotation: 90,
-                            minRotation: 45
-                        }
-                    }
-                }
-            };
-            break;
-            
-        case 'line':
-            chartData = {
-                labels: labels,
-                datasets: [{
-                    label: getChartLabel(metric, period),
-                    data: dataValues,
-                    backgroundColor: 'rgba(42, 89, 52, 0.05)',
-                    borderColor: baseColor,
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.1
-                }]
-            };
-            
-            chartOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        callbacks: {
-                            label: function(context) {
-                                return buildChartTooltip(context, storeEntries, metric, period);
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: { color: 'rgba(0, 0, 0, 0.05)' },
-                        ticks: {
-                            callback: function(value) {
-                                if (metric === 'cost' || metric === 'average') {
-                                    return '₱' + value.toLocaleString('en-US', {
-                                        minimumFractionDigits: 0,
-                                        maximumFractionDigits: 0
-                                    });
-                                }
-                                return value;
-                            }
-                        }
-                    },
-                    x: {
-                        grid: { color: 'rgba(0, 0, 0, 0.02)' },
                         ticks: {
                             maxRotation: 90,
                             minRotation: 45
@@ -1251,9 +1602,9 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
                                 const label = context.label || '';
                                 const value = context.raw;
                                 const total = dataValues.reduce((a, b) => a + b, 0);
-                                const percentage = Math.round((value / total) * 100);
+                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
                                 
-                                if (metric === 'cost' || metric === 'average') {
+                                if (metric === 'cost' || metric === 'totalCost' || metric === 'average' || metric === 'averageTotal') {
                                     return `${label}: ₱${value.toLocaleString()} (${percentage}%)`;
                                 }
                                 return `${label}: ${value} (${percentage}%)`;
@@ -1265,11 +1616,13 @@ function createChart(labels, dataValues, storeEntries, metric, period) {
             break;
     }
     
-    storeChart = new Chart(ctx, {
-        type: currentChartType,
-        data: chartData,
-        options: chartOptions
-    });
+    if (chartData && chartOptions) {
+        storeChart = new Chart(ctx, {
+            type: currentChartType,
+            data: chartData,
+            options: chartOptions
+        });
+    }
 }
 
 function generateBarColors(values) {
@@ -1303,44 +1656,51 @@ function generatePieColors(count) {
 function getChartLabel(metric, period) {
     const periodText = getPeriodText(period);
     switch(metric) {
-        case 'cost': return `Total At-Cost - ${periodText}`;
-        case 'reports': return `Number of Reports - ${periodText}`;
-        case 'items': return `Number of Items - ${periodText}`;
-        case 'average': return `Average Cost - ${periodText}`;
-        default: return `Total At-Cost - ${periodText}`;
+        case 'cost': return `Approved At-Cost - ${periodText}`;
+        case 'totalCost': return `Total At-Cost (All Items) - ${periodText}`;
+        case 'reports': return `Reports Count - ${periodText}`;
+        case 'items': return `Approved Items - ${periodText}`;
+        case 'totalItems': return `All Items - ${periodText}`;
+        case 'average': return `Average Approved Cost - ${periodText}`;
+        case 'averageTotal': return `Average Total Cost - ${periodText}`;
+        default: return `Approved At-Cost - ${periodText}`;
     }
 }
 
 function getPeriodText(period) {
-    const datePicker = Performance.getElement('#chartDatePicker');
     const now = new Date();
+    const dateFrom = Performance.getElement('#chartDateFrom');
+    const dateTo = Performance.getElement('#chartDateTo');
     
     switch(period) {
-        case 'today':
-            return `Today (${now.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
-        case 'yesterday':
-            const yesterday = new Date(now);
-            yesterday.setDate(yesterday.getDate() - 1);
-            return `Yesterday (${yesterday.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
+        case 'last7days':
+            return 'Last 7 Days';
+        case 'last30days':
+            return 'Last 30 Days';
         case 'thisWeek':
-            return 'This Week';
+            const thisWeekStart = new Date(now);
+            thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay());
+            return `This Week (${thisWeekStart.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
         case 'lastWeek':
-            return 'Last Week';
-        case 'month':
+            const lastWeekStart = new Date(now);
+            lastWeekStart.setDate(lastWeekStart.getDate() - lastWeekStart.getDay() - 7);
+            return `Last Week (${lastWeekStart.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
+        case 'thisMonth':
             return `This Month (${now.toLocaleDateString('en-US', {month: 'short'})})`;
         case 'lastMonth':
             const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
             return `Last Month (${lastMonth.toLocaleDateString('en-US', {month: 'short'})})`;
-        case 'quarter':
+        case 'thisQuarter':
             return 'This Quarter';
-        case 'year':
+        case 'thisYear':
             return `This Year (${now.getFullYear()})`;
-        case 'specificDate':
-            if (datePicker && datePicker.value) {
-                const date = new Date(datePicker.value);
-                return date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+        case 'specificDateRange':
+            if (dateFrom?.value && dateTo?.value) {
+                const fromDate = new Date(dateFrom.value);
+                const toDate = new Date(dateTo.value);
+                return `${fromDate.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} - ${toDate.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
             }
-            return 'Selected Date';
+            return 'Selected Date Range';
         default:
             return 'All Time';
     }
@@ -1359,19 +1719,47 @@ function buildChartTooltip(context, storeEntries, metric, period) {
             label += `${value} report${value !== 1 ? 's' : ''}`;
             break;
         case 'items':
-            label += `${value} item${value !== 1 ? 's' : ''}`;
+            label += `${value} approved item${value !== 1 ? 's' : ''}`;
+            break;
+        case 'totalItems':
+            label += `${value} item${value !== 1 ? 's' : ''} (all status)`;
             break;
         case 'average':
             label += `₱${value.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
-            })} per report`;
+            })} per report (approved only)`;
             break;
-        default: // cost
+        case 'averageTotal':
             label += `₱${value.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
-            })}`;
+            })} per report (all items)`;
+            break;
+        case 'totalCost':
+            label += `₱${value.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            })} (all items)`;
+            break;
+        default: // cost (approved only)
+            label += `₱${value.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            })} (approved only)`;
+    }
+    
+    // Add comparison with total if applicable
+    if (metric === 'cost' && storeData.periodTotalCost > 0) {
+        const totalCost = storeData.periodTotalCost;
+        const approvalRate = totalCost > 0 ? Math.round((value / totalCost) * 100) : 0;
+        label += ` • ${approvalRate}% of total cost`;
+    }
+    
+    if (metric === 'items' && storeData.periodItemCount > 0) {
+        const totalItems = storeData.periodItemCount;
+        const approvalRate = totalItems > 0 ? Math.round((value / totalItems) * 100) : 0;
+        label += ` • ${approvalRate}% approval rate`;
     }
     
     if (metric !== 'reports') {
@@ -1420,14 +1808,19 @@ function updateChartStatistics(storeEntries, metric, period) {
     
     if (topStoreName && topStoreValue) {
         const value = metric === 'reports' ? topStore[1].periodReportCount :
-                     metric === 'items' ? topStore[1].periodItemCount :
-                     metric === 'average' ? (topStore[1].periodReportCount > 0 ? topStore[1].periodCost / topStore[1].periodReportCount : 0) :
-                     topStore[1].periodCost;
+                     metric === 'items' ? topStore[1].periodApprovedItemCount :
+                     metric === 'totalItems' ? topStore[1].periodItemCount :
+                     metric === 'average' ? (topStore[1].periodReportCount > 0 ? topStore[1].periodApprovedCost / topStore[1].periodReportCount : 0) :
+                     metric === 'averageTotal' ? (topStore[1].periodReportCount > 0 ? topStore[1].periodTotalCost / topStore[1].periodReportCount : 0) :
+                     metric === 'totalCost' ? topStore[1].periodTotalCost :
+                     topStore[1].periodApprovedCost;
         
         topStoreName.textContent = STORE_DISPLAY_NAMES[topStore[0]] || STORE_ABBREVIATIONS[topStore[0]] || topStore[0];
         topStoreValue.textContent = metric === 'reports' ? `${value} reports` :
-                                   metric === 'items' ? `${value} items` :
+                                   metric === 'items' ? `${value} approved items` :
+                                   metric === 'totalItems' ? `${value} items` :
                                    metric === 'average' ? `₱${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
+                                   metric === 'averageTotal' ? `₱${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
                                    `₱${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     }
     
@@ -1438,16 +1831,21 @@ function updateChartStatistics(storeEntries, metric, period) {
     if (totalCostEl && reportCountEl) {
         const totalValue = storeEntries.reduce((sum, [store, data]) => {
             return sum + (metric === 'reports' ? data.periodReportCount :
-                         metric === 'items' ? data.periodItemCount :
-                         metric === 'average' ? (data.periodReportCount > 0 ? data.periodCost / data.periodReportCount : 0) :
-                         data.periodCost);
+                         metric === 'items' ? data.periodApprovedItemCount :
+                         metric === 'totalItems' ? data.periodItemCount :
+                         metric === 'average' ? (data.periodReportCount > 0 ? data.periodApprovedCost / data.periodReportCount : 0) :
+                         metric === 'averageTotal' ? (data.periodReportCount > 0 ? data.periodTotalCost / data.periodReportCount : 0) :
+                         metric === 'totalCost' ? data.periodTotalCost :
+                         data.periodApprovedCost);
         }, 0);
         
         const totalReports = storeEntries.reduce((sum, [store, data]) => sum + data.periodReportCount, 0);
         
         totalCostEl.textContent = metric === 'reports' ? `${totalValue}` :
                                  metric === 'items' ? `${totalValue}` :
+                                 metric === 'totalItems' ? `${totalValue}` :
                                  metric === 'average' ? `₱${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
+                                 metric === 'averageTotal' ? `₱${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
                                  `₱${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
         reportCountEl.textContent = `${totalReports} report${totalReports !== 1 ? 's' : ''}`;
     }
@@ -1532,6 +1930,27 @@ function updateChartStatistics(storeEntries, metric, period) {
     }
 }
 
+function updateLineChartStatistics(period, metric, selectedStore) {
+    const now = new Date();
+    const periodInfoEl = Performance.getElement('#periodInfo');
+    
+    if (periodInfoEl) {
+        periodInfoEl.textContent = getPeriodText(period) + (selectedStore !== 'all' ? ` - ${selectedStore}` : '');
+    }
+    
+    // Update last updated
+    const lastUpdatedEl = Performance.getElement('#lastUpdated');
+    if (lastUpdatedEl) {
+        lastUpdatedEl.textContent = `Updated: ${now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'})}`;
+    }
+    
+    // Hide or update other stats as needed for line chart
+    const statCards = document.querySelectorAll('.chart-stat-card');
+    statCards.forEach(card => {
+        card.style.opacity = '0.6';
+    });
+}
+
 function getStoreDailyRate(store) {
     const storeData = chartAnalysis.stores[store];
     if (!storeData) return 0;
@@ -1555,19 +1974,27 @@ function refreshChart() {
     loadAllReportsForChart();
 }
 
-function updateChartPeriodControls() {
-    const periodSelect = Performance.getElement('#chartPeriod');
-    const datePickerContainer = Performance.getElement('#datePickerContainer');
+function updateChartControls() {
+    updateChartControlsVisibility();
     
-    if (periodSelect && datePickerContainer) {
-        if (periodSelect.value === 'specificDate') {
-            datePickerContainer.style.display = 'block';
-            const datePicker = Performance.getElement('#chartDatePicker');
-            if (datePicker) {
-                datePicker.value = new Date().toISOString().split('T')[0];
-            }
+    const periodSelect = Performance.getElement('#chartPeriod');
+    const dateRangePickerContainer = Performance.getElement('#dateRangePickerContainer');
+    
+    if (periodSelect && dateRangePickerContainer) {
+        if (periodSelect.value === 'specificDateRange') {
+            dateRangePickerContainer.style.display = 'block';
+            // Set default dates if not set
+            const dateFrom = Performance.getElement('#chartDateFrom');
+            const dateTo = Performance.getElement('#chartDateTo');
+            const today = new Date().toISOString().split('T')[0];
+            const lastWeek = new Date();
+            lastWeek.setDate(lastWeek.getDate() - 7);
+            const lastWeekStr = lastWeek.toISOString().split('T')[0];
+            
+            if (dateFrom && !dateFrom.value) dateFrom.value = lastWeekStr;
+            if (dateTo && !dateTo.value) dateTo.value = today;
         } else {
-            datePickerContainer.style.display = 'none';
+            dateRangePickerContainer.style.display = 'none';
         }
         createChartBasedOnType();
     }
@@ -1602,6 +2029,38 @@ function calculateReportCost(report) {
     }
     
     return totalCost;
+}
+
+function calculateApprovedReportCost(report) {
+    if (!report) return 0;
+    
+    if (report.disposalTypes?.includes('noWaste')) {
+        return 0;
+    }
+    
+    let approvedCost = 0;
+    
+    if (report.expiredItems) {
+        report.expiredItems.forEach(item => {
+            if (item.approvalStatus === 'approved') {
+                const itemCost = item.itemCost || 0;
+                const quantity = item.quantity || 0;
+                approvedCost += itemCost * quantity;
+            }
+        });
+    }
+    
+    if (report.wasteItems) {
+        report.wasteItems.forEach(item => {
+            if (item.approvalStatus === 'approved') {
+                const itemCost = item.itemCost || 0;
+                const quantity = item.quantity || 0;
+                approvedCost += itemCost * quantity;
+            }
+        });
+    }
+    
+    return approvedCost;
 }
 
 function getCostCellClass(cost) {
@@ -1660,6 +2119,24 @@ function getDisposalTypeBadge(disposalTypes) {
     return badges.length > 0 ? badges.join(' ') : '<span class="type-badge">Unknown</span>';
 }
 
+function getDisposalTypeText(disposalTypes) {
+    if (!Array.isArray(disposalTypes)) {
+        disposalTypes = [disposalTypes];
+    }
+    
+    if (disposalTypes.includes('noWaste')) {
+        return 'NO WASTE';
+    } else if (disposalTypes.includes('expired') && disposalTypes.includes('waste')) {
+        return 'EXPIRED & WASTE';
+    } else if (disposalTypes.includes('expired')) {
+        return 'EXPIRED';
+    } else if (disposalTypes.includes('waste')) {
+        return 'WASTE';
+    } else {
+        return 'N/A';
+    }
+}
+
 function getReportApprovalStatus(report) {
     if (!report) return 'pending';
     
@@ -1709,6 +2186,28 @@ function getApprovalStatusBadge(report) {
 
 function getItemCount(report) {
     return (report.expiredItems?.length || 0) + (report.wasteItems?.length || 0);
+}
+
+function getApprovedItemCount(report) {
+    let approvedCount = 0;
+    
+    if (report.expiredItems) {
+        report.expiredItems.forEach(item => {
+            if (item.approvalStatus === 'approved') {
+                approvedCount++;
+            }
+        });
+    }
+    
+    if (report.wasteItems) {
+        report.wasteItems.forEach(item => {
+            if (item.approvalStatus === 'approved') {
+                approvedCount++;
+            }
+        });
+    }
+    
+    return approvedCount;
 }
 
 // ================================
@@ -1789,6 +2288,7 @@ async function buildReportContent(report) {
     });
     
     const totalCost = calculateReportCost(report);
+    const approvedCost = calculateApprovedReportCost(report);
     const approvalStatus = getReportApprovalStatus(report);
     
     let content = `
@@ -1824,7 +2324,10 @@ async function buildReportContent(report) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Total At-Cost</div>
-                    <div class="detail-value"><strong>₱${totalCost.toFixed(2)}</strong></div>
+                    <div class="detail-value">
+                        <strong>₱${totalCost.toFixed(2)}</strong>
+                        ${approvedCost < totalCost ? `<div style="font-size: 11px; color: #666;">(₱${approvedCost.toFixed(2)} approved)</div>` : ''}
+                    </div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Overall Status</div>
@@ -1964,7 +2467,7 @@ function buildItemContent(item, index, type, reportId) {
                         ${item.quantity || 0} ${item.unit || 'units'}
                     </span>
                     <span style="background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 10px; font-size: 11px; display: block;">
-                        ₱${totalCost.toFixed(2)}
+                        ₱${totalCost.toFixed(2)} ${approvalStatus !== 'approved' ? '<small style="color: #999;">(pending)</small>' : ''}
                     </span>
                 </div>
             </div>
@@ -2333,6 +2836,7 @@ function openDeleteModal(report) {
     const deleteReportInfo = Performance.getElement('#deleteReportInfo');
     if (deleteReportInfo) {
         const totalCost = calculateReportCost(report);
+        const approvedCost = calculateApprovedReportCost(report);
         const itemCount = getItemCount(report);
         
         let imageCount = 0;
@@ -2351,7 +2855,7 @@ function openDeleteModal(report) {
             <p><strong>Report ID:</strong> ${report.reportId || report.id.substring(0, 8)}...</p>
             <p><strong>Store:</strong> ${report.store || 'N/A'}</p>
             <p><strong>Date:</strong> ${formatDate(report.reportDate)}</p>
-            <p><strong>Items:</strong> ${itemCount} items (₱${totalCost.toFixed(2)})</p>
+            <p><strong>Items:</strong> ${itemCount} items (₱${totalCost.toFixed(2)} total, ₱${approvedCost.toFixed(2)} approved)</p>
             <p><strong>Images:</strong> ${imageCount} images will be deleted</p>
         `;
     }
@@ -2606,7 +3110,9 @@ async function loadReports() {
 function createTableRow(report) {
     const row = document.createElement('tr');
     const itemCount = getItemCount(report);
-    const totalCost = calculateReportCost(report);
+    const approvedItemCount = getApprovedItemCount(report);
+    const totalCost = calculateReportCost(report); // Total cost of ALL items (including pending/rejected)
+    const approvedCost = calculateApprovedReportCost(report); // Cost of approved items only
     const costCellClass = getCostCellClass(totalCost);
     
     // Count images
@@ -2641,6 +3147,11 @@ function createTableRow(report) {
                 <span style="background: var(--color-accent); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;">
                     ${itemCount} ${itemCount === 1 ? 'item' : 'items'}
                 </span>
+                ${approvedItemCount < itemCount ? `
+                <div style="margin-top: 4px; font-size: 10px; color: #666;">
+                    (${approvedItemCount} approved)
+                </div>
+                ` : ''}
                 ${imageCount > 0 ? `
                 <div style="margin-top: 4px;">
                     <span style="background: #d1ecf1; color: #0c5460; padding: 2px 6px; border-radius: 10px; font-size: 9px;">
@@ -2652,6 +3163,7 @@ function createTableRow(report) {
         </td>
         <td class="store-cost-cell ${costCellClass}">
             <strong>₱${totalCost.toFixed(2)}</strong>
+            ${approvedCost < totalCost ? `<div style="font-size: 10px; color: #666;">(₱${approvedCost.toFixed(2)} approved)</div>` : ''}
         </td>
         <td><span class="status-badge status-submitted">Submitted</span></td>
         <td>${getApprovalStatusBadge(report)}</td>
@@ -3148,7 +3660,7 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemNumber, itemType,
             store: reportData.store || 'N/A',
             personnel: reportData.personnel || 'Team Member',
             reportDate: formatDate(reportData.reportDate) || 'N/A',
-            disposalType: (reportData.disposalType || '').toUpperCase(),
+            disposalType: getDisposalTypeText(reportData.disposalTypes), // FIXED: Use correct disposal type
             reportId: reportId,
             itemName: rejectedItem?.item || 'N/A',
             itemQuantity: rejectedItem?.quantity || 0,
@@ -3222,7 +3734,7 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
             store: reportData.store || 'N/A',
             personnel: reportData.personnel || 'Team Member',
             reportDate: formatDate(reportData.reportDate) || 'N/A',
-            disposalType: (reportData.disposalType || '').toUpperCase(),
+            disposalType: getDisposalTypeText(reportData.disposalTypes), // FIXED: Use correct disposal type
             reportId: reportId,
             rejectedCount: rejectedCount,
             rejectionReason: reason,
@@ -3913,13 +4425,17 @@ function setupEventListeners() {
     const chartMetric = Performance.getElement('#chartMetric');
     const chartSort = Performance.getElement('#chartSort');
     const refreshChartBtn = Performance.getElement('#refreshChart');
-    const chartDatePicker = Performance.getElement('#chartDatePicker');
+    const chartDatePickerFrom = Performance.getElement('#chartDateFrom');
+    const chartDatePickerTo = Performance.getElement('#chartDateTo');
+    const chartStore = Performance.getElement('#chartStore');
     
-    if (chartPeriod) chartPeriod.addEventListener('change', updateChartPeriodControls);
+    if (chartPeriod) chartPeriod.addEventListener('change', updateChartControls);
     if (chartMetric) chartMetric.addEventListener('change', createChartBasedOnType);
     if (chartSort) chartSort.addEventListener('change', createChartBasedOnType);
     if (refreshChartBtn) refreshChartBtn.addEventListener('click', refreshChart);
-    if (chartDatePicker) chartDatePicker.addEventListener('change', createChartBasedOnType);
+    if (chartDatePickerFrom) chartDatePickerFrom.addEventListener('change', createChartBasedOnType);
+    if (chartDatePickerTo) chartDatePickerTo.addEventListener('change', createChartBasedOnType);
+    if (chartStore) chartStore.addEventListener('change', createChartBasedOnType);
     
     // Reports filters with debounce
     const searchInput = Performance.getElement('#searchInput');
@@ -4201,7 +4717,7 @@ window.saveItemChanges = saveItemChanges;
 window.deleteItem = deleteItem;
 window.refreshChart = refreshChart;
 window.createChartBasedOnType = createChartBasedOnType;
-window.updateChartPeriodControls = updateChartPeriodControls;
+window.updateChartControls = updateChartControls;
 window.viewReportImages = viewReportDetails;
 window.ImageManager = ImageManager;
 window.openDeleteModal = openDeleteModal;
