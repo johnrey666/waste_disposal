@@ -68,7 +68,7 @@ const firebaseConfig = {
 let db;
 let storage;
 let currentPage = 1;
-const pageSize = 20;
+const pageSize = 10;
 let lastVisibleDoc = null;
 let firstVisibleDoc = null;
 let reportsData = [];
@@ -77,7 +77,7 @@ let isDataLoading = false;
 // Items management variables
 let itemsData = [];
 let itemsCurrentPage = 1;
-const itemsPageSize = 20;
+const itemsPageSize = 10;
 let itemsLastVisibleDoc = null;
 let itemsFirstVisibleDoc = null;
 let currentEditItemId = null;
