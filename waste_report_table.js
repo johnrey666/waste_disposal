@@ -2198,6 +2198,122 @@ function getApprovedItemCount(report) {
             }
         });
     }
+
+    // Add this function to buildItemContent (around line 2200-2300)
+function buildItemContent(item, index, type, reportId) {
+    const approvalStatus = item.approvalStatus || 'pending';
+    const statusClass = `status-${approvalStatus}`;
+    const statusIcon = approvalStatus === 'approved' ? 'fa-check-circle' : 
+                     approvalStatus === 'rejected' ? 'fa-times-circle' : 'fa-clock';
+    const itemCost = item.itemCost || 0;
+    const totalCost = itemCost * (item.quantity || 0);
+    
+    let content = `
+        <div class="item-list-item">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <div>
+                    <strong>Item ${index + 1}: ${item.item || 'N/A'}</strong>
+                    <span class="item-approval-status ${statusClass}" style="margin-left: 8px;">
+                        <i class="fas ${statusIcon}"></i> ${approvalStatus.charAt(0).toUpperCase() + approvalStatus.slice(1)}
+                    </span>
+                    ${item.resubmitted ? `
+                    <span class="item-approval-status status-resubmitted" style="margin-left: 8px; background: #ffc107; color: #856404;">
+                        <i class="fas fa-redo"></i> Resubmitted
+                    </span>
+                    ` : ''}
+                </div>
+                <div style="text-align: right;">
+                    <span style="background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 10px; font-size: 11px; display: block; margin-bottom: 4px;">
+                        ${item.quantity || 0} ${item.unit || 'units'}
+                    </span>
+                    <span style="background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 10px; font-size: 11px; display: block;">
+                        ₱${totalCost.toFixed(2)} ${approvalStatus !== 'approved' ? '<small style="color: #999;">(pending)</small>' : ''}
+                    </span>
+                </div>
+            </div>
+            <div style="font-size: 12px; color: var(--color-gray); margin-bottom: 8px;">
+    `;
+    
+    if (type === 'expired') {
+        content += `
+            <div>Delivered: ${formatDate(item.deliveredDate)}</div>
+            <div>Manufactured: ${formatDate(item.manufacturedDate)}</div>
+            <div>Expired: ${formatDate(item.expirationDate)}</div>
+        `;
+    } else {
+        content += `<div>Reason: ${item.reason || 'N/A'}</div>`;
+    }
+    
+    content += `<div>Unit Cost: ₱${(item.itemCost || 0).toFixed(2)}</div></div>`;
+    
+    // Add resubmission info
+    if (item.resubmitted) {
+        content += `
+            <div style="background: #fff3cd; padding: 8px; border-radius: 4px; margin-bottom: 8px; font-size: 11px;">
+                <i class="fas fa-redo"></i> <strong>Resubmitted:</strong> ${formatDate(item.resubmittedAt)}
+                ${item.previousRejectionReason ? `
+                <div style="margin-top: 4px; color: #856404;">
+                    <i class="fas fa-exclamation-triangle"></i> Previous rejection: ${item.previousRejectionReason}
+                </div>
+                ` : ''}
+                ${item.resubmissionCount > 1 ? `
+                <div style="margin-top: 4px; color: #856404;">
+                    <i class="fas fa-history"></i> Resubmission attempt: ${item.resubmissionCount}
+                </div>
+                ` : ''}
+            </div>
+        `;
+    }
+    
+    // Add approval/rejection info
+    if (approvalStatus === 'approved' && item.approvedAt) {
+        content += `
+            <div style="font-size: 10px; color: #155724; margin-bottom: 8px;">
+                <i class="fas fa-check-circle"></i> Approved by ${item.approvedBy || 'Administrator'} on ${formatDate(item.approvedAt)}
+            </div>
+        `;
+    }
+    
+    if (approvalStatus === 'rejected' && item.rejectionReason) {
+        content += `
+            <div class="rejection-reason">
+                <i class="fas fa-times-circle"></i> <strong>Rejection Reason:</strong> ${item.rejectionReason}
+                <div style="font-size: 9px; margin-top: 2px;">
+                    Rejected by ${item.rejectedBy || 'Administrator'} on ${formatDate(item.rejectedAt)}
+                </div>
+            </div>
+        `;
+    }
+    
+    // Add images using optimized ImageManager
+    content += ImageManager.displayImagesInItem(item, index, type);
+    
+    // Add notes if exists
+    if (item.notes) {
+        content += `
+            <div style="margin-top: 8px; padding: 8px; background: var(--color-offwhite); border-radius: var(--border-radius); font-size: 11px;">
+                <strong>Notes:</strong> ${item.notes}
+            </div>
+        `;
+    }
+    
+    // Add approval buttons if pending (including resubmitted items)
+    if (approvalStatus === 'pending') {
+        content += `
+            <div class="approval-actions">
+                <button class="approve-btn" onclick="approveItem('${reportId}', ${index}, '${type}')">
+                    <i class="fas fa-check"></i> Approve
+                </button>
+                <button class="reject-btn" onclick="openRejectionModal(${JSON.stringify(item).replace(/"/g, '&quot;')}, '${reportId}', ${index}, '${type}')">
+                    <i class="fas fa-times"></i> Reject
+                </button>
+            </div>
+        `;
+    }
+    
+    content += `</div>`;
+    return content;
+}
     
     if (report.wasteItems) {
         report.wasteItems.forEach(item => {

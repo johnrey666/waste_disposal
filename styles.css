@@ -416,6 +416,35 @@ body {
     margin-top: 4px;
     display: block;
 }
+/* Add to your existing CSS file */
+.status-resubmitted {
+    background: #ffc107;
+    color: #856404;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.status-resubmitted i {
+    font-size: 10px;
+}
+
+/* Update the approval status colors to accommodate resubmitted */
+.item-approval-status.status-pending {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+.item-approval-status.status-resubmitted {
+    background: #ffeaa7;
+    color: #856404;
+    border: 1px dashed #ffc107;
+}
 
 .note {
     font-size: var(--font-size-xs);
