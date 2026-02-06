@@ -128,6 +128,42 @@ function formatFileSize(bytes) {
 }
 
 // ================================
+// NEW: UPDATE DISPOSAL TYPES PREVIEW
+// ================================
+function updateDisposalTypesPreview() {
+    const disposalTypeCheckboxes = document.querySelectorAll('input[name="disposalType"]:checked');
+    const previewContainer = document.getElementById('disposalTypesPreview');
+    const tagsContainer = document.getElementById('disposalTypesTags');
+    
+    if (!previewContainer || !tagsContainer) return;
+    
+    if (disposalTypeCheckboxes.length === 0) {
+        previewContainer.style.display = 'none';
+        return;
+    }
+    
+    // Map disposal type values to human-readable format
+    const disposalTypeMap = {
+        'expired': 'Expired Items',
+        'waste': 'Waste',
+        'noWaste': 'No Waste'
+    };
+    
+    // Clear existing tags
+    tagsContainer.innerHTML = '';
+    
+    // Add new tags
+    disposalTypeCheckboxes.forEach(checkbox => {
+        const tag = document.createElement('span');
+        tag.className = 'disposal-type-tag';
+        tag.textContent = disposalTypeMap[checkbox.value] || checkbox.value;
+        tagsContainer.appendChild(tag);
+    });
+    
+    previewContainer.style.display = 'block';
+}
+
+// ================================
 // OPTIMIZED FIREBASE STORAGE FUNCTIONS
 // ================================
 
@@ -642,7 +678,7 @@ function toggleAdditionalNotesRequirement(itemId) {
 }
 
 // ================================
-// DISPOSAL TYPE TOGGLE FUNCTIONS
+// DISPOSAL TYPE TOGGLE FUNCTIONS - UPDATED
 // ================================
 function toggleDisposalType(checkboxId) {
     const expiredCheckbox = document.getElementById('expired');
@@ -716,6 +752,7 @@ function toggleDisposalType(checkboxId) {
     }
     
     updateDisposalTypeHint();
+    updateDisposalTypesPreview();
 }
 
 function updateDisposalTypeHint() {
@@ -1172,11 +1209,13 @@ function validateDynamicFields() {
 }
 
 // ================================
-// RELIABLE EMAIL FUNCTION
+// RELIABLE EMAIL FUNCTION - COMPLETELY FIXED
 // ================================
 async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResubmissionUpdate = false) {
     try {
         console.log('📧 Sending email confirmation...');
+        console.log('isResubmissionUpdate parameter:', isResubmissionUpdate);
+        console.log('reportData.isResubmission:', reportData.isResubmission);
         
         if (!GAS_CONFIG.ENDPOINT) {
             return { success: false, error: 'Email service URL not configured' };
@@ -1190,13 +1229,33 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
             minute: '2-digit'
         });
         
+        // Format disposal types properly
+        let formattedDisposalTypes = reportData.disposalTypes || [];
+        let disposalTypesText = 'N/A';
+        
+        if (formattedDisposalTypes.length > 0) {
+            // Map disposal type values to human-readable format
+            const disposalTypeMap = {
+                'expired': 'Expired Items',
+                'waste': 'Waste',
+                'noWaste': 'No Waste'
+            };
+            
+            // Convert to human-readable format
+            formattedDisposalTypes = formattedDisposalTypes.map(type => 
+                disposalTypeMap[type] || type
+            );
+            
+            disposalTypesText = formattedDisposalTypes.join(', ');
+        }
+        
         let reportDetails = '';
         let htmlReportDetails = '';
         
         const expiredItems = itemsDetails.filter(item => item.type === 'expired');
         const wasteItems = itemsDetails.filter(item => item.type === 'waste');
         
-        if (reportData.noWaste) {
+        if (reportData.noWaste || formattedDisposalTypes.includes('No Waste')) {
             reportDetails = 'No waste or expired items to report for this period.';
             htmlReportDetails = '<li>No waste or expired items to report for this period.</li>';
         } else {
@@ -1233,13 +1292,20 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
             }
         }
         
+        // FIXED: Send correct parameter names that Apps Script expects
+        // CRITICAL FIX: For NEW reports, ALWAYS set isResubmission to false
+        const isActuallyResubmission = isResubmissionUpdate || false;
+        
         const emailData = {
             to: reportData.email,
-            subject: isResubmissionUpdate ? `Item Resubmitted - ${reportId}` : `Waste Report Confirmation - ${reportId}`,
+            subject: isActuallyResubmission ? `Item Resubmitted - ${reportId}` : `Waste Report Confirmation - ${reportId}`,
             store: reportData.store || 'N/A',
             personnel: reportData.personnel || 'N/A',
             reportDate: formatDate(reportData.reportDate) || 'N/A',
-            disposalTypes: reportData.disposalTypes || ['N/A'],
+            disposalType: disposalTypesText,
+            htmlDisposalTypes: formattedDisposalTypes.map(type => 
+                `<span style="background-color: #e8f4fd; padding: 3px 8px; border-radius: 3px; margin-right: 5px; display: inline-block; margin-bottom: 5px;">${type}</span>`
+            ).join(''),
             itemCount: itemsDetails.length,
             reportDetails: reportDetails,
             htmlReportDetails: htmlReportDetails,
@@ -1247,8 +1313,13 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
             reportId: reportId,
             totalBatches: reportData.totalBatches || 1,
             hasAttachments: reportData.hasImages || false,
-            isResubmission: isResubmissionUpdate || false
+            // CRITICAL FIX: Only set isResubmission to true if it's actually a resubmission
+            isResubmission: isActuallyResubmission
         };
+
+        console.log('Final email data being sent:');
+        console.log('- isResubmission:', emailData.isResubmission);
+        console.log('- Subject:', emailData.subject);
 
         const formData = new FormData();
         Object.keys(emailData).forEach(key => {
@@ -1301,11 +1372,13 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
             form.method = 'POST';
             form.action = GAS_CONFIG.ENDPOINT;
             
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'data';
-            input.value = JSON.stringify(emailData);
-            form.appendChild(input);
+            Object.keys(emailData).forEach(key => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = emailData[key];
+                form.appendChild(input);
+            });
             
             document.body.appendChild(iframe);
             document.body.appendChild(form);
@@ -1382,12 +1455,12 @@ async function handleResubmission(originalItemData, updatedItem) {
         
         console.log('✅ Item resubmitted successfully');
         
-        // Send resubmission email
+        // Send resubmission email - PASS TRUE for resubmissions
         const emailResult = await sendEmailConfirmation(
             report,
             originalItemData.reportId,
             [mergedItem],
-            true // isResubmissionUpdate flag
+            true // isResubmissionUpdate flag - this is a resubmission
         );
         
         return {
@@ -1404,10 +1477,11 @@ async function handleResubmission(originalItemData, updatedItem) {
 }
 
 // ================================
-// OPTIMIZED FORM SUBMISSION HANDLER - MODIFIED
+// OPTIMIZED FORM SUBMISSION HANDLER - COMPLETELY FIXED
 // ================================
 async function handleSubmit(event) {
     console.log('Form submission started...');
+    console.log('Is this a resubmission?', isResubmitting);
     
     if (event) {
         event.preventDefault();
@@ -1455,7 +1529,7 @@ async function handleSubmit(event) {
     // Check if this is a resubmission
     if (isResubmitting && originalItemData) {
         try {
-            console.log('Processing resubmission...');
+            console.log('Processing ACTUAL resubmission...');
             
             // Collect the resubmitted item data
             let resubmittedItem = null;
@@ -1599,6 +1673,13 @@ async function handleSubmit(event) {
                 if (wasteContainer) wasteContainer.classList.remove('show');
                 
                 updateDisposalTypeHint();
+                updateDisposalTypesPreview();
+                
+                // Clear Item ID field and reset resubmission flags
+                const itemIdInput = document.getElementById('itemId');
+                if (itemIdInput) {
+                    itemIdInput.value = '';
+                }
                 
                 isResubmitting = false;
                 originalItemData = null;
@@ -1631,7 +1712,8 @@ async function handleSubmit(event) {
         return;
     }
     
-    // Regular new report submission (unchanged)
+    // Regular new report submission - NOT A RESUBMISSION
+    console.log('Processing NEW report submission (NOT a resubmission)');
     const mainReportId = 'REPORT-' + Date.now().toString();
     
     const baseReportData = {
@@ -1646,7 +1728,7 @@ async function handleSubmit(event) {
         createdAt: new Date().toISOString(),
         emailSent: false,
         emailStatus: 'pending',
-        isResubmission: false
+        isResubmission: false // EXPLICITLY SET TO FALSE FOR NEW REPORTS
     };
     
     if (disposalTypes.includes('noWaste')) {
@@ -1773,6 +1855,8 @@ async function handleSubmit(event) {
         
         // Step 1: Send email confirmation NOW (before file uploads)
         showLoading(true, 'Sending email confirmation...');
+        
+        // CRITICAL FIX: For NEW reports, ALWAYS pass FALSE as the last parameter
         const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems, false);
         
         if (emailResult.success) {
@@ -1899,6 +1983,13 @@ async function handleSubmit(event) {
             if (wasteContainer) wasteContainer.classList.remove('show');
             
             updateDisposalTypeHint();
+            updateDisposalTypesPreview();
+            
+            // Clear Item ID field if it exists
+            const itemIdInput = document.getElementById('itemId');
+            if (itemIdInput) {
+                itemIdInput.value = '';
+            }
         }
         
         // Re-enable submit button
@@ -2004,6 +2095,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
     
     updateDisposalTypeHint();
+    updateDisposalTypesPreview();
     
     try {
         await fetchItemsFromFirestore();

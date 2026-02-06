@@ -8,6 +8,27 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Add Select2 CSS for enhanced dropdown -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <style>
+        /* Additional styles for better UI */
+        .disposal-types-display {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .disposal-type-tag {
+            display: inline-block;
+            background-color: #e8f4fd;
+            padding: 3px 8px;
+            border-radius: 3px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #0056b3;
+            font-weight: 500;
+        }
+    </style>
 </head>
 <body>
     <!-- Loading Overlay -->
@@ -49,6 +70,11 @@
             <div class="form-header">
                 <h1><i class="fas fa-file-alt"></i> Submit Waste/Disposal Report</h1>
                 <p>Daily Report Form - Confirmation email will be sent to your email</p>
+                <!-- Disposal Types Preview -->
+                <div id="disposalTypesPreview" class="disposal-types-display" style="display: none;">
+                    <strong>Selected Disposal Types:</strong>
+                    <div id="disposalTypesTags"></div>
+                </div>
             </div>
 
             <form id="wasteReportForm" class="report-form">
