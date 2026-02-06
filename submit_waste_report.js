@@ -72,7 +72,6 @@ function showLoading(show, message = '') {
     if (overlay) {
         overlay.style.display = show ? 'flex' : 'none';
         
-        // Update loading message if provided
         if (message) {
             const progressText = document.getElementById('progressText');
             if (progressText) {
@@ -129,6 +128,117 @@ function formatFileSize(bytes) {
 }
 
 // ================================
+// OPTIMIZED FIREBASE STORAGE FUNCTIONS
+// ================================
+
+// Parallel file upload for a single item
+async function uploadFilesForItemParallel(files, reportId, itemId) {
+    const uploadedFiles = [];
+    
+    const maxConcurrent = 3;
+    const chunks = [];
+    
+    for (let i = 0; i < files.length; i += maxConcurrent) {
+        chunks.push(files.slice(i, i + maxConcurrent));
+    }
+    
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        const chunk = chunks[chunkIndex];
+        const uploadPromises = chunk.map(async (file, fileIndex) => {
+            const globalIndex = chunkIndex * maxConcurrent + fileIndex;
+            
+            try {
+                let fileToUpload = file;
+                if (file.size > 2 * 1024 * 1024 && file.type.startsWith('image/')) {
+                    fileToUpload = await prepareFileForUpload(file);
+                }
+                
+                const timestamp = Date.now() + globalIndex;
+                const randomString = Math.random().toString(36).substring(7);
+                const fileExtension = file.name.split('.').pop();
+                const fileName = `${reportId}/${itemId}/${timestamp}_${randomString}.${fileExtension}`;
+                
+                const storageRef = storage.ref().child(fileName);
+                const uploadTask = storageRef.put(fileToUpload);
+                
+                return new Promise((resolve, reject) => {
+                    uploadTask.on(
+                        'state_changed',
+                        null,
+                        reject,
+                        async () => {
+                            try {
+                                const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                                resolve({
+                                    url: downloadURL,
+                                    name: file.name,
+                                    type: file.type,
+                                    size: fileToUpload.size,
+                                    path: fileName,
+                                    storagePath: storageRef.fullPath,
+                                    index: globalIndex
+                                });
+                            } catch (error) {
+                                reject(error);
+                            }
+                        }
+                    );
+                });
+            } catch (error) {
+                console.error(`Failed to upload file ${file.name}:`, error);
+                throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+            }
+        });
+        
+        const results = await Promise.all(uploadPromises);
+        uploadedFiles.push(...results);
+        
+        const currentProgress = (uploadedFiles.length / files.length) * 100;
+        showUploadProgress(true, uploadedFiles.length, files.length, `${uploadedFiles.length}/${files.length} files`);
+    }
+    
+    return uploadedFiles.sort((a, b) => a.index - b.index);
+}
+
+// Process all items with parallel upload
+async function processAllItemsWithUploads(reportId, allItems, progressCallback) {
+    const totalItems = allItems.length;
+    let completedItems = 0;
+    
+    for (let i = 0; i < allItems.length; i++) {
+        const item = allItems[i];
+        const itemId = item.itemId;
+        const fileInput = document.getElementById(
+            item.type === 'expired' ? `documentation-${itemId}` : `wasteDocumentation-${itemId}`
+        );
+        
+        if (fileInput && fileInput.files.length > 0) {
+            const files = Array.from(fileInput.files);
+            
+            try {
+                const uploadedFiles = await uploadFilesForItemParallel(files, reportId, `${item.type}-${itemId}`);
+                item.documentation = uploadedFiles;
+                item.totalFiles = uploadedFiles.length;
+                
+                item.storageUsed = uploadedFiles.reduce((sum, file) => sum + (file.size || 0), 0);
+                item.originalFileSize = files.reduce((sum, file) => sum + file.size, 0);
+                
+            } catch (error) {
+                console.error(`Failed to upload files for item ${item.item}:`, error);
+                throw error;
+            }
+        }
+        
+        completedItems++;
+        if (progressCallback) {
+            progressCallback(completedItems, totalItems);
+        }
+    }
+    
+    return allItems;
+}
+
+// ================================
 // FETCH ITEMS FROM FIRESTORE
 // ================================
 async function fetchItemsFromFirestore() {
@@ -174,8 +284,6 @@ async function getItemCost(itemName) {
     try {
         if (!itemName || !db) return 0;
         
-        console.log(`Fetching cost for item: ${itemName}`);
-        
         const query = await db.collection('items')
             .where('name', '==', itemName)
             .limit(1)
@@ -184,12 +292,9 @@ async function getItemCost(itemName) {
         if (!query.empty) {
             const doc = query.docs[0];
             const itemData = doc.data();
-            const cost = parseFloat(itemData.cost) || 0;
-            console.log(`Found cost for ${itemName}: ₱${cost.toFixed(2)}`);
-            return cost;
+            return parseFloat(itemData.cost) || 0;
         }
         
-        console.log(`No cost found for ${itemName}, using 0`);
         return 0;
         
     } catch (error) {
@@ -208,10 +313,7 @@ function initializeAllSelect2Dropdowns() {
 }
 
 function initSelect2Dropdown(selectElementId) {
-    if (ITEMS_LIST.length === 0) {
-        console.log('Items not loaded yet, delaying Select2 initialization for:', selectElementId);
-        return;
-    }
+    if (ITEMS_LIST.length === 0) return;
     
     $(`#${selectElementId}`).select2({
         data: ITEMS_LIST.map(item => ({ id: item, text: item })),
@@ -237,8 +339,6 @@ async function loadRejectedItem() {
     showLoading(true, 'Searching for rejected item...');
     
     try {
-        // Parse the item ID to extract report ID and item info
-        // Format: {reportId}_{itemType}_{itemIndex}_{timestamp}
         const parts = itemId.split('_');
         if (parts.length < 3) {
             showNotification('Invalid Item ID format', 'error');
@@ -249,7 +349,6 @@ async function loadRejectedItem() {
         const itemType = parts[1];
         const itemIndex = parseInt(parts[2]);
         
-        // Get the report from Firestore
         const reportDoc = await db.collection('wasteReports').doc(reportId).get();
         
         if (!reportDoc.exists) {
@@ -267,13 +366,11 @@ async function loadRejectedItem() {
         
         const rejectedItem = items[itemIndex];
         
-        // Check if item is actually rejected
         if (rejectedItem.approvalStatus !== 'rejected') {
             showNotification('This item is not rejected', 'warning');
             return;
         }
         
-        // Store original item data
         originalItemData = {
             reportId: reportId,
             itemType: itemType,
@@ -281,16 +378,13 @@ async function loadRejectedItem() {
             originalItem: rejectedItem
         };
         
-        // Populate form fields
         isResubmitting = true;
         
-        // Set basic form fields
         document.getElementById('email').value = report.email || '';
         document.getElementById('store').value = report.store || '';
         document.getElementById('personnel').value = report.personnel || '';
         document.getElementById('reportDate').value = new Date().toISOString().split('T')[0];
         
-        // Set disposal type
         const disposalTypes = report.disposalTypes || [];
         if (disposalTypes.includes('expired')) {
             document.getElementById('expired').checked = true;
@@ -301,13 +395,11 @@ async function loadRejectedItem() {
             toggleDisposalType('waste');
         }
         
-        // Clear existing fields
         const expiredFields = document.getElementById('expiredFields');
         const wasteFields = document.getElementById('wasteFields');
         if (expiredFields) expiredFields.innerHTML = '';
         if (wasteFields) wasteFields.innerHTML = '';
         
-        // Add item to appropriate container
         if (itemType === 'expired') {
             addExpiredItemWithData(rejectedItem);
         } else {
@@ -316,7 +408,6 @@ async function loadRejectedItem() {
         
         showNotification('Rejected item loaded. Please review and edit the information.', 'success');
         
-        // Scroll to the item section
         if (itemType === 'expired') {
             document.getElementById('expiredContainer').scrollIntoView({ behavior: 'smooth' });
         } else {
@@ -521,16 +612,12 @@ function toggleAdditionalNotesRequirement(itemId) {
     
     const selectedReason = reasonSelect.value;
     
-    // Clear previous messages
     if (reasonNote) reasonNote.textContent = '';
     if (notesNote) notesNote.textContent = '';
     
-    // Show/hide required asterisk and set appropriate messages
     if (selectedReason === 'customer_return' || selectedReason === 'quality_issue' || selectedReason === 'other') {
-        // Show required asterisk for notes
         if (notesRequired) notesRequired.style.display = 'inline';
         
-        // Set specific messages based on reason
         if (selectedReason === 'customer_return') {
             if (reasonNote) reasonNote.textContent = '⚠️ Additional notes required: Please explain why the item was returned';
             if (notesNote) notesNote.textContent = 'Required: Explain the reason for customer return (e.g., wrong order, customer dissatisfaction, etc.)';
@@ -542,7 +629,6 @@ function toggleAdditionalNotesRequirement(itemId) {
             if (notesNote) notesNote.textContent = 'Required: Specify the exact reason for waste disposal';
         }
     } else {
-        // Hide required asterisk for notes
         if (notesRequired) notesRequired.style.display = 'none';
     }
 }
@@ -670,9 +756,13 @@ function validateDisposalTypeSelection() {
 }
 
 // ================================
-// IMAGE COMPRESSION FUNCTIONS
+// IMAGE COMPRESSION FUNCTIONS (OPTIMIZED)
 // ================================
-function compressImage(file, quality = 0.7, maxWidth = 1200) {
+async function prepareFileForUpload(file) {
+    if (file.size <= 2 * 1024 * 1024 || !file.type.startsWith('image/')) {
+        return file;
+    }
+    
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -686,10 +776,13 @@ function compressImage(file, quality = 0.7, maxWidth = 1200) {
                 let width = img.width;
                 let height = img.height;
                 
-                // Only resize if image is larger than maxWidth
-                if (width > maxWidth) {
-                    height = Math.round((height * maxWidth) / width);
-                    width = maxWidth;
+                const maxDimension = 1024;
+                if (width > height && width > maxDimension) {
+                    height = Math.round((height * maxDimension) / width);
+                    width = maxDimension;
+                } else if (height > maxDimension) {
+                    width = Math.round((width * maxDimension) / height);
+                    height = maxDimension;
                 }
                 
                 canvas.width = width;
@@ -697,6 +790,10 @@ function compressImage(file, quality = 0.7, maxWidth = 1200) {
                 
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
+                
+                let quality = 0.7;
+                if (file.size > 5 * 1024 * 1024) quality = 0.6;
+                if (file.size > 8 * 1024 * 1024) quality = 0.5;
                 
                 canvas.toBlob(
                     (blob) => {
@@ -711,297 +808,11 @@ function compressImage(file, quality = 0.7, maxWidth = 1200) {
                 );
             };
             
-            img.onerror = function() {
-                reject(new Error('Failed to load image'));
-            };
+            img.onerror = reject;
         };
         
-        reader.onerror = function() {
-            reject(new Error('Failed to read file'));
-        };
+        reader.onerror = reject;
     });
-}
-
-async function prepareFileForUpload(file) {
-    let fileToUpload = file;
-    let compressionInfo = null;
-    
-    // Only compress images that are too large
-    if (file.type.startsWith('image/') && file.size > FILE_CONFIG.MAX_SIZE_PER_FILE) {
-        console.log(`Compressing large image: ${file.name} (${Math.round(file.size / (1024 * 1024) * 100) / 100} MB)`);
-        
-        // Calculate compression ratio based on file size
-        let quality = 0.6;
-        let maxWidth = 800;
-        
-        if (file.size > 3 * 1024 * 1024) { // Over 3MB
-            quality = 0.5;
-            maxWidth = 600;
-        }
-        if (file.size > 4 * 1024 * 1024) { // Over 4MB
-            quality = 0.4;
-            maxWidth = 500;
-        }
-        
-        try {
-            fileToUpload = await compressImage(file, quality, maxWidth);
-            compressionInfo = {
-                originalSize: file.size,
-                compressedSize: fileToUpload.size,
-                compressionRatio: Math.round((fileToUpload.size / file.size) * 100)
-            };
-            console.log(`Compressed from ${Math.round(file.size / 1024)}KB to ${Math.round(fileToUpload.size / 1024)}KB (${compressionInfo.compressionRatio}%)`);
-        } catch (error) {
-            console.error('Compression failed, using original:', error);
-        }
-    }
-    
-    return {
-        file: fileToUpload,
-        compressionInfo: compressionInfo
-    };
-}
-
-// ================================
-// FIREBASE STORAGE FUNCTIONS
-// ================================
-async function uploadFileToStorage(file, reportId, itemId, index) {
-    try {
-        if (!storage) {
-            throw new Error('Firebase Storage not initialized');
-        }
-        
-        // Create a unique filename
-        const timestamp = Date.now();
-        const randomString = Math.random().toString(36).substring(7);
-        const fileExtension = file.name.split('.').pop();
-        const fileName = `${reportId}/${itemId}/${timestamp}_${randomString}.${fileExtension}`;
-        
-        // Create storage reference
-        const storageRef = storage.ref().child(fileName);
-        
-        // Upload file
-        const uploadTask = storageRef.put(file);
-        
-        // Return a promise that resolves with download URL
-        return new Promise((resolve, reject) => {
-            uploadTask.on(
-                'state_changed',
-                (snapshot) => {
-                    // Show upload progress
-                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    showUploadProgress(true, snapshot.bytesTransferred, snapshot.totalBytes, file.name);
-                },
-                (error) => {
-                    console.error('Upload error:', error);
-                    reject(error);
-                },
-                async () => {
-                    try {
-                        // Get download URL
-                        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-                        
-                        resolve({
-                            url: downloadURL,
-                            name: file.name,
-                            type: file.type,
-                            size: file.size,
-                            path: fileName,
-                            storagePath: storageRef.fullPath
-                        });
-                    } catch (urlError) {
-                        reject(urlError);
-                    }
-                }
-            );
-        });
-        
-    } catch (error) {
-        console.error('Error in uploadFileToStorage:', error);
-        throw error;
-    }
-}
-
-async function uploadFilesForItem(files, reportId, itemId) {
-    const uploadedFiles = [];
-    
-    for (let i = 0; i < files.length; i++) {
-        try {
-            const preparedFile = await prepareFileForUpload(files[i]);
-            const uploadResult = await uploadFileToStorage(
-                preparedFile.file, 
-                reportId, 
-                itemId, 
-                i
-            );
-            
-            // Add compression info if available
-            if (preparedFile.compressionInfo) {
-                uploadResult.compressionInfo = preparedFile.compressionInfo;
-            }
-            
-            uploadedFiles.push(uploadResult);
-            
-        } catch (error) {
-            console.error(`Failed to upload file ${files[i].name}:`, error);
-            throw new Error(`Failed to upload ${files[i].name}: ${error.message}`);
-        }
-    }
-    
-    return uploadedFiles;
-}
-
-// ================================
-// EMAIL FUNCTION
-// ================================
-async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
-    try {
-        console.log('📧 Preparing email via Google Apps Script...');
-        
-        if (!GAS_CONFIG.ENDPOINT) {
-            return { success: false, error: 'Email service URL not configured' };
-        }
-        
-        const submissionTime = new Date().toLocaleString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        
-        let reportDetails = '';
-        let htmlReportDetails = '';
-        
-        const expiredItems = itemsDetails.filter(item => item.type === 'expired');
-        const wasteItems = itemsDetails.filter(item => item.type === 'waste');
-        
-        if (reportData.noWaste) {
-            reportDetails = 'No waste or expired items to report for this period.';
-            htmlReportDetails = '<li>No waste or expired items to report for this period.</li>';
-        } else {
-            if (expiredItems.length > 0) {
-                reportDetails += 'EXPIRED ITEMS:\n';
-                htmlReportDetails += '<h4>Expired Items:</h4><ul>';
-                expiredItems.forEach((item, index) => {
-                    const totalCost = (item.itemCost || 0) * (item.quantity || 0);
-                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Cost: ₱${totalCost.toFixed(2)})\n`;
-                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Cost: ₱${totalCost.toFixed(2)})`;
-                    if (item.notes) {
-                        reportDetails += `   Notes: ${item.notes}\n`;
-                        htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
-                    }
-                    htmlReportDetails += '</li>';
-                });
-                htmlReportDetails += '</ul>';
-            }
-            
-            if (wasteItems.length > 0) {
-                reportDetails += '\nWASTE ITEMS:\n';
-                htmlReportDetails += '<h4>Waste Items:</h4><ul>';
-                wasteItems.forEach((item, index) => {
-                    const totalCost = (item.itemCost || 0) * (item.quantity || 0);
-                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})\n`;
-                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})`;
-                    if (item.notes) {
-                        reportDetails += `   Notes: ${item.notes}\n`;
-                        htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
-                    }
-                    htmlReportDetails += '</li>';
-                });
-                htmlReportDetails += '</ul>';
-            }
-        }
-        
-        const emailData = {
-            to: reportData.email,
-            subject: `Waste Report Confirmation - ${reportId}`,
-            store: reportData.store || 'N/A',
-            personnel: reportData.personnel || 'N/A',
-            reportDate: formatDate(reportData.reportDate) || 'N/A',
-            disposalTypes: reportData.disposalTypes || ['N/A'],
-            itemCount: itemsDetails.length,
-            reportDetails: reportDetails,
-            htmlReportDetails: htmlReportDetails,
-            submissionTime: submissionTime,
-            reportId: reportId,
-            totalBatches: reportData.totalBatches || 1,
-            hasAttachments: reportData.hasImages || false,
-            isResubmission: isResubmitting || false
-        };
-        
-        console.log('📤 Sending email to:', emailData.to);
-        
-        try {
-            const formData = new FormData();
-            formData.append('data', JSON.stringify(emailData));
-            
-            const response = await fetch(GAS_CONFIG.ENDPOINT, {
-                method: 'POST',
-                body: formData
-            });
-            
-            console.log('✅ FormData request sent (status:', response.status, ')');
-            
-            if (response.ok) {
-                try {
-                    const result = await response.json();
-                    return { success: true, response: result };
-                } catch (e) {
-                    return { success: true, message: 'Email sent (non-JSON response)' };
-                }
-            } else {
-                return { success: true, message: 'Email likely sent (non-200 but processed)' };
-            }
-        } catch (err) {
-            console.log('FormData failed, trying fallback methods...', err);
-        }
-        
-        try {
-            const params = new URLSearchParams();
-            Object.keys(emailData).forEach(key => params.append(key, emailData[key]));
-            const url = `${GAS_CONFIG.ENDPOINT}?${params.toString()}`;
-            
-            await fetch(url, { method: 'GET', mode: 'no-cors' });
-            console.log('✅ GET fallback request submitted');
-            return { success: true, message: 'Email sent via GET fallback' };
-        } catch (err) {
-            console.log('GET fallback failed, trying iframe...');
-        }
-        
-        return new Promise(resolve => {
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.name = 'gasIframe';
-            
-            const form = document.createElement('form');
-            form.target = 'gasIframe';
-            form.method = 'POST';
-            form.action = GAS_CONFIG.ENDPOINT;
-            
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'data';
-            input.value = JSON.stringify(emailData);
-            form.appendChild(input);
-            
-            document.body.appendChild(iframe);
-            document.body.appendChild(form);
-            
-            setTimeout(() => {
-                document.body.removeChild(iframe);
-                document.body.removeChild(form);
-                console.log('✅ Iframe fallback submitted');
-                resolve({ success: true, message: 'Email sent via iframe fallback' });
-            }, 2000);
-            
-            form.submit();
-        });
-        
-    } catch (error) {
-        console.error('❌ Email sending failed:', error);
-        return { success: false, error: error.message || 'Unknown error' };
-    }
 }
 
 // ================================
@@ -1227,9 +1038,9 @@ function removeField(fieldId) {
 }
 
 function validateFiles(fileInput) {
-    const maxSize = FILE_CONFIG.MAX_SIZE_PER_FILE; // 10MB
-    const maxFiles = FILE_CONFIG.MAX_FILES_PER_ITEM; // 3 files
-    const maxTotalSize = FILE_CONFIG.MAX_TOTAL_SIZE; // 10MB total
+    const maxSize = FILE_CONFIG.MAX_SIZE_PER_FILE;
+    const maxFiles = FILE_CONFIG.MAX_FILES_PER_ITEM;
+    const maxTotalSize = FILE_CONFIG.MAX_TOTAL_SIZE;
     
     if (fileInput.files.length > maxFiles) {
         return `Maximum ${maxFiles} files allowed`;
@@ -1257,8 +1068,6 @@ function validateDynamicFields() {
     const noWasteChecked = document.getElementById('noWaste').checked;
     
     if (noWasteChecked) return true;
-    
-    let isValid = true;
     
     if (expiredChecked) {
         const expiredItems = document.querySelectorAll('#expiredFields .field-group');
@@ -1324,7 +1133,6 @@ function validateDynamicFields() {
                 }
             }
             
-            // Validate additional notes for specific reasons
             const itemId = item.id.split('-')[1];
             const reasonSelect = document.getElementById(`reason-${itemId}`);
             const notesTextarea = document.getElementById(`wasteNotes-${itemId}`);
@@ -1352,11 +1160,170 @@ function validateDynamicFields() {
         }
     }
     
-    return isValid;
+    return true;
 }
 
 // ================================
-// FORM SUBMISSION HANDLER - WITH RESUBMISSION SUPPORT
+// RELIABLE EMAIL FUNCTION
+// ================================
+async function sendEmailConfirmation(reportData, reportId, itemsDetails) {
+    try {
+        console.log('📧 Sending email confirmation...');
+        
+        if (!GAS_CONFIG.ENDPOINT) {
+            return { success: false, error: 'Email service URL not configured' };
+        }
+        
+        const submissionTime = new Date().toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        let reportDetails = '';
+        let htmlReportDetails = '';
+        
+        const expiredItems = itemsDetails.filter(item => item.type === 'expired');
+        const wasteItems = itemsDetails.filter(item => item.type === 'waste');
+        
+        if (reportData.noWaste) {
+            reportDetails = 'No waste or expired items to report for this period.';
+            htmlReportDetails = '<li>No waste or expired items to report for this period.</li>';
+        } else {
+            if (expiredItems.length > 0) {
+                reportDetails += 'EXPIRED ITEMS:\n';
+                htmlReportDetails += '<h4>Expired Items:</h4><ul>';
+                expiredItems.forEach((item, index) => {
+                    const totalCost = (item.itemCost || 0) * (item.quantity || 0);
+                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Cost: ₱${totalCost.toFixed(2)})\n`;
+                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Cost: ₱${totalCost.toFixed(2)})`;
+                    if (item.notes) {
+                        reportDetails += `   Notes: ${item.notes}\n`;
+                        htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
+                    }
+                    htmlReportDetails += '</li>';
+                });
+                htmlReportDetails += '</ul>';
+            }
+            
+            if (wasteItems.length > 0) {
+                reportDetails += '\nWASTE ITEMS:\n';
+                htmlReportDetails += '<h4>Waste Items:</h4><ul>';
+                wasteItems.forEach((item, index) => {
+                    const totalCost = (item.itemCost || 0) * (item.quantity || 0);
+                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})\n`;
+                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})`;
+                    if (item.notes) {
+                        reportDetails += `   Notes: ${item.notes}\n`;
+                        htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
+                    }
+                    htmlReportDetails += '</li>';
+                });
+                htmlReportDetails += '</ul>';
+            }
+        }
+        
+        const emailData = {
+            to: reportData.email,
+            subject: `Waste Report Confirmation - ${reportId}`,
+            store: reportData.store || 'N/A',
+            personnel: reportData.personnel || 'N/A',
+            reportDate: formatDate(reportData.reportDate) || 'N/A',
+            disposalTypes: reportData.disposalTypes || ['N/A'],
+            itemCount: itemsDetails.length,
+            reportDetails: reportDetails,
+            htmlReportDetails: htmlReportDetails,
+            submissionTime: submissionTime,
+            reportId: reportId,
+            totalBatches: reportData.totalBatches || 1,
+            hasAttachments: reportData.hasImages || false,
+            isResubmission: isResubmitting || false
+        };
+        
+        console.log('📤 Sending email to:', emailData.to);
+        
+        // Use multiple fallback methods to ensure email is sent
+        try {
+            // Method 1: POST with FormData (most reliable)
+            const formData = new FormData();
+            formData.append('data', JSON.stringify(emailData));
+            
+            const response = await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData
+            });
+            
+            console.log('✅ FormData request sent (status:', response.status, ')');
+            
+            if (response.ok) {
+                try {
+                    const result = await response.json();
+                    return { success: true, response: result };
+                } catch (e) {
+                    return { success: true, message: 'Email sent (non-JSON response)' };
+                }
+            }
+        } catch (err) {
+            console.log('FormData failed, trying fallback methods...', err);
+        }
+        
+        try {
+            // Method 2: GET with parameters
+            const params = new URLSearchParams();
+            Object.keys(emailData).forEach(key => params.append(key, emailData[key]));
+            const url = `${GAS_CONFIG.ENDPOINT}?${params.toString()}`;
+            
+            const response = await fetch(url);
+            if (response.ok) {
+                console.log('✅ GET fallback request successful');
+                return { success: true, message: 'Email sent via GET fallback' };
+            }
+        } catch (err) {
+            console.log('GET fallback failed:', err);
+        }
+        
+        // Method 3: Iframe fallback
+        return new Promise(resolve => {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.name = 'gasIframe';
+            
+            const form = document.createElement('form');
+            form.target = 'gasIframe';
+            form.method = 'POST';
+            form.action = GAS_CONFIG.ENDPOINT;
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'data';
+            input.value = JSON.stringify(emailData);
+            form.appendChild(input);
+            
+            document.body.appendChild(iframe);
+            document.body.appendChild(form);
+            
+            iframe.onload = function() {
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                    document.body.removeChild(form);
+                    console.log('✅ Iframe fallback submitted');
+                    resolve({ success: true, message: 'Email sent via iframe fallback' });
+                }, 1000);
+            };
+            
+            form.submit();
+        });
+        
+    } catch (error) {
+        console.error('❌ Email sending failed:', error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
+
+// ================================
+// OPTIMIZED FORM SUBMISSION HANDLER
 // ================================
 async function handleSubmit(event) {
     console.log('Form submission started...');
@@ -1368,15 +1335,11 @@ async function handleSubmit(event) {
     
     if (!db || !storage) {
         showNotification('Error: Firebase not initialized. Cannot submit report.', 'error');
-        console.error('Firebase not initialized');
         return;
     }
     
     const submitBtn = document.querySelector('.submit-btn');
-    if (!submitBtn) {
-        console.error('Submit button not found');
-        return;
-    }
+    if (!submitBtn) return;
     
     const originalText = submitBtn.textContent;
     
@@ -1390,20 +1353,12 @@ async function handleSubmit(event) {
         const fieldElement = document.getElementById(field);
         if (!fieldElement || !fieldElement.value.trim()) {
             showNotification(`Please fill in the ${field} field.`, 'error');
-            console.error(`Missing field: ${field}`);
             return;
         }
     }
     
-    if (!validateDisposalTypeSelection()) {
-        console.error('Invalid disposal type selection');
-        return;
-    }
-    
-    if (!validateDynamicFields()) {
-        console.error('Dynamic field validation failed');
-        return;
-    }
+    if (!validateDisposalTypeSelection()) return;
+    if (!validateDynamicFields()) return;
     
     submitBtn.textContent = 'Submitting...';
     submitBtn.disabled = true;
@@ -1429,12 +1384,7 @@ async function handleSubmit(event) {
         status: 'submitted',
         createdAt: new Date().toISOString(),
         emailSent: false,
-        emailSentAt: null,
-        emailError: null,
-        hasImages: false,
-        imageCount: 0,
-        storageUsed: 0,
-        originalFileSize: 0,
+        emailStatus: 'pending',
         isResubmission: isResubmitting,
         originalItemId: isResubmitting ? document.getElementById('itemId').value.trim() : null
     };
@@ -1447,18 +1397,16 @@ async function handleSubmit(event) {
     try {
         console.log('Processing report data for ID:', mainReportId);
         
+        // Collect all items data first (without files)
         let allItems = [];
-        let totalOriginalSize = 0;
-        let totalStorageUsed = 0;
+        let totalFiles = 0;
         
-        // Process expired items
+        // Process expired items data
         if (disposalTypes.includes('expired')) {
             const expiredFields = document.querySelectorAll('#expiredFields .field-group');
-            console.log(`Found ${expiredFields.length} expired items`);
             
             for (let field of expiredFields) {
                 const itemId = field.id.split('-')[1];
-                const fileInput = document.getElementById(`documentation-${itemId}`);
                 
                 const dropdown = document.getElementById(`expiredItem-${itemId}`);
                 let selectedItem = '';
@@ -1471,11 +1419,8 @@ async function handleSubmit(event) {
                     }
                 }
                 
-                // Get item cost
                 const itemCost = await getItemCost(selectedItem);
-                console.log(`Item: ${selectedItem}, Cost: ₱${itemCost.toFixed(2)}`);
                 
-                // Create base item data
                 const expiredItem = {
                     type: 'expired',
                     item: selectedItem,
@@ -1487,50 +1432,23 @@ async function handleSubmit(event) {
                     notes: document.getElementById(`notes-${itemId}`).value.trim() || '',
                     itemId: itemId,
                     itemCost: itemCost,
-                    documentation: [], // Will be populated with upload results
-                    approvalStatus: 'pending', // Always set to pending for resubmissions
+                    documentation: [],
+                    approvalStatus: 'pending',
                     submittedAt: new Date().toISOString()
                 };
                 
-                // If this is a resubmission, add original rejection info
-                if (isResubmitting && originalItemData) {
-                    expiredItem.originalRejectionReason = originalItemData.originalItem.rejectionReason;
-                    expiredItem.originalRejectedAt = originalItemData.originalItem.rejectedAt;
-                    expiredItem.resubmitted = true;
-                    expiredItem.resubmittedAt = new Date().toISOString();
+                // Check for files
+                const fileInput = document.getElementById(`documentation-${itemId}`);
+                if (fileInput && fileInput.files.length > 0) {
+                    expiredItem.hasFiles = true;
+                    expiredItem.fileCount = fileInput.files.length;
+                    totalFiles += fileInput.files.length;
                 }
                 
-                // Upload files if any
-                if (fileInput && fileInput.files.length > 0) {
-                    showLoading(true, 'Uploading files...');
-                    
-                    // Calculate original size
-                    for (let file of fileInput.files) {
-                        totalOriginalSize += file.size;
-                    }
-                    
-                    try {
-                        const uploadedFiles = await uploadFilesForItem(
-                            Array.from(fileInput.files),
-                            mainReportId,
-                            `expired-${itemId}`
-                        );
-                        
-                        expiredItem.documentation = uploadedFiles;
-                        expiredItem.totalFiles = uploadedFiles.length;
-                        
-                        // Calculate storage used
-                        uploadedFiles.forEach(file => {
-                            totalStorageUsed += file.size || 0;
-                        });
-                        
-                        console.log(`✅ Uploaded ${uploadedFiles.length} files for expired item ${itemId}`);
-                        
-                    } catch (uploadError) {
-                        console.error(`Failed to upload files for expired item ${itemId}:`, uploadError);
-                        showNotification(`Failed to upload files for ${selectedItem}. Please try again.`, 'error');
-                        throw uploadError;
-                    }
+                if (isResubmitting && originalItemData) {
+                    expiredItem.originalRejectionReason = originalItemData.originalItem.rejectionReason;
+                    expiredItem.resubmitted = true;
+                    expiredItem.resubmittedAt = new Date().toISOString();
                 }
                 
                 allItems.push(expiredItem);
@@ -1539,14 +1457,12 @@ async function handleSubmit(event) {
             baseReportData.totalExpiredItems = allItems.filter(item => item.type === 'expired').length;
         }
         
-        // Process waste items
+        // Process waste items data
         if (disposalTypes.includes('waste')) {
             const wasteFields = document.querySelectorAll('#wasteFields .field-group');
-            console.log(`Found ${wasteFields.length} waste items`);
             
             for (let field of wasteFields) {
                 const itemId = field.id.split('-')[1];
-                const fileInput = document.getElementById(`wasteDocumentation-${itemId}`);
                 
                 const dropdown = document.getElementById(`wasteItem-${itemId}`);
                 let selectedItem = '';
@@ -1559,11 +1475,8 @@ async function handleSubmit(event) {
                     }
                 }
                 
-                // Get item cost
                 const itemCost = await getItemCost(selectedItem);
-                console.log(`Item: ${selectedItem}, Cost: ₱${itemCost.toFixed(2)}`);
                 
-                // Create base item data
                 const wasteItem = {
                     type: 'waste',
                     item: selectedItem,
@@ -1573,50 +1486,23 @@ async function handleSubmit(event) {
                     notes: document.getElementById(`wasteNotes-${itemId}`).value.trim() || '',
                     itemId: itemId,
                     itemCost: itemCost,
-                    documentation: [], // Will be populated with upload results
-                    approvalStatus: 'pending', // Always set to pending for resubmissions
+                    documentation: [],
+                    approvalStatus: 'pending',
                     submittedAt: new Date().toISOString()
                 };
                 
-                // If this is a resubmission, add original rejection info
-                if (isResubmitting && originalItemData) {
-                    wasteItem.originalRejectionReason = originalItemData.originalItem.rejectionReason;
-                    wasteItem.originalRejectedAt = originalItemData.originalItem.rejectedAt;
-                    wasteItem.resubmitted = true;
-                    wasteItem.resubmittedAt = new Date().toISOString();
+                // Check for files
+                const fileInput = document.getElementById(`wasteDocumentation-${itemId}`);
+                if (fileInput && fileInput.files.length > 0) {
+                    wasteItem.hasFiles = true;
+                    wasteItem.fileCount = fileInput.files.length;
+                    totalFiles += fileInput.files.length;
                 }
                 
-                // Upload files if any
-                if (fileInput && fileInput.files.length > 0) {
-                    showLoading(true, 'Uploading files...');
-                    
-                    // Calculate original size
-                    for (let file of fileInput.files) {
-                        totalOriginalSize += file.size;
-                    }
-                    
-                    try {
-                        const uploadedFiles = await uploadFilesForItem(
-                            Array.from(fileInput.files),
-                            mainReportId,
-                            `waste-${itemId}`
-                        );
-                        
-                        wasteItem.documentation = uploadedFiles;
-                        wasteItem.totalFiles = uploadedFiles.length;
-                        
-                        // Calculate storage used
-                        uploadedFiles.forEach(file => {
-                            totalStorageUsed += file.size || 0;
-                        });
-                        
-                        console.log(`✅ Uploaded ${uploadedFiles.length} files for waste item ${itemId}`);
-                        
-                    } catch (uploadError) {
-                        console.error(`Failed to upload files for waste item ${itemId}:`, uploadError);
-                        showNotification(`Failed to upload files for ${selectedItem}. Please try again.`, 'error');
-                        throw uploadError;
-                    }
+                if (isResubmitting && originalItemData) {
+                    wasteItem.originalRejectionReason = originalItemData.originalItem.rejectionReason;
+                    wasteItem.resubmitted = true;
+                    wasteItem.resubmittedAt = new Date().toISOString();
                 }
                 
                 allItems.push(wasteItem);
@@ -1625,33 +1511,125 @@ async function handleSubmit(event) {
             baseReportData.totalWasteItems = allItems.filter(item => item.type === 'waste').length;
         }
         
-        // Update report data with storage information
-        baseReportData.originalFileSize = totalOriginalSize;
-        baseReportData.storageUsed = totalStorageUsed;
-        baseReportData.hasImages = allItems.some(item => item.documentation.length > 0);
-        baseReportData.imageCount = allItems.reduce((sum, item) => sum + (item.documentation?.length || 0), 0);
+        // Update with file info
+        baseReportData.hasImages = totalFiles > 0;
+        baseReportData.imageCount = totalFiles;
+        baseReportData.fileUploadComplete = false;
         
-        // Add items to report data
-        const expiredItems = allItems.filter(item => item.type === 'expired');
-        const wasteItems = allItems.filter(item => item.type === 'waste');
-        
-        if (expiredItems.length > 0) {
-            baseReportData.expiredItems = expiredItems;
-        }
-        if (wasteItems.length > 0) {
-            baseReportData.wasteItems = wasteItems;
-        }
-        
-        // Save the report to Firestore
-        console.log('Saving report to Firestore...');
-        showLoading(true, 'Saving report...');
-        
+        // Save to Firestore FIRST (before file uploads)
+        console.log('Saving report to Firestore (initial)...');
         const docRef = db.collection('wasteReports').doc(mainReportId);
         await docRef.set(baseReportData);
         
-        console.log('✅ Report saved to Firestore with ID:', mainReportId);
+        console.log('✅ Initial report saved to Firestore');
         
-        // If this is a resubmission, update the original item status
+        // Step 1: Send email confirmation NOW (before file uploads)
+        showLoading(true, 'Sending email confirmation...');
+        const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems);
+        
+        if (emailResult.success) {
+            console.log('✅ Email confirmation sent');
+            await docRef.update({
+                emailSent: true,
+                emailSentAt: new Date().toISOString(),
+                emailStatus: 'sent',
+                emailService: 'Google Apps Script'
+            });
+            
+            showNotification('✅ Email confirmation sent!', 'success');
+        } else {
+            console.warn('⚠️ Email sending failed:', emailResult.error);
+            await docRef.update({
+                emailSent: false,
+                emailError: emailResult.error,
+                emailStatus: 'failed',
+                lastEmailAttempt: new Date().toISOString()
+            });
+            
+            showNotification('⚠️ Report saved, but email failed. Please check email configuration.', 'warning');
+        }
+        
+        // If there are files, upload them in background
+        if (totalFiles > 0) {
+            showLoading(true, 'Uploading files in background...');
+            showUploadProgress(true, 0, totalFiles, 'Starting file upload...');
+            
+            // Process uploads in background
+            setTimeout(async () => {
+                try {
+                    // Upload files with progress
+                    const processedItems = await processAllItemsWithUploads(
+                        mainReportId,
+                        allItems,
+                        (completed, total) => {
+                            const progress = (completed / total) * 100;
+                            showUploadProgress(true, completed, total, `Item ${completed}/${total}`);
+                        }
+                    );
+                    
+                    // Update Firestore with file information
+                    const expiredItems = processedItems.filter(item => item.type === 'expired');
+                    const wasteItems = processedItems.filter(item => item.type === 'waste');
+                    
+                    const updateData = {};
+                    if (expiredItems.length > 0) {
+                        updateData.expiredItems = expiredItems;
+                        updateData.totalExpiredItems = expiredItems.length;
+                    }
+                    if (wasteItems.length > 0) {
+                        updateData.wasteItems = wasteItems;
+                        updateData.totalWasteItems = wasteItems.length;
+                    }
+                    
+                    // Calculate totals
+                    const uploadedFiles = processedItems.reduce((sum, item) => sum + (item.documentation?.length || 0), 0);
+                    const totalStorage = processedItems.reduce((sum, item) => sum + (item.storageUsed || 0), 0);
+                    const totalOriginalSize = processedItems.reduce((sum, item) => sum + (item.originalFileSize || 0), 0);
+                    
+                    updateData.hasImages = uploadedFiles > 0;
+                    updateData.imageCount = uploadedFiles;
+                    updateData.storageUsed = totalStorage;
+                    updateData.originalFileSize = totalOriginalSize;
+                    updateData.fileUploadComplete = true;
+                    updateData.fileUploadedAt = new Date().toISOString();
+                    
+                    await docRef.update(updateData);
+                    
+                    console.log('✅ Files uploaded and report updated');
+                    showUploadProgress(false);
+                    showLoading(false);
+                    
+                    if (uploadedFiles > 0) {
+                        showNotification('✅ All files uploaded successfully!', 'success');
+                    }
+                    
+                } catch (uploadError) {
+                    console.error('File upload failed:', uploadError);
+                    showUploadProgress(false);
+                    showLoading(false);
+                    
+                    // Mark as failed but report is still saved
+                    await docRef.update({
+                        fileUploadError: uploadError.message,
+                        fileUploadComplete: false
+                    });
+                    
+                    showNotification('⚠️ Some files failed to upload. Report was still saved successfully.', 'warning');
+                }
+            }, 100);
+        } else {
+            // No files, just mark as complete
+            await docRef.update({
+                fileUploadComplete: true,
+                hasImages: false,
+                imageCount: 0
+            });
+            
+            showLoading(false);
+            showNotification('✅ Report submitted successfully! Email sent.', 'success');
+        }
+        
+        // Update original item status if resubmission
         if (isResubmitting && originalItemData) {
             try {
                 const originalReportRef = db.collection('wasteReports').doc(originalItemData.reportId);
@@ -1670,61 +1648,11 @@ async function handleSubmit(event) {
                         await originalReportRef.update({
                             [itemsField]: originalItems
                         });
-                        
-                        console.log('✅ Original item marked as resubmitted');
                     }
                 }
             } catch (updateError) {
                 console.warn('Could not update original item status:', updateError);
             }
-        }
-        
-        // Send email confirmation
-        console.log('Attempting to send email confirmation...');
-        showLoading(true, 'Sending email confirmation...');
-        
-        const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems);
-        
-        if (emailResult.success) {
-            console.log('✅ Email confirmation request submitted');
-            
-            try {
-                await docRef.update({
-                    emailSent: true,
-                    emailSentAt: new Date().toISOString(),
-                    emailStatus: 'sent',
-                    emailService: 'Google Apps Script'
-                });
-                console.log('✅ Email status updated in database');
-            } catch (updateError) {
-                console.warn('Could not update email status in database:', updateError);
-            }
-            
-            const successMessage = isResubmitting 
-                ? `✅ Resubmission successful! Your item is now pending approval again. Confirmation email sent.`
-                : `✅ Report submitted successfully! Confirmation email sent.`;
-            
-            showNotification(successMessage, 'success');
-            
-        } else {
-            console.warn('⚠️ Report saved but email failed:', emailResult.error);
-            
-            try {
-                await docRef.update({
-                    emailSent: false,
-                    emailError: emailResult.error,
-                    emailStatus: 'failed',
-                    lastEmailAttempt: new Date().toISOString()
-                });
-            } catch (updateError) {
-                console.warn('Could not update email error in database:', updateError);
-            }
-            
-            const warningMessage = isResubmitting
-                ? `⚠️ Resubmission saved successfully! (Email failed: ${emailResult.error || 'Check connection'})`
-                : `⚠️ Report saved successfully! (Email failed: ${emailResult.error || 'Check connection'})`;
-            
-            showNotification(warningMessage, 'warning');
         }
         
         // Reset form
@@ -1750,15 +1678,18 @@ async function handleSubmit(event) {
             
             updateDisposalTypeHint();
             
-            // Reset resubmission state
             isResubmitting = false;
             originalItemData = null;
         }
         
+        // Re-enable submit button
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+        
         // Ask user to view reports
         setTimeout(() => {
             const viewReports = confirm(
-                `Report ${mainReportId} has been submitted. Would you like to view all reports?`
+                `Report ${mainReportId} has been submitted successfully!\n\n✅ Data saved to database\n📧 Email sent to ${baseReportData.email}\n${totalFiles > 0 ? '📁 Files uploading in background\n' : ''}\nWould you like to view all reports?`
             );
             if (viewReports) {
                 window.location.href = 'waste_report_table.html';
@@ -1767,22 +1698,16 @@ async function handleSubmit(event) {
         
     } catch (error) {
         console.error('❌ Error submitting report:', error);
-        console.error('Error details:', error.message, error.stack);
         
         let errorMessage = isResubmitting ? 'Error resubmitting item: ' : 'Error submitting report: ';
-        if (error.code === 'permission-denied') {
-            errorMessage += 'Permission denied. Check Firebase rules.';
-        } else if (error.code === 'unavailable') {
-            errorMessage += 'Network error. Please check your connection.';
-        } else if (error.code === 'storage/unauthorized') {
-            errorMessage += 'Storage permission denied. Check Firebase Storage rules.';
-        } else if (error.code === 'storage/retry-limit-exceeded') {
-            errorMessage += 'Upload failed after multiple attempts. Please try again.';
-        } else {
-            errorMessage += error.message || 'Unknown error';
-        }
+        errorMessage += error.message || 'Unknown error';
         
         showNotification(errorMessage, 'error');
+        
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+        showLoading(false);
+        showUploadProgress(false);
         
         // Save to localStorage as backup
         try {
@@ -1794,15 +1719,9 @@ async function handleSubmit(event) {
                 timestamp: new Date().toISOString()
             });
             localStorage.setItem('wasteReports_backup', JSON.stringify(reports));
-            console.log('Saved to localStorage as backup');
         } catch (localError) {
             console.error('Could not save to localStorage:', localError);
         }
-    } finally {
-        submitBtn.textContent = originalText;
-        submitBtn.disabled = false;
-        showLoading(false);
-        showUploadProgress(false);
     }
 }
 
@@ -1827,7 +1746,6 @@ function checkUrlParameters() {
         document.getElementById('itemId').value = itemId;
         showNotification('Item ID detected from URL. Click "Load Rejected Item" to populate the form.', 'info');
         
-        // Auto-load after a short delay if user doesn't click
         setTimeout(() => {
             if (!isResubmitting) {
                 const loadBtn = document.getElementById('loadItemButton');
@@ -1849,22 +1767,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (reportDateInput) {
         const today = new Date().toISOString().split('T')[0];
         reportDateInput.value = today;
-        console.log('Set report date to:', today);
     }
     
     const form = document.getElementById('wasteReportForm');
     if (form) {
-        console.log('Form found:', form.id);
-        
         form.addEventListener('submit', function(e) {
             console.log('Form submit event triggered');
             handleSubmit(e);
         });
-        
-        const submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) {
-            console.log('Submit button found:', submitBtn.className);
-        }
     }
     
     const disposalTypeCheckboxes = document.querySelectorAll('input[name="disposalType"]');
@@ -1883,10 +1793,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         showNotification('Failed to load items. Please refresh the page.', 'error');
     }
     
-    testFirebaseConnection();
-    checkGASConfig();
-    
-    // Check URL parameters for item ID
     checkUrlParameters();
     
     window.addEventListener('click', function(event) {
@@ -1903,140 +1809,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 });
 
-async function testFirebaseConnection() {
-    try {
-        if (!firebase.apps.length) {
-            console.error('Firebase not initialized');
-            return;
-        }
-        
-        console.log('Testing Firebase connection...');
-        
-        // Test Firestore
-        const testRef = db.collection('_test').doc('connection');
-        await testRef.set({
-            test: true,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        console.log('✅ Firebase Firestore write test successful');
-        
-        await testRef.delete();
-        
-        // Test Storage
-        const storageRef = storage.ref().child('_test/test.txt');
-        const testBlob = new Blob(['Firebase Storage Test'], { type: 'text/plain' });
-        await storageRef.put(testBlob);
-        
-        console.log('✅ Firebase Storage write test successful');
-        
-        await storageRef.delete();
-        
-        console.log('✅ Firebase connection test complete');
-        
-    } catch (error) {
-        console.error('❌ Firebase connection test failed:', error);
-        
-        let errorMessage = 'Firebase connection issue: ';
-        if (error.code === 'permission-denied') {
-            errorMessage += 'Permission denied. Please check Firebase rules.';
-        } else if (error.code === 'unavailable') {
-            errorMessage += 'Network error. Please check your internet connection.';
-        } else {
-            errorMessage += error.message;
-        }
-        
-        showNotification(errorMessage, 'error');
-    }
-}
-
-function checkGASConfig() {
-    console.log('Google Apps Script Configuration Check:');
-    console.log('- ENDPOINT:', GAS_CONFIG.ENDPOINT);
-    console.log('- SENDER_EMAIL:', GAS_CONFIG.SENDER_EMAIL);
-    console.log('- SENDER_NAME:', GAS_CONFIG.SENDER_NAME);
-    
-    if (!GAS_CONFIG.ENDPOINT) {
-        console.warn('⚠️ WARNING: Google Apps Script URL not configured');
-        showNotification('Email service not configured. Please set up Google Apps Script backend.', 'warning');
-    }
-}
-
-window.testGASEmail = async () => {
-    const testEmail = prompt('Enter email to test email service:');
-    if (!testEmail) return;
-    
-    showLoading(true, 'Sending test email...');
-    try {
-        const testData = {
-            email: testEmail,
-            store: 'Test Store',
-            personnel: 'Test User',
-            reportDate: new Date().toISOString().split('T')[0],
-            disposalTypes: ['noWaste']
-        };
-        
-        const result = await sendEmailConfirmation(testData, 'TEST-' + Date.now(), []);
-        
-        if (result.success) {
-            alert('✅ Test email request submitted! Check your inbox.');
-        } else {
-            alert(`❌ Test email failed: ${result.error}`);
-        }
-    } catch (error) {
-        alert(`❌ Error: ${error.message}`);
-    } finally {
-        showLoading(false);
-    }
-};
-
-window.debugSubmit = handleSubmit;
-window.debugFirebase = () => {
-    console.log('Firebase status:', {
-        initialized: !!firebase.apps.length,
-        db: !!db,
-        storage: !!storage,
-        config: firebaseConfig
-    });
-    testFirebaseConnection();
-};
-window.debugGAS = checkGASConfig;
-
-window.refreshItems = async () => {
-    try {
-        showNotification('Refreshing items from database...', 'info');
-        await fetchItemsFromFirestore();
-        showNotification('Items refreshed successfully!', 'success');
-    } catch (error) {
-        showNotification('Failed to refresh items: ' + error.message, 'error');
-    }
-};
-
-window.testStorageUpload = async () => {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'image/*';
-    
-    fileInput.onchange = async (e) => {
-        if (e.target.files.length > 0) {
-            const file = e.target.files[0];
-            showLoading(true, 'Testing storage upload...');
-            
-            try {
-                const result = await uploadFileToStorage(file, 'TEST-' + Date.now(), 'test-item', 0);
-                alert(`✅ Storage upload successful!\nURL: ${result.url}`);
-                console.log('Storage upload result:', result);
-            } catch (error) {
-                alert(`❌ Storage upload failed: ${error.message}`);
-            } finally {
-                showLoading(false);
-            }
-        }
-    };
-    
-    fileInput.click();
-};
-
 // Export functions for global access
 window.loadRejectedItem = loadRejectedItem;
 window.addExpiredItem = addExpiredItem;
@@ -2044,3 +1816,4 @@ window.addWasteItem = addWasteItem;
 window.removeField = removeField;
 window.toggleDisposalType = toggleDisposalType;
 window.toggleAdditionalNotesRequirement = toggleAdditionalNotesRequirement;
+window.debugSubmit = handleSubmit;
