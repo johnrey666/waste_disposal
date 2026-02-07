@@ -102,6 +102,9 @@ let chartAnalysis = {
     timeSeriesData: {} // NEW: For line chart time series
 };
 
+// Statistics variables
+let statsFilterPeriod = 'all'; // Default to "All Time"
+
 // Cache for reports to reduce database calls
 let reportsCache = {
     data: [],
@@ -156,6 +159,161 @@ const STORE_DISPLAY_NAMES = {
     'FG LEGAZPI': 'LEGAZPI',
     'FG NAGA': 'NAGA'
 };
+
+// ================================
+// STATISTICS FUNCTIONS - UPDATED WITH FILTER
+// ================================
+function updateStatisticsFromAllReports() {
+    if (!allReportsData || allReportsData.length === 0) {
+        updateStatistics(0, 0, 0, 0, 0);
+        return;
+    }
+    
+    // Filter reports based on selected period
+    const filteredReports = filterReportsByPeriod(allReportsData, statsFilterPeriod);
+    
+    let expiredCount = 0;
+    let wasteCount = 0;
+    let noWasteCount = 0;
+    let pendingApprovalCount = 0;
+    let rejectedCount = 0;
+    let partialCount = 0;
+    let completeCount = 0;
+    let totalCost = 0;
+    let approvedCost = 0;
+    
+    filteredReports.forEach(report => {
+        const disposalTypes = report.disposalTypes;
+        
+        // Count for statistics
+        if (disposalTypes.includes('expired')) expiredCount++;
+        if (disposalTypes.includes('waste')) wasteCount++;
+        if (disposalTypes.includes('noWaste')) noWasteCount++;
+        
+        const approvalStatus = getReportApprovalStatus(report);
+        if (approvalStatus === 'pending') pendingApprovalCount++;
+        if (approvalStatus === 'rejected') rejectedCount++;
+        if (approvalStatus === 'partial') partialCount++;
+        if (approvalStatus === 'complete') completeCount++;
+        
+        // Calculate costs
+        totalCost += calculateReportCost(report);
+        approvedCost += calculateApprovedReportCost(report);
+    });
+    
+    updateStatistics(
+        filteredReports.length, 
+        expiredCount, 
+        wasteCount, 
+        noWasteCount, 
+        pendingApprovalCount
+    );
+    
+    // Update stats period info
+    const statsPeriodInfo = Performance.getElement('#statsPeriodInfo');
+    if (statsPeriodInfo) {
+        const periodText = getStatsPeriodText(statsFilterPeriod);
+        statsPeriodInfo.textContent = `Showing statistics for: ${periodText} (${filteredReports.length} reports)`;
+    }
+}
+
+function filterReportsByPeriod(reports, period) {
+    if (period === 'all' || !reports || reports.length === 0) {
+        return reports;
+    }
+    
+    const now = new Date();
+    let startDate, endDate;
+    
+    switch(period) {
+        case 'today':
+            startDate = new Date(now);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(now);
+            endDate.setHours(23, 59, 59, 999);
+            break;
+        case 'thisWeek':
+            startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - startDate.getDay()); // Start of week (Sunday)
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 6); // End of week (Saturday)
+            endDate.setHours(23, 59, 59, 999);
+            break;
+        case 'thisMonth':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            endDate.setHours(23, 59, 59, 999);
+            break;
+        case 'lastMonth':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            endDate.setHours(23, 59, 59, 999);
+            break;
+        case 'thisYear':
+            startDate = new Date(now.getFullYear(), 0, 1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(now.getFullYear(), 11, 31);
+            endDate.setHours(23, 59, 59, 999);
+            break;
+        default:
+            return reports;
+    }
+    
+    return reports.filter(report => {
+        const reportDate = new Date(report.reportDate);
+        return reportDate >= startDate && reportDate <= endDate;
+    });
+}
+
+function getStatsPeriodText(period) {
+    const now = new Date();
+    
+    switch(period) {
+        case 'today':
+            return `Today (${now.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'})})`;
+        case 'thisWeek':
+            const weekStart = new Date(now);
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+            return `This Week (${weekStart.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} - ${weekEnd.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
+        case 'thisMonth':
+            return `This Month (${now.toLocaleDateString('en-US', {month: 'long', year: 'numeric'})})`;
+        case 'lastMonth':
+            const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            return `Last Month (${lastMonth.toLocaleDateString('en-US', {month: 'long', year: 'numeric'})})`;
+        case 'thisYear':
+            return `This Year (${now.getFullYear()})`;
+        case 'all':
+        default:
+            return 'All Time';
+    }
+}
+
+function updateStatistics(total, expired, waste, noWaste, pending = 0) {
+    const setText = (id, text) => {
+        const el = Performance.getElement(id);
+        if (el) el.textContent = text;
+    };
+    
+    setText('#totalReports', total);
+    setText('#expiredCount', expired);
+    setText('#wasteCount', waste);
+    setText('#noWasteCount', noWaste);
+    setText('#pendingApprovalCount', pending);
+}
+
+function refreshStatistics() {
+    updateStatisticsFromAllReports();
+}
+
+function changeStatsPeriod(period) {
+    statsFilterPeriod = period;
+    refreshStatistics();
+}
 
 // ================================
 // OPTIMIZED IMAGE FUNCTIONS
@@ -736,6 +894,9 @@ async function loadAllReportsForChart() {
         
         analyzeStorePerformance();
         createChartBasedOnType();
+        
+        // Update statistics with all reports data
+        updateStatisticsFromAllReports();
         
     } catch (error) {
         console.error('Error loading reports for chart:', error);
@@ -2198,122 +2359,6 @@ function getApprovedItemCount(report) {
             }
         });
     }
-
-    // Add this function to buildItemContent (around line 2200-2300)
-function buildItemContent(item, index, type, reportId) {
-    const approvalStatus = item.approvalStatus || 'pending';
-    const statusClass = `status-${approvalStatus}`;
-    const statusIcon = approvalStatus === 'approved' ? 'fa-check-circle' : 
-                     approvalStatus === 'rejected' ? 'fa-times-circle' : 'fa-clock';
-    const itemCost = item.itemCost || 0;
-    const totalCost = itemCost * (item.quantity || 0);
-    
-    let content = `
-        <div class="item-list-item">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <div>
-                    <strong>Item ${index + 1}: ${item.item || 'N/A'}</strong>
-                    <span class="item-approval-status ${statusClass}" style="margin-left: 8px;">
-                        <i class="fas ${statusIcon}"></i> ${approvalStatus.charAt(0).toUpperCase() + approvalStatus.slice(1)}
-                    </span>
-                    ${item.resubmitted ? `
-                    <span class="item-approval-status status-resubmitted" style="margin-left: 8px; background: #ffc107; color: #856404;">
-                        <i class="fas fa-redo"></i> Resubmitted
-                    </span>
-                    ` : ''}
-                </div>
-                <div style="text-align: right;">
-                    <span style="background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 10px; font-size: 11px; display: block; margin-bottom: 4px;">
-                        ${item.quantity || 0} ${item.unit || 'units'}
-                    </span>
-                    <span style="background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 10px; font-size: 11px; display: block;">
-                        ₱${totalCost.toFixed(2)} ${approvalStatus !== 'approved' ? '<small style="color: #999;">(pending)</small>' : ''}
-                    </span>
-                </div>
-            </div>
-            <div style="font-size: 12px; color: var(--color-gray); margin-bottom: 8px;">
-    `;
-    
-    if (type === 'expired') {
-        content += `
-            <div>Delivered: ${formatDate(item.deliveredDate)}</div>
-            <div>Manufactured: ${formatDate(item.manufacturedDate)}</div>
-            <div>Expired: ${formatDate(item.expirationDate)}</div>
-        `;
-    } else {
-        content += `<div>Reason: ${item.reason || 'N/A'}</div>`;
-    }
-    
-    content += `<div>Unit Cost: ₱${(item.itemCost || 0).toFixed(2)}</div></div>`;
-    
-    // Add resubmission info
-    if (item.resubmitted) {
-        content += `
-            <div style="background: #fff3cd; padding: 8px; border-radius: 4px; margin-bottom: 8px; font-size: 11px;">
-                <i class="fas fa-redo"></i> <strong>Resubmitted:</strong> ${formatDate(item.resubmittedAt)}
-                ${item.previousRejectionReason ? `
-                <div style="margin-top: 4px; color: #856404;">
-                    <i class="fas fa-exclamation-triangle"></i> Previous rejection: ${item.previousRejectionReason}
-                </div>
-                ` : ''}
-                ${item.resubmissionCount > 1 ? `
-                <div style="margin-top: 4px; color: #856404;">
-                    <i class="fas fa-history"></i> Resubmission attempt: ${item.resubmissionCount}
-                </div>
-                ` : ''}
-            </div>
-        `;
-    }
-    
-    // Add approval/rejection info
-    if (approvalStatus === 'approved' && item.approvedAt) {
-        content += `
-            <div style="font-size: 10px; color: #155724; margin-bottom: 8px;">
-                <i class="fas fa-check-circle"></i> Approved by ${item.approvedBy || 'Administrator'} on ${formatDate(item.approvedAt)}
-            </div>
-        `;
-    }
-    
-    if (approvalStatus === 'rejected' && item.rejectionReason) {
-        content += `
-            <div class="rejection-reason">
-                <i class="fas fa-times-circle"></i> <strong>Rejection Reason:</strong> ${item.rejectionReason}
-                <div style="font-size: 9px; margin-top: 2px;">
-                    Rejected by ${item.rejectedBy || 'Administrator'} on ${formatDate(item.rejectedAt)}
-                </div>
-            </div>
-        `;
-    }
-    
-    // Add images using optimized ImageManager
-    content += ImageManager.displayImagesInItem(item, index, type);
-    
-    // Add notes if exists
-    if (item.notes) {
-        content += `
-            <div style="margin-top: 8px; padding: 8px; background: var(--color-offwhite); border-radius: var(--border-radius); font-size: 11px;">
-                <strong>Notes:</strong> ${item.notes}
-            </div>
-        `;
-    }
-    
-    // Add approval buttons if pending (including resubmitted items)
-    if (approvalStatus === 'pending') {
-        content += `
-            <div class="approval-actions">
-                <button class="approve-btn" onclick="approveItem('${reportId}', ${index}, '${type}')">
-                    <i class="fas fa-check"></i> Approve
-                </button>
-                <button class="reject-btn" onclick="openRejectionModal(${JSON.stringify(item).replace(/"/g, '&quot;')}, '${reportId}', ${index}, '${type}')">
-                    <i class="fas fa-times"></i> Reject
-                </button>
-            </div>
-        `;
-    }
-    
-    content += `</div>`;
-    return content;
-}
     
     if (report.wasteItems) {
         report.wasteItems.forEach(item => {
@@ -2767,7 +2812,7 @@ async function deleteReport(reportId) {
         
         showNotification(`Report deleted successfully. ${imagesDeleted} images removed from storage.`, 'success');
         
-        // Refresh chart data
+        // Refresh chart data and statistics
         setTimeout(() => {
             loadAllReportsForChart();
         }, 500);
@@ -2867,7 +2912,7 @@ async function deleteAllReports(applyFilters = false) {
         
         showNotification(`Deleted ${deletedReports} reports and ${deletedImages} images from storage.`, 'success');
         
-        // Refresh chart data
+        // Refresh chart data and statistics
         setTimeout(() => {
             loadAllReportsForChart();
         }, 1000);
@@ -3189,7 +3234,7 @@ async function loadReports() {
         } else {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="12" class="empty-state">
+                    <td colspan="11" class="empty-state">
                         <i class="fas fa-inbox"></i>
                         <h3>No reports found</h3>
                         <p>Try changing your filters or submit a new report.</p>
@@ -3198,8 +3243,14 @@ async function loadReports() {
             `;
         }
         
-        // Update statistics
-        updateStatistics(reportsData.length, expiredCount, wasteCount, noWasteCount, pendingApprovalCount);
+        // Update statistics from all reports (not just current page)
+        if (allReportsData.length > 0) {
+            updateStatisticsFromAllReports();
+        } else {
+            // Fallback to current page data if all reports not loaded yet
+            updateStatistics(reportsData.length, expiredCount, wasteCount, noWasteCount, pendingApprovalCount);
+        }
+        
         updatePageInfo();
         updatePaginationButtons();
         
@@ -3281,7 +3332,6 @@ function createTableRow(report) {
             <strong>₱${totalCost.toFixed(2)}</strong>
             ${approvedCost < totalCost ? `<div style="font-size: 10px; color: #666;">(₱${approvedCost.toFixed(2)} approved)</div>` : ''}
         </td>
-        <td><span class="status-badge status-submitted">Submitted</span></td>
         <td>${getApprovalStatusBadge(report)}</td>
         <td>
             <div style="display: flex; gap: 4px;">
@@ -3296,19 +3346,6 @@ function createTableRow(report) {
     `;
     
     return row;
-}
-
-function updateStatistics(total, expired, waste, noWaste, pending = 0) {
-    const setText = (id, text) => {
-        const el = Performance.getElement(id);
-        if (el) el.textContent = text;
-    };
-    
-    setText('#totalReports', total);
-    setText('#expiredCount', expired);
-    setText('#wasteCount', waste);
-    setText('#noWasteCount', noWaste);
-    setText('#pendingApprovalCount', pending);
 }
 
 function updatePageInfo() {
@@ -3618,19 +3655,6 @@ async function bulkRejectItems(reportId, itemType, reason) {
             report
         );
         
-        // Optionally send individual emails with item IDs
-        // for (const rejectedItem of rejectedItems) {
-        //     await sendRejectionEmailViaGAS(
-        //         report.email,
-        //         report.reportId || reportId,
-        //         rejectedItem.index,
-        //         itemType,
-        //         reason.trim(),
-        //         report,
-        //         rejectedItem.itemId
-        //     );
-        // }
-        
     } catch (error) {
         console.error('Error bulk rejecting items:', error);
         showNotification('Error bulk rejecting items: ' + error.message, 'error');
@@ -3638,6 +3662,7 @@ async function bulkRejectItems(reportId, itemType, reason) {
         showLoading(false);
     }
 }
+
 async function updateReportAfterApproval(reportId) {
     try {
         const doc = await db.collection('wasteReports').doc(reportId).get();
@@ -3659,7 +3684,7 @@ async function updateReportAfterApproval(reportId) {
             const tableBody = Performance.getElement('#reportsTableBody');
             if (tableBody && tableBody.children[rowIndex]) {
                 const row = tableBody.children[rowIndex];
-                const approvalCell = row.cells[9];
+                const approvalCell = row.cells[9]; // Updated to 9 since we removed Status column
                 if (approvalCell) {
                     approvalCell.innerHTML = getApprovalStatusBadge(updatedReport);
                 }
@@ -3671,8 +3696,10 @@ async function updateReportAfterApproval(reportId) {
             await viewReportDetails(reportId);
         }
         
-        // Refresh statistics
-        updateStatisticsFromReports();
+        // Refresh statistics from all reports
+        if (allReportsData.length > 0) {
+            updateStatisticsFromAllReports();
+        }
         
         // Refresh chart data
         setTimeout(() => {
@@ -3683,25 +3710,6 @@ async function updateReportAfterApproval(reportId) {
         console.error('Error updating UI after approval:', error);
         loadReports();
     }
-}
-
-function updateStatisticsFromReports() {
-    let expiredCount = 0;
-    let wasteCount = 0;
-    let noWasteCount = 0;
-    let pendingApprovalCount = 0;
-    
-    reportsData.forEach(report => {
-        const disposalTypes = report.disposalTypes;
-        
-        if (disposalTypes.includes('expired')) expiredCount++;
-        if (disposalTypes.includes('waste')) wasteCount++;
-        if (disposalTypes.includes('noWaste')) noWasteCount++;
-        
-        if (getReportApprovalStatus(report) === 'pending') pendingApprovalCount++;
-    });
-    
-    updateStatistics(reportsData.length, expiredCount, wasteCount, noWasteCount, pendingApprovalCount);
 }
 
 // ================================
@@ -3974,7 +3982,7 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
 }
 
 // ================================
-// EXPORT FUNCTIONS
+// EXPORT FUNCTIONS - FIXED
 // ================================
 async function exportReports(type = 'current') {
     if (!isAuthenticated()) {
@@ -3996,6 +4004,8 @@ async function exportReports(type = 'current') {
             const storeFilter = Performance.getElement('#filterStore');
             const dateFromFilter = Performance.getElement('#filterDateFrom');
             const dateToFilter = Performance.getElement('#filterDateTo');
+            const typeFilter = Performance.getElement('#filterType');
+            const filterStatus = Performance.getElement('#filterStatus');
             
             if (storeFilter?.value) {
                 query = query.where('store', '==', storeFilter.value);
@@ -4020,33 +4030,81 @@ async function exportReports(type = 'current') {
             });
         });
         
-        // Apply date range filter client-side for export
-        const dateFromFilter = Performance.getElement('#filterDateFrom');
-        const dateToFilter = Performance.getElement('#filterDateTo');
-        
-        if (type === 'current' && (dateFromFilter?.value || dateToFilter?.value)) {
+        // Apply ALL client-side filters for "Export Filtered Reports"
+        if (type === 'current') {
+            const storeFilter = Performance.getElement('#filterStore');
+            const dateFromFilter = Performance.getElement('#filterDateFrom');
+            const dateToFilter = Performance.getElement('#filterDateTo');
+            const typeFilter = Performance.getElement('#filterType');
+            const filterStatus = Performance.getElement('#filterStatus');
+            const searchInput = Performance.getElement('#searchInput');
+            
             reports = reports.filter(report => {
-                const reportDate = new Date(report.reportDate);
                 let isValid = true;
                 
-                if (dateFromFilter?.value) {
-                    const fromDate = new Date(dateFromFilter.value);
-                    fromDate.setHours(0, 0, 0, 0);
-                    if (reportDate < fromDate) {
+                // Apply store filter
+                if (storeFilter?.value && report.store !== storeFilter.value) {
+                    isValid = false;
+                }
+                
+                // Apply date range filter
+                if (dateFromFilter?.value || dateToFilter?.value) {
+                    const reportDate = new Date(report.reportDate);
+                    
+                    if (dateFromFilter?.value) {
+                        const fromDate = new Date(dateFromFilter.value);
+                        fromDate.setHours(0, 0, 0, 0);
+                        if (reportDate < fromDate) {
+                            isValid = false;
+                        }
+                    }
+                    
+                    if (dateToFilter?.value) {
+                        const toDate = new Date(dateToFilter.value);
+                        toDate.setHours(23, 59, 59, 999);
+                        if (reportDate > toDate) {
+                            isValid = false;
+                        }
+                    }
+                }
+                
+                // Apply type filter
+                if (typeFilter?.value) {
+                    const disposalTypes = report.disposalTypes;
+                    if (!disposalTypes.includes(typeFilter.value)) {
                         isValid = false;
                     }
                 }
                 
-                if (dateToFilter?.value) {
-                    const toDate = new Date(dateToFilter.value);
-                    toDate.setHours(23, 59, 59, 999);
-                    if (reportDate > toDate) {
+                // Apply approval status filter
+                if (filterStatus?.value) {
+                    const approvalStatus = getReportApprovalStatus(report);
+                    if (approvalStatus !== filterStatus.value) {
+                        isValid = false;
+                    }
+                }
+                
+                // Apply search filter
+                if (searchInput?.value) {
+                    const searchTerm = searchInput.value.toLowerCase();
+                    const searchMatch = 
+                        (report.reportId && report.reportId.toLowerCase().includes(searchTerm)) ||
+                        (report.email && report.email.toLowerCase().includes(searchTerm)) ||
+                        (report.personnel && report.personnel.toLowerCase().includes(searchTerm)) ||
+                        (report.store && report.store.toLowerCase().includes(searchTerm));
+                    
+                    if (!searchMatch) {
                         isValid = false;
                     }
                 }
                 
                 return isValid;
             });
+        }
+        
+        if (reports.length === 0) {
+            showNotification('No reports match your filters for export', 'warning');
+            return;
         }
         
         await exportToExcel(reports, type === 'all' ? 'All_Reports' : 'Filtered_Reports');
@@ -4712,6 +4770,20 @@ function setupEventListeners() {
     if (chartDatePickerTo) chartDatePickerTo.addEventListener('change', createChartBasedOnType);
     if (chartStore) chartStore.addEventListener('change', createChartBasedOnType);
     
+    // Statistics filter
+    const statsPeriodFilter = Performance.getElement('#statsPeriodFilter');
+    const refreshStatsBtn = Performance.getElement('#refreshStatsBtn');
+    
+    if (statsPeriodFilter) {
+        statsPeriodFilter.addEventListener('change', function() {
+            changeStatsPeriod(this.value);
+        });
+    }
+    
+    if (refreshStatsBtn) {
+        refreshStatsBtn.addEventListener('click', refreshStatistics);
+    }
+    
     // Reports filters with debounce
     const searchInput = Performance.getElement('#searchInput');
     const filterStore = Performance.getElement('#filterStore');
@@ -5002,3 +5074,5 @@ window.closeDeleteAllModal = closeDeleteAllModal;
 window.confirmDelete = confirmDelete;
 window.confirmDeleteAll = confirmDeleteAll;
 window.deleteSingleImage = deleteSingleImage;
+window.refreshStatistics = refreshStatistics;
+window.changeStatsPeriod = changeStatsPeriod;

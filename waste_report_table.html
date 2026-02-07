@@ -199,7 +199,6 @@
                             <th>Submitted</th>
                             <th>Items</th>
                             <th>At-Cost (₱)</th>
-                            <th>Status</th>
                             <th>Approval</th>
                             <th>Actions</th>
                         </tr>
@@ -226,222 +225,244 @@
                 </div>
             </div>
 
-          <!-- Chart Section -->
-<div class="chart-section">
-    <div class="chart-header">
-        <h2><i class="fas fa-chart-bar"></i> Store Performance</h2>
-        <div class="period-info" id="periodInfo">All Time</div>
-        <div class="chart-type-selector">
-            <button class="chart-type-btn active" data-type="bar">
-                <i class="fas fa-chart-bar"></i>
-            </button>
-            <button class="chart-type-btn" data-type="line">
-                <i class="fas fa-chart-line"></i>
-            </button>
-            <button class="chart-type-btn" data-type="pie">
-                <i class="fas fa-chart-pie"></i>
-            </button>
-        </div>
-    </div>
-    
-    <div class="chart-controls">
-        <!-- Store selector - only shown for line chart -->
-        <div id="storeSelectorContainer" class="chart-control-group" style="display: none;">
-            <label for="chartStore">Store:</label>
-            <select id="chartStore" class="chart-select">
-                <option value="all">All Stores</option>
-                <option>FG Express IROSIN</option>
-                <option>FG Express LIGAO</option>
-                <option>FG Express POLANGUI</option>
-                <option>FG Express MASBATE</option>
-                <option>FG Express DARAGA</option>
-                <option>FG Express BAAO</option>
-                <option>FG Express PIODURAN</option>
-                <option>FG Express RIZAL</option>
-                <option>FG to go TABACO</option>
-                <option>FG to go LEGAZPI</option>
-                <option>FG LEGAZPI</option>
-                <option>FG NAGA</option>
-            </select>
-        </div>
-        
-        <div class="chart-control-group">
-            <label for="chartPeriod">Period:</label>
-            <select id="chartPeriod" class="chart-select">
-                <option value="last7days">Last 7 Days</option>
-                <option value="last30days">Last 30 Days</option>
-                <option value="thisWeek">This Week</option>
-                <option value="lastWeek">Last Week</option>
-                <option value="thisMonth">This Month</option>
-                <option value="lastMonth">Last Month</option>
-                <option value="thisQuarter">This Quarter</option>
-                <option value="thisYear">This Year</option>
-                <option value="all">All Time</option>
-                <option value="specificDateRange">Date Range</option>
-            </select>
-        </div>
-        
-        <!-- Date range picker - only shown for specificDateRange -->
-        <div id="dateRangePickerContainer" class="chart-control-group" style="display: none;">
-            <label for="chartDateFrom">From:</label>
-            <input type="date" id="chartDateFrom" class="chart-select" style="width: 130px;">
-            <label for="chartDateTo" style="margin-left: 10px;">To:</label>
-            <input type="date" id="chartDateTo" class="chart-select" style="width: 130px;">
-        </div>
-        
-        <div class="chart-control-group">
-            <label for="chartMetric">Metric:</label>
-            <select id="chartMetric" class="chart-select">
-                <option value="cost">Total At-Cost (Approved only)</option>
-                <option value="totalCost">Total At-Cost (All items)</option>
-                <option value="reports">Reports Count</option>
-                <option value="items">Approved Items Count</option>
-                <option value="totalItems">All Items Count</option>
-                <option value="average">Average Cost (Approved)</option>
-                <option value="averageTotal">Average Cost (All items)</option>
-            </select>
-        </div>
-        
-        <div class="chart-control-group">
-            <label for="chartSort">Sort:</label>
-            <select id="chartSort" class="chart-select">
-                <option value="desc">High to Low</option>
-                <option value="asc">Low to High</option>
-            </select>
-        </div>
-        
-        <button class="btn btn-secondary" id="refreshChart">
-            <i class="fas fa-sync-alt"></i>
-        </button>
-    </div>
-    
-    <div class="chart-container">
-        <canvas id="storeChart"></canvas>
-    </div>
-    
-    <div class="chart-stats">
-        <div class="chart-stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-trophy"></i>
+            <!-- Chart Section -->
+            <div class="chart-section">
+                <div class="chart-header">
+                    <h2><i class="fas fa-chart-bar"></i> Store Performance</h2>
+                    <div class="period-info" id="periodInfo">All Time</div>
+                    <div class="chart-type-selector">
+                        <button class="chart-type-btn active" data-type="bar">
+                            <i class="fas fa-chart-bar"></i>
+                        </button>
+                        <button class="chart-type-btn" data-type="line">
+                            <i class="fas fa-chart-line"></i>
+                        </button>
+                        <button class="chart-type-btn" data-type="pie">
+                            <i class="fas fa-chart-pie"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="chart-controls">
+                    <!-- Store selector - only shown for line chart -->
+                    <div id="storeSelectorContainer" class="chart-control-group" style="display: none;">
+                        <label for="chartStore">Store:</label>
+                        <select id="chartStore" class="chart-select">
+                            <option value="all">All Stores</option>
+                            <option>FG Express IROSIN</option>
+                            <option>FG Express LIGAO</option>
+                            <option>FG Express POLANGUI</option>
+                            <option>FG Express MASBATE</option>
+                            <option>FG Express DARAGA</option>
+                            <option>FG Express BAAO</option>
+                            <option>FG Express PIODURAN</option>
+                            <option>FG Express RIZAL</option>
+                            <option>FG to go TABACO</option>
+                            <option>FG to go LEGAZPI</option>
+                            <option>FG LEGAZPI</option>
+                            <option>FG NAGA</option>
+                        </select>
+                    </div>
+                    
+                    <div class="chart-control-group">
+                        <label for="chartPeriod">Period:</label>
+                        <select id="chartPeriod" class="chart-select">
+                            <option value="last7days">Last 7 Days</option>
+                            <option value="last30days">Last 30 Days</option>
+                            <option value="thisWeek">This Week</option>
+                            <option value="lastWeek">Last Week</option>
+                            <option value="thisMonth">This Month</option>
+                            <option value="lastMonth">Last Month</option>
+                            <option value="thisQuarter">This Quarter</option>
+                            <option value="thisYear">This Year</option>
+                            <option value="all">All Time</option>
+                            <option value="specificDateRange">Date Range</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Date range picker - only shown for specificDateRange -->
+                    <div id="dateRangePickerContainer" class="chart-control-group" style="display: none;">
+                        <label for="chartDateFrom">From:</label>
+                        <input type="date" id="chartDateFrom" class="chart-select" style="width: 130px;">
+                        <label for="chartDateTo" style="margin-left: 10px;">To:</label>
+                        <input type="date" id="chartDateTo" class="chart-select" style="width: 130px;">
+                    </div>
+                    
+                    <div class="chart-control-group">
+                        <label for="chartMetric">Metric:</label>
+                        <select id="chartMetric" class="chart-select">
+                            <option value="cost">Total At-Cost (Approved only)</option>
+                            <option value="totalCost">Total At-Cost (All items)</option>
+                            <option value="reports">Reports Count</option>
+                            <option value="items">Approved Items Count</option>
+                            <option value="totalItems">All Items Count</option>
+                            <option value="average">Average Cost (Approved)</option>
+                            <option value="averageTotal">Average Cost (All items)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="chart-control-group">
+                        <label for="chartSort">Sort:</label>
+                        <select id="chartSort" class="chart-select">
+                            <option value="desc">High to Low</option>
+                            <option value="asc">Low to High</option>
+                        </select>
+                    </div>
+                    
+                    <button class="btn btn-secondary" id="refreshChart">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="storeChart"></canvas>
+                </div>
+                
+                <div class="chart-stats">
+                    <div class="chart-stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-trophy"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h4>Highest At-Cost</h4>
+                            <div class="value" id="topStoreName">-</div>
+                            <div class="subtext" id="topStoreValue">₱0.00</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h4>Total Cost</h4>
+                            <div class="value" id="totalCost">₱0.00</div>
+                            <div class="subtext" id="reportCount">0 reports</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h4>Consistent Store</h4>
+                            <div class="value" id="consistentStore">-</div>
+                            <div class="subtext" id="consistencyRate">0% rate</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h4>Attention Needed</h4>
+                            <div class="value" id="attentionStore">-</div>
+                            <div class="subtext" id="attentionReason">No issues</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chart-footer">
+                    <div>
+                        <span>Daily rate: <strong id="dailyRate">0%</strong></span>
+                    </div>
+                    <div>
+                        <span id="lastUpdated">Updated: -</span>
+                    </div>
+                </div>
             </div>
-            <div class="stat-content">
-                <h4>Highest At-Cost</h4>
-                <div class="value" id="topStoreName">-</div>
-                <div class="subtext" id="topStoreValue">₱0.00</div>
-            </div>
-        </div>
-        
-        <div class="chart-stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-money-bill-wave"></i>
-            </div>
-            <div class="stat-content">
-                <h4>Total Cost</h4>
-                <div class="value" id="totalCost">₱0.00</div>
-                <div class="subtext" id="reportCount">0 reports</div>
-            </div>
-        </div>
-        
-        <div class="chart-stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-calendar-check"></i>
-            </div>
-            <div class="stat-content">
-                <h4>Consistent Store</h4>
-                <div class="value" id="consistentStore">-</div>
-                <div class="subtext" id="consistencyRate">0% rate</div>
-            </div>
-        </div>
-        
-        <div class="chart-stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-exclamation-triangle"></i>
-            </div>
-            <div class="stat-content">
-                <h4>Attention Needed</h4>
-                <div class="value" id="attentionStore">-</div>
-                <div class="subtext" id="attentionReason">No issues</div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="chart-footer">
-        <div>
-            <span>Daily rate: <strong id="dailyRate">0%</strong></span>
-        </div>
-        <div>
-            <span id="lastUpdated">Updated: -</span>
-        </div>
-    </div>
-</div>
 
-        <!-- Statistics -->
-        <section id="statisticsSection" class="statistics-section" style="display: none;">
-            <h2><i class="fas fa-chart-line"></i> Report Statistics</h2>
-            <div class="stats-cards">
-                <div class="stat-card">
-                    <div class="stat-icon total-reports">
-                        <i class="fas fa-file-alt"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3 id="totalReports">0</h3>
-                        <p>Total Reports</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon expired">
-                        <i class="fas fa-calendar-times"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3 id="expiredCount">0</h3>
-                        <p>Expired Items</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon waste">
-                        <i class="fas fa-trash-alt"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3 id="wasteCount">0</h3>
-                        <p>Waste Reports</p>
+            <!-- Updated Statistics Section with Filter -->
+            <section id="statisticsSection" class="statistics-section">
+                <div class="stats-header">
+                    <h2><i class="fas fa-chart-line"></i> Report Statistics</h2>
+                    <div class="stats-filter-container">
+                        <div class="stats-filter-group">
+                            <label for="statsPeriodFilter"><i class="fas fa-filter"></i> Filter Period:</label>
+                            <select id="statsPeriodFilter" class="stats-filter-select">
+                                <option value="all">All Time</option>
+                                <option value="today">Today</option>
+                                <option value="thisWeek">This Week</option>
+                                <option value="thisMonth">This Month</option>
+                                <option value="lastMonth">Last Month</option>
+                                <option value="thisYear">This Year</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-secondary refresh-stats-btn" id="refreshStatsBtn">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-icon nowaste">
-                        <i class="fas fa-check-circle"></i>
+                <div class="stats-cards">
+                    <div class="stat-card">
+                        <div class="stat-icon total-reports">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="totalReports">0</h3>
+                            <p>Total Reports</p>
+                        </div>
                     </div>
-                    <div class="stat-content">
-                        <h3 id="noWasteCount">0</h3>
-                        <p>No Waste</p>
+                    <div class="stat-card">
+                        <div class="stat-icon expired">
+                            <i class="fas fa-calendar-times"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="expiredCount">0</h3>
+                            <p>Expired Items</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon waste">
+                            <i class="fas fa-trash-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="wasteCount">0</h3>
+                            <p>Waste Reports</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon nowaste">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="noWasteCount">0</h3>
+                            <p>No Waste</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon pending">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="pendingApprovalCount">0</h3>
+                            <p>Pending Approval</p>
+                        </div>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-icon pending">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3 id="pendingApprovalCount">0</h3>
-                        <p>Pending Approval</p>
-                    </div>
+                <div class="stats-footer">
+                    <span id="statsPeriodInfo">Showing statistics for: All Time</span>
                 </div>
-            </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <div class="footer-content">
+                    <div class="footer-brand">
+                        <img src="logo.jpg" alt="FG Operations Logo" class="footer-logo" loading="lazy" width="20" height="20">
+                        <span>FG Operations Waste/Disposal Reporting System</span>
+                    </div>
+                    <div class="footer-links">
+                        <a href="index.html">Home</a>
+                        <a href="submit_waste_report.html">Submit Report</a>
+                        <a href="waste_report_table.html">View Reports</a>
+                    </div>
+                    <p class="copyright"><i class="fas fa-shield-alt"></i> Access is restricted to authorized personnel only.</p>
+                </div>
+            </footer>
         </section>
-
-        <!-- Footer -->
-        <footer class="footer">
-            <div class="footer-content">
-                <div class="footer-brand">
-                    <img src="logo.jpg" alt="FG Operations Logo" class="footer-logo" loading="lazy" width="20" height="20">
-                    <span>FG Operations Waste/Disposal Reporting System</span>
-                </div>
-                <div class="footer-links">
-                    <a href="index.html">Home</a>
-                    <a href="submit_waste_report.html">Submit Report</a>
-                    <a href="waste_report_table.html">View Reports</a>
-                </div>
-                <p class="copyright"><i class="fas fa-shield-alt"></i> Access is restricted to authorized personnel only.</p>
-            </div>
-        </footer>
     </div>
 
     <!-- Report Details Modal with Image Gallery -->

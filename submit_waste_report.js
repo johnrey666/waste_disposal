@@ -391,7 +391,7 @@ function initSelect2Dropdown(selectElementId) {
 }
 
 // ================================
-// LOAD REJECTED ITEM FUNCTION
+// LOAD REJECTED ITEM FUNCTION - UPDATED TO ALLOW DATE EDITING
 // ================================
 async function loadRejectedItem() {
     const itemIdInput = document.getElementById('itemId');
@@ -441,14 +441,37 @@ async function loadRejectedItem() {
             reportId: reportId,
             itemType: itemType,
             itemIndex: itemIndex,
-            originalItem: rejectedItem
+            originalItem: rejectedItem,
+            originalReportDate: report.reportDate // Store original report date
         };
         
         isResubmitting = true;
         
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('reportDate').value = today;
+        // FIX: Use original report date instead of today's date
+        const reportDateInput = document.getElementById('reportDate');
+        const reportDateNote = document.getElementById('reportDateNote');
         
+        if (reportDateInput) {
+            // Set to original report date
+            reportDateInput.value = report.reportDate || new Date().toISOString().split('T')[0];
+            
+            // Add note about date editing
+            if (reportDateNote) {
+                reportDateNote.innerHTML = '<i class="fas fa-info-circle"></i> You can edit this date if needed. Original report date was ' + formatDate(report.reportDate);
+            }
+            
+            // Enable date editing
+            reportDateInput.disabled = false;
+            reportDateInput.style.backgroundColor = '#fff';
+            reportDateInput.style.cursor = 'text';
+        }
+        
+        // Fill other form fields from original report
+        document.getElementById('email').value = report.email || '';
+        document.getElementById('store').value = report.store || '';
+        document.getElementById('personnel').value = report.personnel || '';
+        
+        // Set disposal types based on item type
         if (itemType === 'expired') {
             document.getElementById('expired').checked = true;
             toggleDisposalType('expired');
@@ -457,19 +480,22 @@ async function loadRejectedItem() {
             toggleDisposalType('waste');
         }
         
+        // Clear existing fields
         const expiredFields = document.getElementById('expiredFields');
         const wasteFields = document.getElementById('wasteFields');
         if (expiredFields) expiredFields.innerHTML = '';
         if (wasteFields) wasteFields.innerHTML = '';
         
+        // Add item with data
         if (itemType === 'expired') {
             addExpiredItemWithData(rejectedItem);
         } else {
             addWasteItemWithData(rejectedItem);
         }
         
-        showNotification('Rejected item loaded. Please review and edit the information for resubmission.', 'success');
+        showNotification('Rejected item loaded. You can edit all fields including the date for resubmission.', 'success');
         
+        // Scroll to the relevant section
         if (itemType === 'expired') {
             document.getElementById('expiredContainer').scrollIntoView({ behavior: 'smooth' });
         } else {
@@ -492,7 +518,6 @@ function addExpiredItemWithData(itemData) {
     if (!expiredFields) return;
     
     const itemId = Date.now() + Math.random().toString(36).substr(2, 9);
-    const today = new Date().toISOString().split('T')[0];
     
     const fieldGroup = document.createElement('div');
     fieldGroup.className = 'field-group';
@@ -514,7 +539,7 @@ function addExpiredItemWithData(itemData) {
             </div>
             <div class="form-group">
                 <label for="deliveredDate-${itemId}">Delivered Date <span class="required">*</span></label>
-                <input type="date" id="deliveredDate-${itemId}" name="expiredItems[${itemId}][deliveredDate]" required value="${itemData.deliveredDate || today}">
+                <input type="date" id="deliveredDate-${itemId}" name="expiredItems[${itemId}][deliveredDate]" required value="${itemData.deliveredDate || ''}">
             </div>
             <div class="form-group">
                 <label for="manufacturedDate-${itemId}">Manufactured Date <span class="required">*</span></label>
@@ -1418,9 +1443,9 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
 }
 
 // ================================
-// RESUBMISSION HANDLER
+// RESUBMISSION HANDLER - UPDATED FOR DATE EDITING
 // ================================
-async function handleResubmission(originalItemData, updatedItem) {
+async function handleResubmission(originalItemData, updatedItem, newReportDate) {
     try {
         console.log('🔄 Processing resubmission...');
         
@@ -1452,7 +1477,9 @@ async function handleResubmission(originalItemData, updatedItem) {
             previousRejectionReason: originalItem.rejectionReason,
             rejectionReason: null,
             rejectedAt: null,
-            rejectedBy: null
+            rejectedBy: null,
+            // Use the new report date if provided
+            reportDate: newReportDate || originalItem.reportDate || report.reportDate
         };
         
         items[originalItemData.itemIndex] = mergedItem;
@@ -1463,12 +1490,18 @@ async function handleResubmission(originalItemData, updatedItem) {
             hasResubmission: true
         };
         
+        // If the report date is being changed, update it in the main report too
+        if (newReportDate && newReportDate !== report.reportDate) {
+            updateData.reportDate = newReportDate;
+            updateData.originalReportDate = report.reportDate;
+        }
+        
         await db.collection('wasteReports').doc(originalItemData.reportId).update(updateData);
         
         console.log('✅ Item resubmitted successfully');
         
         const emailResult = await sendEmailConfirmation(
-            report,
+            { ...report, reportDate: newReportDate || report.reportDate },
             originalItemData.reportId,
             [mergedItem],
             true
@@ -1478,7 +1511,8 @@ async function handleResubmission(originalItemData, updatedItem) {
             success: true,
             reportId: originalItemData.reportId,
             emailSent: emailResult.success,
-            item: mergedItem
+            item: mergedItem,
+            reportDateChanged: newReportDate && newReportDate !== report.reportDate
         };
         
     } catch (error) {
@@ -1537,10 +1571,14 @@ async function handleSubmit(event) {
         disposalTypes.push(checkbox.value);
     });
     
+    // Get the current report date from the form
+    const currentReportDate = document.getElementById('reportDate').value;
+    
     // Check if this is a resubmission
     if (isResubmitting && originalItemData) {
         try {
             console.log('Processing ACTUAL resubmission...');
+            console.log('Using report date:', currentReportDate);
             
             let resubmittedItem = null;
             let itemId = null;
@@ -1678,7 +1716,8 @@ async function handleSubmit(event) {
                 }
             }
             
-            const result = await handleResubmission(originalItemData, resubmittedItem);
+            // Pass the current report date to the resubmission handler
+            const result = await handleResubmission(originalItemData, resubmittedItem, currentReportDate);
             
             showNotification('✅ Item resubmitted successfully! The original report has been updated.', 'success');
             
@@ -1686,10 +1725,20 @@ async function handleSubmit(event) {
             if (form) {
                 form.reset();
                 
+                // Reset to today's date for new submissions
                 const today = new Date().toISOString().split('T')[0];
                 const reportDateInput = document.getElementById('reportDate');
                 if (reportDateInput) {
                     reportDateInput.value = today;
+                    reportDateInput.disabled = false;
+                    reportDateInput.style.backgroundColor = '#fff';
+                    reportDateInput.style.cursor = 'text';
+                }
+                
+                // Reset the date note
+                const reportDateNote = document.getElementById('reportDateNote');
+                if (reportDateNote) {
+                    reportDateNote.textContent = 'Date of disposal report';
                 }
                 
                 const expiredFields = document.getElementById('expiredFields');
@@ -1720,7 +1769,7 @@ async function handleSubmit(event) {
             
             setTimeout(() => {
                 const viewReports = confirm(
-                    `Item successfully resubmitted!\n\n✅ Original report updated\n📧 Notification sent\n🔄 Item status reset to pending\n\nWould you like to view the updated report?`
+                    `Item successfully resubmitted!\n\n✅ Original report updated\n📧 Notification sent\n🔄 Item status reset to pending\n${result.reportDateChanged ? '📅 Report date updated\n' : ''}\nWould you like to view the updated report?`
                 );
                 if (viewReports) {
                     window.location.href = 'waste_report_table.html';
@@ -1747,7 +1796,7 @@ async function handleSubmit(event) {
         email: document.getElementById('email').value.trim(),
         store: document.getElementById('store').value,
         personnel: document.getElementById('personnel').value.trim(),
-        reportDate: document.getElementById('reportDate').value,
+        reportDate: currentReportDate, // Use the date from the form
         disposalTypes: disposalTypes,
         reportId: mainReportId,
         submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
