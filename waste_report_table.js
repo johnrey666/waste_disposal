@@ -4113,20 +4113,22 @@ async function exportToExcel(reports, fileName) {
     try {
         const data = [];
         
-        // Add headers
+        // Add headers - expanded to include item details
         data.push([
             'Report ID', 'Store', 'Personnel', 'Date', 'Type', 'Email', 
-            'Submitted At', 'Total Items', 'At-Cost (₱)', 'Approval Status', 'Expired Items', 'Waste Items'
+            'Submitted At', 'Total Items', 'At-Cost (₱)', 'Approval Status',
+            'Item Type', 'Item Name', 'Item Cost (₱)', 'Quantity', 'Unit',
+            'Total Item Cost (₱)', 'Approval Status', 'Reason/Expiration Date',
+            'Manufactured Date', 'Delivered Date', 'Notes'
         ]);
         
-        // Add rows
+        // Add rows for each item in each report
         reports.forEach(report => {
             const disposalTypes = Array.isArray(report.disposalTypes) ? report.disposalTypes.join(', ') : report.disposalType;
             const totalItems = (report.expiredItems?.length || 0) + (report.wasteItems?.length || 0);
             const approvalStatus = getReportApprovalStatus(report);
             const totalCost = calculateReportCost(report);
-            
-            data.push([
+            const baseReportData = [
                 report.reportId || report.id,
                 report.store || 'N/A',
                 report.personnel || 'N/A',
@@ -4136,14 +4138,108 @@ async function exportToExcel(reports, fileName) {
                 formatDateTime(report.submittedAt),
                 totalItems,
                 totalCost.toFixed(2),
-                approvalStatus,
-                report.expiredItems?.length || 0,
-                report.wasteItems?.length || 0
-            ]);
+                approvalStatus
+            ];
+            
+            // Process expired items
+            if (report.expiredItems && report.expiredItems.length > 0) {
+                report.expiredItems.forEach((item, index) => {
+                    const itemCost = item.itemCost || 0;
+                    const quantity = item.quantity || 0;
+                    const itemTotalCost = itemCost * quantity;
+                    
+                    const row = [
+                        ...baseReportData,
+                        'EXPIRED',
+                        item.item || 'N/A',
+                        itemCost.toFixed(2),
+                        quantity,
+                        item.unit || 'units',
+                        itemTotalCost.toFixed(2),
+                        item.approvalStatus || 'pending',
+                        formatDate(item.expirationDate) || 'N/A',
+                        formatDate(item.manufacturedDate) || 'N/A',
+                        formatDate(item.deliveredDate) || 'N/A',
+                        item.notes || ''
+                    ];
+                    data.push(row);
+                });
+            }
+            
+            // Process waste items
+            if (report.wasteItems && report.wasteItems.length > 0) {
+                report.wasteItems.forEach((item, index) => {
+                    const itemCost = item.itemCost || 0;
+                    const quantity = item.quantity || 0;
+                    const itemTotalCost = itemCost * quantity;
+                    
+                    const row = [
+                        ...baseReportData,
+                        'WASTE',
+                        item.item || 'N/A',
+                        itemCost.toFixed(2),
+                        quantity,
+                        item.unit || 'units',
+                        itemTotalCost.toFixed(2),
+                        item.approvalStatus || 'pending',
+                        item.reason || 'N/A',
+                        'N/A', // Manufactured date not applicable for waste
+                        'N/A', // Delivered date not applicable for waste
+                        item.notes || ''
+                    ];
+                    data.push(row);
+                });
+            }
+            
+            // For "no waste" reports, add a single row
+            if (report.disposalTypes?.includes('noWaste') || 
+                (totalItems === 0 && !report.expiredItems?.length && !report.wasteItems?.length)) {
+                const row = [
+                    ...baseReportData,
+                    'NO WASTE',
+                    'No items to report',
+                    '0.00',
+                    '0',
+                    'N/A',
+                    '0.00',
+                    'approved',
+                    'No waste reported',
+                    'N/A',
+                    'N/A',
+                    report.notes || ''
+                ];
+                data.push(row);
+            }
         });
         
         // Create worksheet
         const ws = XLSX.utils.aoa_to_sheet(data);
+        
+        // Set column widths for better readability
+        const colWidths = [
+            { wch: 20 }, // Report ID
+            { wch: 25 }, // Store
+            { wch: 20 }, // Personnel
+            { wch: 15 }, // Date
+            { wch: 15 }, // Type
+            { wch: 25 }, // Email
+            { wch: 20 }, // Submitted At
+            { wch: 12 }, // Total Items
+            { wch: 15 }, // At-Cost
+            { wch: 15 }, // Approval Status
+            { wch: 12 }, // Item Type
+            { wch: 30 }, // Item Name
+            { wch: 15 }, // Item Cost
+            { wch: 10 }, // Quantity
+            { wch: 10 }, // Unit
+            { wch: 15 }, // Total Item Cost
+            { wch: 15 }, // Approval Status
+            { wch: 20 }, // Reason/Expiration
+            { wch: 15 }, // Manufactured Date
+            { wch: 15 }, // Delivered Date
+            { wch: 30 }  // Notes
+        ];
+        ws['!cols'] = colWidths;
         
         // Create workbook
         const wb = XLSX.utils.book_new();
@@ -4156,7 +4252,7 @@ async function exportToExcel(reports, fileName) {
         const blob = new Blob([wbout], { type: 'application/octet-stream' });
         saveAs(blob, `${fileName}_${new Date().toISOString().split('T')[0]}.xlsx`);
         
-        showNotification('Export completed successfully', 'success');
+        showNotification(`Export completed successfully. ${data.length - 1} rows exported.`, 'success');
         
     } catch (error) {
         console.error('Error creating Excel file:', error);
