@@ -128,7 +128,7 @@ function formatFileSize(bytes) {
 }
 
 // ================================
-// NEW: UPDATE DISPOSAL TYPES PREVIEW
+// UPDATE DISPOSAL TYPES PREVIEW
 // ================================
 function updateDisposalTypesPreview() {
     const disposalTypeCheckboxes = document.querySelectorAll('input[name="disposalType"]:checked');
@@ -142,17 +142,14 @@ function updateDisposalTypesPreview() {
         return;
     }
     
-    // Map disposal type values to human-readable format
     const disposalTypeMap = {
         'expired': 'Expired Items',
         'waste': 'Waste',
         'noWaste': 'No Waste'
     };
     
-    // Clear existing tags
     tagsContainer.innerHTML = '';
     
-    // Add new tags
     disposalTypeCheckboxes.forEach(checkbox => {
         const tag = document.createElement('span');
         tag.className = 'disposal-type-tag';
@@ -164,105 +161,137 @@ function updateDisposalTypesPreview() {
 }
 
 // ================================
-// OPTIMIZED FIREBASE STORAGE FUNCTIONS
+// OPTIMIZED FIREBASE STORAGE FUNCTIONS - FIXED
 // ================================
 
-// Parallel file upload for a single item
-async function uploadFilesForItemParallel(files, reportId, itemId) {
+// CRITICAL FIX: Upload files with correct path structure
+async function uploadFilesForItemParallel(files, reportId, itemId, itemType, itemIndex) {
     const uploadedFiles = [];
     
-    const maxConcurrent = 3;
-    const chunks = [];
+    // Clean itemId and create a clean identifier
+    const cleanItemId = itemId.replace(/[^a-zA-Z0-9]/g, '_');
+    const cleanItemType = itemType === 'expired' ? 'expired' : 'waste';
     
-    for (let i = 0; i < files.length; i += maxConcurrent) {
-        chunks.push(files.slice(i, i + maxConcurrent));
-    }
+    console.log(`📤 Uploading files for: Report=${reportId}, Item=${cleanItemId}, Type=${cleanItemType}, Index=${itemIndex}`);
     
-    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-        const chunk = chunks[chunkIndex];
-        const uploadPromises = chunk.map(async (file, fileIndex) => {
-            const globalIndex = chunkIndex * maxConcurrent + fileIndex;
-            
-            try {
-                let fileToUpload = file;
-                if (file.size > 2 * 1024 * 1024 && file.type.startsWith('image/')) {
-                    fileToUpload = await prepareFileForUpload(file);
-                }
-                
-                const timestamp = Date.now() + globalIndex;
-                const randomString = Math.random().toString(36).substring(7);
-                const fileExtension = file.name.split('.').pop();
-                const fileName = `${reportId}/${itemId}/${timestamp}_${randomString}.${fileExtension}`;
-                
-                const storageRef = storage.ref().child(fileName);
-                const uploadTask = storageRef.put(fileToUpload);
-                
-                return new Promise((resolve, reject) => {
-                    uploadTask.on(
-                        'state_changed',
-                        null,
-                        reject,
-                        async () => {
-                            try {
-                                const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-                                resolve({
-                                    url: downloadURL,
-                                    name: file.name,
-                                    type: file.type,
-                                    size: fileToUpload.size,
-                                    path: fileName,
-                                    storagePath: storageRef.fullPath,
-                                    index: globalIndex
-                                });
-                            } catch (error) {
-                                reject(error);
-                            }
-                        }
-                    );
-                });
-            } catch (error) {
-                console.error(`Failed to upload file ${file.name}:`, error);
-                throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+            let fileToUpload = file;
+            if (file.size > 2 * 1024 * 1024 && file.type.startsWith('image/')) {
+                fileToUpload = await prepareFileForUpload(file);
             }
-        });
-        
-        const results = await Promise.all(uploadPromises);
-        uploadedFiles.push(...results);
-        
-        const currentProgress = (uploadedFiles.length / files.length) * 100;
-        showUploadProgress(true, uploadedFiles.length, files.length, `${uploadedFiles.length}/${files.length} files`);
+            
+            const timestamp = Date.now() + i;
+            const randomString = Math.random().toString(36).substring(7);
+            const fileExtension = file.name.split('.').pop();
+            
+            // CRITICAL FIX: Use a clean, consistent path structure
+            const fileName = `reports/${reportId}/${cleanItemType}_${cleanItemId}_${i}_${timestamp}.${fileExtension}`;
+            
+            console.log(`📁 Storage path: ${fileName}`);
+            
+            const storageRef = storage.ref().child(fileName);
+            const uploadTask = storageRef.put(fileToUpload);
+            
+            const result = await new Promise((resolve, reject) => {
+                uploadTask.on(
+                    'state_changed',
+                    null,
+                    reject,
+                    async () => {
+                        try {
+                            const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                            console.log(`✅ File uploaded: ${fileName}`);
+                            console.log(`🔗 Download URL: ${downloadURL}`);
+                            
+                            resolve({
+                                url: downloadURL,
+                                name: file.name,
+                                type: file.type,
+                                size: fileToUpload.size,
+                                path: fileName, // CRITICAL: This is what waste_report_table.js needs
+                                storagePath: fileName,
+                                originalName: file.name,
+                                uploadedAt: new Date().toISOString(),
+                                fileIndex: i
+                            });
+                        } catch (error) {
+                            reject(error);
+                        }
+                    }
+                );
+            });
+            
+            uploadedFiles.push(result);
+            
+            // Update progress
+            const currentProgress = (uploadedFiles.length / files.length) * 100;
+            showUploadProgress(true, uploadedFiles.length, files.length, `${uploadedFiles.length}/${files.length} files`);
+            
+        } catch (error) {
+            console.error(`❌ Failed to upload file ${file.name}:`, error);
+            throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+        }
     }
     
-    return uploadedFiles.sort((a, b) => a.index - b.index);
+    console.log(`✅ All files uploaded for item ${cleanItemId}:`, uploadedFiles);
+    return uploadedFiles.sort((a, b) => a.fileIndex - b.fileIndex);
 }
 
-// Process all items with parallel upload
+// Process all items with uploads - FIXED
 async function processAllItemsWithUploads(reportId, allItems, progressCallback) {
     const totalItems = allItems.length;
     let completedItems = 0;
     
+    console.log(`🔄 Processing ${totalItems} items with uploads for report ${reportId}`);
+    
     for (let i = 0; i < allItems.length; i++) {
         const item = allItems[i];
         const itemId = item.itemId;
+        const itemType = item.type;
+        const itemIndex = i;
+        
         const fileInput = document.getElementById(
             item.type === 'expired' ? `documentation-${itemId}` : `wasteDocumentation-${itemId}`
         );
         
         if (fileInput && fileInput.files.length > 0) {
             const files = Array.from(fileInput.files);
+            console.log(`📄 Found ${files.length} files for item ${itemId} (${itemType})`);
             
             try {
-                const uploadedFiles = await uploadFilesForItemParallel(files, reportId, `${item.type}-${itemId}`);
-                item.documentation = uploadedFiles;
-                item.totalFiles = uploadedFiles.length;
+                const uploadedFiles = await uploadFilesForItemParallel(files, reportId, itemId, itemType, itemIndex);
                 
+                // CRITICAL: Store the documentation with proper structure
+                item.documentation = uploadedFiles.map(file => ({
+                    url: file.url,
+                    name: file.name,
+                    type: file.type,
+                    size: file.size,
+                    path: file.path, // This is what waste_report_table.js looks for
+                    storagePath: file.storagePath,
+                    originalName: file.originalName,
+                    uploadedAt: file.uploadedAt
+                }));
+                
+                item.totalFiles = uploadedFiles.length;
+                item.hasImages = uploadedFiles.length > 0;
                 item.storageUsed = uploadedFiles.reduce((sum, file) => sum + (file.size || 0), 0);
                 item.originalFileSize = files.reduce((sum, file) => sum + file.size, 0);
                 
+                console.log(`✅ Files processed for item ${itemId}:`, item.documentation);
+                
             } catch (error) {
-                console.error(`Failed to upload files for item ${item.item}:`, error);
+                console.error(`❌ Failed to upload files for item ${itemId}:`, error);
                 throw error;
             }
+        } else {
+            item.documentation = [];
+            item.totalFiles = 0;
+            item.hasImages = false;
+            console.log(`ℹ️ No files for item ${itemId}`);
         }
         
         completedItems++;
@@ -271,6 +300,7 @@ async function processAllItemsWithUploads(reportId, allItems, progressCallback) 
         }
     }
     
+    console.log(`✅ All items processed for report ${reportId}`);
     return allItems;
 }
 
@@ -361,7 +391,7 @@ function initSelect2Dropdown(selectElementId) {
 }
 
 // ================================
-// LOAD REJECTED ITEM FUNCTION - MODIFIED
+// LOAD REJECTED ITEM FUNCTION
 // ================================
 async function loadRejectedItem() {
     const itemIdInput = document.getElementById('itemId');
@@ -416,13 +446,9 @@ async function loadRejectedItem() {
         
         isResubmitting = true;
         
-        // Don't pre-populate other fields for resubmission
-        // Only show the item being resubmitted
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('reportDate').value = today;
         
-        // Show appropriate disposal type based on item type
-        const disposalTypes = report.disposalTypes || [];
         if (itemType === 'expired') {
             document.getElementById('expired').checked = true;
             toggleDisposalType('expired');
@@ -431,13 +457,11 @@ async function loadRejectedItem() {
             toggleDisposalType('waste');
         }
         
-        // Clear any existing fields
         const expiredFields = document.getElementById('expiredFields');
         const wasteFields = document.getElementById('wasteFields');
         if (expiredFields) expiredFields.innerHTML = '';
         if (wasteFields) wasteFields.innerHTML = '';
         
-        // Add the rejected item for resubmission
         if (itemType === 'expired') {
             addExpiredItemWithData(rejectedItem);
         } else {
@@ -678,7 +702,7 @@ function toggleAdditionalNotesRequirement(itemId) {
 }
 
 // ================================
-// DISPOSAL TYPE TOGGLE FUNCTIONS - UPDATED
+// DISPOSAL TYPE TOGGLE FUNCTIONS
 // ================================
 function toggleDisposalType(checkboxId) {
     const expiredCheckbox = document.getElementById('expired');
@@ -801,7 +825,7 @@ function validateDisposalTypeSelection() {
 }
 
 // ================================
-// IMAGE COMPRESSION FUNCTIONS (OPTIMIZED)
+// IMAGE COMPRESSION FUNCTIONS
 // ================================
 async function prepareFileForUpload(file) {
     if (file.size <= 2 * 1024 * 1024 || !file.type.startsWith('image/')) {
@@ -1209,13 +1233,11 @@ function validateDynamicFields() {
 }
 
 // ================================
-// RELIABLE EMAIL FUNCTION - COMPLETELY FIXED
+// RELIABLE EMAIL FUNCTION
 // ================================
 async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResubmissionUpdate = false) {
     try {
         console.log('📧 Sending email confirmation...');
-        console.log('isResubmissionUpdate parameter:', isResubmissionUpdate);
-        console.log('reportData.isResubmission:', reportData.isResubmission);
         
         if (!GAS_CONFIG.ENDPOINT) {
             return { success: false, error: 'Email service URL not configured' };
@@ -1229,19 +1251,16 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
             minute: '2-digit'
         });
         
-        // Format disposal types properly
         let formattedDisposalTypes = reportData.disposalTypes || [];
         let disposalTypesText = 'N/A';
         
         if (formattedDisposalTypes.length > 0) {
-            // Map disposal type values to human-readable format
             const disposalTypeMap = {
                 'expired': 'Expired Items',
                 'waste': 'Waste',
                 'noWaste': 'No Waste'
             };
             
-            // Convert to human-readable format
             formattedDisposalTypes = formattedDisposalTypes.map(type => 
                 disposalTypeMap[type] || type
             );
@@ -1292,8 +1311,6 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
             }
         }
         
-        // FIXED: Send correct parameter names that Apps Script expects
-        // CRITICAL FIX: For NEW reports, ALWAYS set isResubmission to false
         const isActuallyResubmission = isResubmissionUpdate || false;
         
         const emailData = {
@@ -1313,7 +1330,6 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
             reportId: reportId,
             totalBatches: reportData.totalBatches || 1,
             hasAttachments: reportData.hasImages || false,
-            // CRITICAL FIX: Only set isResubmission to true if it's actually a resubmission
             isResubmission: isActuallyResubmission
         };
 
@@ -1402,7 +1418,7 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
 }
 
 // ================================
-// RESUBMISSION HANDLER - MODIFIED
+// RESUBMISSION HANDLER
 // ================================
 async function handleResubmission(originalItemData, updatedItem) {
     try {
@@ -1422,29 +1438,25 @@ async function handleResubmission(originalItemData, updatedItem) {
             throw new Error('Item index out of bounds');
         }
         
-        // Update the existing item with resubmission data
         const originalItem = items[originalItemData.itemIndex];
         
-        // Merge updated data with original item
         const mergedItem = {
             ...originalItem,
             ...updatedItem,
-            approvalStatus: 'pending', // Reset to pending
-            previousApprovalStatus: 'rejected', // Track previous status
+            approvalStatus: 'pending',
+            previousApprovalStatus: 'rejected',
             resubmitted: true,
             resubmissionCount: (originalItem.resubmissionCount || 0) + 1,
             resubmittedAt: new Date().toISOString(),
             resubmittedBy: 'User',
             previousRejectionReason: originalItem.rejectionReason,
-            rejectionReason: null, // Clear rejection reason
+            rejectionReason: null,
             rejectedAt: null,
             rejectedBy: null
         };
         
-        // Replace the item in the array
         items[originalItemData.itemIndex] = mergedItem;
         
-        // Update the report in Firestore
         const updateData = {
             [itemsField]: items,
             updatedAt: new Date().toISOString(),
@@ -1455,12 +1467,11 @@ async function handleResubmission(originalItemData, updatedItem) {
         
         console.log('✅ Item resubmitted successfully');
         
-        // Send resubmission email - PASS TRUE for resubmissions
         const emailResult = await sendEmailConfirmation(
             report,
             originalItemData.reportId,
             [mergedItem],
-            true // isResubmissionUpdate flag - this is a resubmission
+            true
         );
         
         return {
@@ -1477,7 +1488,7 @@ async function handleResubmission(originalItemData, updatedItem) {
 }
 
 // ================================
-// OPTIMIZED FORM SUBMISSION HANDLER - COMPLETELY FIXED
+// OPTIMIZED FORM SUBMISSION HANDLER - FIXED FOR IMAGES
 // ================================
 async function handleSubmit(event) {
     console.log('Form submission started...');
@@ -1531,7 +1542,6 @@ async function handleSubmit(event) {
         try {
             console.log('Processing ACTUAL resubmission...');
             
-            // Collect the resubmitted item data
             let resubmittedItem = null;
             let itemId = null;
             
@@ -1575,20 +1585,31 @@ async function handleSubmit(event) {
                     previousRejectionReason: originalItemData.originalItem.rejectionReason
                 };
                 
-                // Check for files
                 const fileInput = document.getElementById(`documentation-${itemId}`);
                 if (fileInput && fileInput.files.length > 0) {
                     resubmittedItem.hasFiles = true;
                     resubmittedItem.fileCount = fileInput.files.length;
                     
-                    // Upload files
                     const files = Array.from(fileInput.files);
                     const uploadedFiles = await uploadFilesForItemParallel(
                         files, 
                         originalItemData.reportId, 
-                        `resubmitted-expired-${itemId}`
+                        `resubmitted-expired-${itemId}`,
+                        'expired',
+                        0
                     );
-                    resubmittedItem.documentation = uploadedFiles;
+                    
+                    // CRITICAL: Store documentation with proper structure
+                    resubmittedItem.documentation = uploadedFiles.map(file => ({
+                        url: file.url,
+                        name: file.name,
+                        type: file.type,
+                        size: file.size,
+                        path: file.path,
+                        storagePath: file.storagePath,
+                        originalName: file.originalName,
+                        uploadedAt: file.uploadedAt
+                    }));
                 }
                 
             } else {
@@ -1629,29 +1650,38 @@ async function handleSubmit(event) {
                     previousRejectionReason: originalItemData.originalItem.rejectionReason
                 };
                 
-                // Check for files
                 const fileInput = document.getElementById(`wasteDocumentation-${itemId}`);
                 if (fileInput && fileInput.files.length > 0) {
                     resubmittedItem.hasFiles = true;
                     resubmittedItem.fileCount = fileInput.files.length;
                     
-                    // Upload files
                     const files = Array.from(fileInput.files);
                     const uploadedFiles = await uploadFilesForItemParallel(
                         files, 
                         originalItemData.reportId, 
-                        `resubmitted-waste-${itemId}`
+                        `resubmitted-waste-${itemId}`,
+                        'waste',
+                        0
                     );
-                    resubmittedItem.documentation = uploadedFiles;
+                    
+                    // CRITICAL: Store documentation with proper structure
+                    resubmittedItem.documentation = uploadedFiles.map(file => ({
+                        url: file.url,
+                        name: file.name,
+                        type: file.type,
+                        size: file.size,
+                        path: file.path,
+                        storagePath: file.storagePath,
+                        originalName: file.originalName,
+                        uploadedAt: file.uploadedAt
+                    }));
                 }
             }
             
-            // Update the original report
             const result = await handleResubmission(originalItemData, resubmittedItem);
             
             showNotification('✅ Item resubmitted successfully! The original report has been updated.', 'success');
             
-            // Reset form
             const form = document.getElementById('wasteReportForm');
             if (form) {
                 form.reset();
@@ -1675,7 +1705,6 @@ async function handleSubmit(event) {
                 updateDisposalTypeHint();
                 updateDisposalTypesPreview();
                 
-                // Clear Item ID field and reset resubmission flags
                 const itemIdInput = document.getElementById('itemId');
                 if (itemIdInput) {
                     itemIdInput.value = '';
@@ -1685,12 +1714,10 @@ async function handleSubmit(event) {
                 originalItemData = null;
             }
             
-            // Re-enable submit button
             submitBtn.textContent = originalText;
             submitBtn.disabled = false;
             showLoading(false);
             
-            // Ask user to view reports
             setTimeout(() => {
                 const viewReports = confirm(
                     `Item successfully resubmitted!\n\n✅ Original report updated\n📧 Notification sent\n🔄 Item status reset to pending\n\nWould you like to view the updated report?`
@@ -1712,7 +1739,7 @@ async function handleSubmit(event) {
         return;
     }
     
-    // Regular new report submission - NOT A RESUBMISSION
+    // Regular new report submission
     console.log('Processing NEW report submission (NOT a resubmission)');
     const mainReportId = 'REPORT-' + Date.now().toString();
     
@@ -1728,7 +1755,7 @@ async function handleSubmit(event) {
         createdAt: new Date().toISOString(),
         emailSent: false,
         emailStatus: 'pending',
-        isResubmission: false // EXPLICITLY SET TO FALSE FOR NEW REPORTS
+        isResubmission: false
     };
     
     if (disposalTypes.includes('noWaste')) {
@@ -1856,7 +1883,6 @@ async function handleSubmit(event) {
         // Step 1: Send email confirmation NOW (before file uploads)
         showLoading(true, 'Sending email confirmation...');
         
-        // CRITICAL FIX: For NEW reports, ALWAYS pass FALSE as the last parameter
         const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems, false);
         
         if (emailResult.success) {
@@ -1886,69 +1912,53 @@ async function handleSubmit(event) {
             showLoading(true, 'Uploading files in background...');
             showUploadProgress(true, 0, totalFiles, 'Starting file upload...');
             
-            // Process uploads in background
-            setTimeout(async () => {
-                try {
-                    // Upload files with progress
-                    const processedItems = await processAllItemsWithUploads(
-                        mainReportId,
-                        allItems,
-                        (completed, total) => {
-                            const progress = (completed / total) * 100;
-                            showUploadProgress(true, completed, total, `Item ${completed}/${total}`);
-                        }
-                    );
-                    
-                    // Update Firestore with file information
-                    const expiredItems = processedItems.filter(item => item.type === 'expired');
-                    const wasteItems = processedItems.filter(item => item.type === 'waste');
-                    
-                    const updateData = {};
-                    if (expiredItems.length > 0) {
-                        updateData.expiredItems = expiredItems;
-                        updateData.totalExpiredItems = expiredItems.length;
-                    }
-                    if (wasteItems.length > 0) {
-                        updateData.wasteItems = wasteItems;
-                        updateData.totalWasteItems = wasteItems.length;
-                    }
-                    
-                    // Calculate totals
-                    const uploadedFiles = processedItems.reduce((sum, item) => sum + (item.documentation?.length || 0), 0);
-                    const totalStorage = processedItems.reduce((sum, item) => sum + (item.storageUsed || 0), 0);
-                    const totalOriginalSize = processedItems.reduce((sum, item) => sum + (item.originalFileSize || 0), 0);
-                    
-                    updateData.hasImages = uploadedFiles > 0;
-                    updateData.imageCount = uploadedFiles;
-                    updateData.storageUsed = totalStorage;
-                    updateData.originalFileSize = totalOriginalSize;
-                    updateData.fileUploadComplete = true;
-                    updateData.fileUploadedAt = new Date().toISOString();
-                    
-                    await docRef.update(updateData);
-                    
-                    console.log('✅ Files uploaded and report updated');
-                    showUploadProgress(false);
-                    showLoading(false);
-                    
-                    if (uploadedFiles > 0) {
-                        showNotification('✅ All files uploaded successfully!', 'success');
-                    }
-                    
-                } catch (uploadError) {
-                    console.error('File upload failed:', uploadError);
-                    showUploadProgress(false);
-                    showLoading(false);
-                    
-                    // Mark as failed but report is still saved
-                    await docRef.update({
-                        fileUploadError: uploadError.message,
-                        fileUploadComplete: false
-                    });
-                    
-                    showNotification('⚠️ Some files failed to upload. Report was still saved successfully.', 'warning');
+            // Process uploads with proper file structure
+            const processedItems = await processAllItemsWithUploads(
+                mainReportId,
+                allItems,
+                (completed, total) => {
+                    const progress = (completed / total) * 100;
+                    showUploadProgress(true, completed, total, `Item ${completed}/${total}`);
                 }
-            }, 100);
+            );
+            
+            // Update Firestore with file information
+            const updateData = {};
+            
+            const expiredItems = processedItems.filter(item => item.type === 'expired');
+            const wasteItems = processedItems.filter(item => item.type === 'waste');
+            
+            if (expiredItems.length > 0) {
+                updateData.expiredItems = expiredItems;
+                updateData.totalExpiredItems = expiredItems.length;
+            }
+            if (wasteItems.length > 0) {
+                updateData.wasteItems = wasteItems;
+                updateData.totalWasteItems = wasteItems.length;
+            }
+            
+            // Calculate totals
+            const uploadedFiles = processedItems.reduce((sum, item) => sum + (item.documentation?.length || 0), 0);
+            const totalStorage = processedItems.reduce((sum, item) => sum + (item.storageUsed || 0), 0);
+            const totalOriginalSize = processedItems.reduce((sum, item) => sum + (item.originalFileSize || 0), 0);
+            
+            updateData.hasImages = uploadedFiles > 0;
+            updateData.imageCount = uploadedFiles;
+            updateData.storageUsed = totalStorage;
+            updateData.originalFileSize = totalOriginalSize;
+            updateData.fileUploadComplete = true;
+            updateData.fileUploadedAt = new Date().toISOString();
+            
+            await docRef.update(updateData);
+            
+            console.log('✅ Files uploaded and report updated');
+            showUploadProgress(false);
+            showLoading(false);
+            
+            if (uploadedFiles > 0) {
+                showNotification('✅ All files uploaded successfully!', 'success');
+            }
+            
         } else {
             // No files, just mark as complete
             await docRef.update({
@@ -1999,7 +2009,7 @@ async function handleSubmit(event) {
         // Ask user to view reports
         setTimeout(() => {
             const viewReports = confirm(
-                `Report ${mainReportId} has been submitted successfully!\n\n✅ Data saved to database\n📧 Email sent to ${baseReportData.email}\n${totalFiles > 0 ? '📁 Files uploading in background\n' : ''}\nWould you like to view all reports?`
+                `Report ${mainReportId} has been submitted successfully!\n\n✅ Data saved to database\n📧 Email sent to ${baseReportData.email}\n${totalFiles > 0 ? '📁 Files uploaded successfully\n' : ''}\nWould you like to view all reports?`
             );
             if (viewReports) {
                 window.location.href = 'waste_report_table.html';
