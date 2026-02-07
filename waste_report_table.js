@@ -152,7 +152,7 @@ const STORE_DISPLAY_NAMES = {
     'FG Express PIODURAN': 'PIODURAN',
     'FG Express RIZAL': 'RIZAL',
     'FG to go TABACO': 'TABACO',
-    'FG to go LEGAZPI': 'LEGAZPI',
+    'FG to go LEGAZPI': 'LEGAZPI(to go)',
     'FG LEGAZPI': 'LEGAZPI',
     'FG NAGA': 'NAGA'
 };
