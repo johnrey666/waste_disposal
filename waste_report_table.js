@@ -73,6 +73,9 @@ let lastVisibleDoc = null;
 let firstVisibleDoc = null;
 let reportsData = [];
 let isDataLoading = false;
+let allReportsData = []; // For chart analysis
+let filteredReportsData = []; // For pagination with filters
+let totalFilteredCount = 0; // Track total filtered reports
 
 // Items management variables
 let itemsData = [];
@@ -93,7 +96,6 @@ let currentImageToDeleteData = null;
 // Chart variables
 let storeChart = null;
 let currentChartType = 'bar'; // Default chart type
-let allReportsData = []; // For chart analysis
 let chartAnalysis = {
     stores: {},
     dailyReports: {},
@@ -2298,6 +2300,7 @@ function getDisposalTypeText(disposalTypes) {
     }
 }
 
+// FIXED: Updated getReportApprovalStatus to properly handle partial status
 function getReportApprovalStatus(report) {
     if (!report) return 'pending';
     
@@ -2325,6 +2328,8 @@ function getReportApprovalStatus(report) {
     if (pendingCount === totalItems) return 'pending';
     if (approvedCount === totalItems) return 'complete';
     if (rejectedCount === totalItems) return 'rejected';
+    
+    // FIXED: This is the key fix - partial status should be returned when there are mixed statuses
     return 'partial';
 }
 
@@ -3104,7 +3109,7 @@ function confirmDeleteAll() {
 }
 
 // ================================
-// REPORTS LOADING - OPTIMIZED
+// REPORTS LOADING - OPTIMIZED WITH FIXED PAGINATION
 // ================================
 async function loadReports() {
     if (isDataLoading) return;
@@ -3139,30 +3144,13 @@ async function loadReports() {
             query = query.where('store', '==', storeFilter.value);
         }
         
-        query = query.orderBy('submittedAt', 'desc').limit(pageSize);
-        
-        if (currentPage > 1 && lastVisibleDoc) {
-            query = query.startAfter(lastVisibleDoc);
-        }
+        query = query.orderBy('submittedAt', 'desc');
         
         const snapshot = await query.get();
         
-        if (!snapshot.empty) {
-            lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
-        } else {
-            lastVisibleDoc = null;
-        }
-        
-        let expiredCount = 0;
-        let wasteCount = 0;
-        let noWasteCount = 0;
-        let pendingApprovalCount = 0;
-        let rejectedCount = 0;
-        let partialCount = 0;
-        let completeCount = 0;
-        
-        // Build HTML with DocumentFragment for better performance
-        const fragment = document.createDocumentFragment();
+        // Process all reports
+        filteredReportsData = [];
+        const allReports = [];
         
         snapshot.forEach(doc => {
             const data = doc.data();
@@ -3172,23 +3160,9 @@ async function loadReports() {
                 disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
                               data.disposalType ? [data.disposalType] : ['unknown']
             };
+            allReports.push(report);
             
-            reportsData.push(report);
-            
-            const disposalTypes = report.disposalTypes;
-            
-            // Count for statistics
-            if (disposalTypes.includes('expired')) expiredCount++;
-            if (disposalTypes.includes('waste')) wasteCount++;
-            if (disposalTypes.includes('noWaste')) noWasteCount++;
-            
-            const approvalStatus = getReportApprovalStatus(report);
-            if (approvalStatus === 'pending') pendingApprovalCount++;
-            if (approvalStatus === 'rejected') rejectedCount++;
-            if (approvalStatus === 'partial') partialCount++;
-            if (approvalStatus === 'complete') completeCount++;
-            
-            // Client-side filtering
+            // Apply client-side filters
             const searchMatch = !searchInput?.value || 
                               (report.reportId && report.reportId.toLowerCase().includes(searchInput.value.toLowerCase())) ||
                               (report.email && report.email.toLowerCase().includes(searchInput.value.toLowerCase())) ||
@@ -3196,7 +3170,9 @@ async function loadReports() {
                               (report.store && report.store.toLowerCase().includes(searchInput.value.toLowerCase()));
             
             const typeMatch = !typeFilter?.value || 
-                             disposalTypes.includes(typeFilter.value);
+                             report.disposalTypes.includes(typeFilter.value);
+            
+            const approvalStatus = getReportApprovalStatus(report);
             const statusMatch = !filterStatus?.value || 
                                approvalStatus === filterStatus.value;
             
@@ -3223,9 +3199,31 @@ async function loadReports() {
             }
             
             if (searchMatch && typeMatch && statusMatch && dateMatch) {
-                const row = createTableRow(report);
-                fragment.appendChild(row);
+                filteredReportsData.push(report);
             }
+        });
+        
+        // Store for chart analysis
+        allReportsData = allReports;
+        
+        // Update total filtered count
+        totalFilteredCount = filteredReportsData.length;
+        
+        // Calculate pagination
+        const totalPages = Math.ceil(totalFilteredCount / pageSize);
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = Math.min(startIndex + pageSize, totalFilteredCount);
+        
+        // Get reports for current page
+        const pageReports = filteredReportsData.slice(startIndex, endIndex);
+        
+        // Build HTML with DocumentFragment for better performance
+        const fragment = document.createDocumentFragment();
+        
+        pageReports.forEach(report => {
+            reportsData.push(report);
+            const row = createTableRow(report);
+            fragment.appendChild(row);
         });
         
         // Append all rows at once
@@ -3243,13 +3241,8 @@ async function loadReports() {
             `;
         }
         
-        // Update statistics from all reports (not just current page)
-        if (allReportsData.length > 0) {
-            updateStatisticsFromAllReports();
-        } else {
-            // Fallback to current page data if all reports not loaded yet
-            updateStatistics(reportsData.length, expiredCount, wasteCount, noWasteCount, pendingApprovalCount);
-        }
+        // Update statistics from all reports
+        updateStatisticsFromAllReports();
         
         updatePageInfo();
         updatePaginationButtons();
@@ -3351,12 +3344,18 @@ function createTableRow(report) {
 function updatePageInfo() {
     const pageInfo = Performance.getElement('#pageInfo');
     if (pageInfo) {
-        pageInfo.textContent = `Page ${currentPage}`;
+        pageInfo.textContent = `Page ${currentPage} of ${Math.ceil(totalFilteredCount / pageSize)}`;
     }
     
     const showingCount = Performance.getElement('#showingCount');
+    const totalFilteredCountEl = Performance.getElement('#totalFilteredCount');
+    
     if (showingCount) {
         showingCount.textContent = reportsData.length;
+    }
+    
+    if (totalFilteredCountEl) {
+        totalFilteredCountEl.textContent = totalFilteredCount;
     }
 }
 
@@ -3369,12 +3368,18 @@ function updatePaginationButtons() {
     }
     
     if (nextBtn) {
-        nextBtn.disabled = reportsData.length < pageSize;
+        const totalPages = Math.ceil(totalFilteredCount / pageSize);
+        nextBtn.disabled = currentPage >= totalPages;
     }
 }
 
 function changePage(direction) {
     currentPage += direction;
+    if (currentPage < 1) currentPage = 1;
+    
+    const totalPages = Math.ceil(totalFilteredCount / pageSize);
+    if (currentPage > totalPages) currentPage = totalPages;
+    
     loadReports();
 }
 
@@ -3384,7 +3389,6 @@ function changePage(direction) {
 function debounceApplyFilters() {
     Performance.debounce(() => {
         currentPage = 1;
-        lastVisibleDoc = null;
         loadReports();
     }, 300, 'filters')();
 }
@@ -3401,7 +3405,6 @@ function clearFilters() {
     });
     
     currentPage = 1;
-    lastVisibleDoc = null;
     loadReports();
 }
 
