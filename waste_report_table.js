@@ -2300,7 +2300,7 @@ function getDisposalTypeText(disposalTypes) {
     }
 }
 
-// FIXED: Updated getReportApprovalStatus to properly handle partial status
+// UPDATED: getReportApprovalStatus to properly handle partial status
 function getReportApprovalStatus(report) {
     if (!report) return 'pending';
     
@@ -2329,8 +2329,62 @@ function getReportApprovalStatus(report) {
     if (approvedCount === totalItems) return 'complete';
     if (rejectedCount === totalItems) return 'rejected';
     
-    // FIXED: This is the key fix - partial status should be returned when there are mixed statuses
+    // Partial status for mixed approvals
     return 'partial';
+}
+
+// NEW: Check if report has pending items (for filter)
+function hasPendingItems(report) {
+    if (!report || report.disposalTypes?.includes('noWaste')) {
+        return false;
+    }
+    
+    const expiredItems = report.expiredItems || [];
+    const wasteItems = report.wasteItems || [];
+    
+    for (const item of [...expiredItems, ...wasteItems]) {
+        if (!item.approvalStatus || item.approvalStatus === 'pending') {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// NEW: Check if report has rejected items (for filter)
+function hasRejectedItems(report) {
+    if (!report || report.disposalTypes?.includes('noWaste')) {
+        return false;
+    }
+    
+    const expiredItems = report.expiredItems || [];
+    const wasteItems = report.wasteItems || [];
+    
+    for (const item of [...expiredItems, ...wasteItems]) {
+        if (item.approvalStatus === 'rejected') {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// NEW: Check if report has approved items (for filter)
+function hasApprovedItems(report) {
+    if (!report || report.disposalTypes?.includes('noWaste')) {
+        return true; // No waste reports are considered fully approved
+    }
+    
+    const expiredItems = report.expiredItems || [];
+    const wasteItems = report.wasteItems || [];
+    
+    for (const item of [...expiredItems, ...wasteItems]) {
+        if (item.approvalStatus === 'approved') {
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 function getApprovalStatusBadge(report) {
@@ -3109,7 +3163,7 @@ function confirmDeleteAll() {
 }
 
 // ================================
-// REPORTS LOADING - OPTIMIZED WITH FIXED PAGINATION
+// REPORTS LOADING - OPTIMIZED WITH FIXED PAGINATION AND UPDATED FILTER LOGIC
 // ================================
 async function loadReports() {
     if (isDataLoading) return;
@@ -3172,9 +3226,26 @@ async function loadReports() {
             const typeMatch = !typeFilter?.value || 
                              report.disposalTypes.includes(typeFilter.value);
             
-            const approvalStatus = getReportApprovalStatus(report);
-            const statusMatch = !filterStatus?.value || 
-                               approvalStatus === filterStatus.value;
+            // UPDATED: Status filter logic to handle partial reports correctly
+            let statusMatch = true;
+            if (filterStatus?.value) {
+                const approvalStatus = getReportApprovalStatus(report);
+                
+                // Check if the report should be shown in the selected filter
+                if (filterStatus.value === 'pending') {
+                    // Show reports with pending items OR partial status
+                    statusMatch = hasPendingItems(report);
+                } else if (filterStatus.value === 'rejected') {
+                    // Show reports with rejected items
+                    statusMatch = hasRejectedItems(report);
+                } else if (filterStatus.value === 'complete') {
+                    // Show fully approved reports
+                    statusMatch = approvalStatus === 'complete';
+                } else if (filterStatus.value === 'partial') {
+                    // Show partially approved reports (mixed statuses)
+                    statusMatch = approvalStatus === 'partial';
+                }
+            }
             
             // Date range filtering
             let dateMatch = true;
@@ -4079,11 +4150,18 @@ async function exportReports(type = 'current') {
                     }
                 }
                 
-                // Apply approval status filter
+                // Apply approval status filter - UPDATED WITH NEW LOGIC
                 if (filterStatus?.value) {
                     const approvalStatus = getReportApprovalStatus(report);
-                    if (approvalStatus !== filterStatus.value) {
-                        isValid = false;
+                    
+                    if (filterStatus.value === 'pending') {
+                        isValid = hasPendingItems(report);
+                    } else if (filterStatus.value === 'rejected') {
+                        isValid = hasRejectedItems(report);
+                    } else if (filterStatus.value === 'complete') {
+                        isValid = approvalStatus === 'complete';
+                    } else if (filterStatus.value === 'partial') {
+                        isValid = approvalStatus === 'partial';
                     }
                 }
                 
