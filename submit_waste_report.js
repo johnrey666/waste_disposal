@@ -631,7 +631,7 @@ function addWasteItemWithData(itemData) {
                     <option value="" disabled>Select reason</option>
                     <option value="spoilage" ${itemData.reason === 'spoilage' ? 'selected' : ''}>Spoilage</option>
                     <option value="damaged" ${itemData.reason === 'damaged' ? 'selected' : ''}>Damaged Packaging</option>
-                    <option value="overproduction" ${itemData.reason === 'overproduction' ? 'selected' : ''}>Overproduction</option>
+                    <option value="human_error" ${itemData.reason === 'human_error' ? 'selected' : ''}>Human Error</option>
                     <option value="customer_return" ${itemData.reason === 'customer_return' ? 'selected' : ''}>Customer Return</option>
                     <option value="quality_issue" ${itemData.reason === 'quality_issue' ? 'selected' : ''}>Quality Issue</option>
                     <option value="other" ${itemData.reason === 'other' ? 'selected' : ''}>Other</option>
@@ -666,9 +666,9 @@ function addWasteItemWithData(itemData) {
                 ` : ''}
             </div>
             <div class="form-group">
-                <label for="wasteNotes-${itemId}">Additional Notes <span id="notes-required-${itemId}" class="required" style="display: none;">*</span></label>
-                <textarea id="wasteNotes-${itemId}" name="wasteItems[${itemId}][notes]" rows="2" placeholder="Any additional information">${itemData.notes || ''}</textarea>
-                <span id="notes-note-${itemId}" class="note" style="margin-top: 5px; font-size: 12px; color: #666;"></span>
+                <label for="wasteNotes-${itemId}">Additional Notes <span id="notes-required-${itemId}" class="required" ${(itemData.reason === 'human_error' || itemData.reason === 'customer_return' || itemData.reason === 'quality_issue' || itemData.reason === 'other') ? 'style="display: inline;"' : 'style="display: none;"'}>*</span></label>
+                <textarea id="wasteNotes-${itemId}" name="wasteItems[${itemId}][notes]" rows="2" placeholder="${getNotesPlaceholder(itemData.reason)}">${itemData.notes || ''}</textarea>
+                <span id="notes-note-${itemId}" class="note" style="margin-top: 5px; font-size: 12px; color: #666;">${getNotesNote(itemData.reason)}</span>
             </div>
             ${itemData.rejectionReason ? `
             <div class="form-group" style="grid-column: 1 / -1;">
@@ -692,12 +692,45 @@ function addWasteItemWithData(itemData) {
     }, 100);
 }
 
+// Helper function for notes placeholder
+function getNotesPlaceholder(reason) {
+    switch(reason) {
+        case 'human_error':
+            return 'Required: Please describe the human error that caused the waste';
+        case 'customer_return':
+            return 'Required: Please explain why the item was returned';
+        case 'quality_issue':
+            return 'Required: Please describe the specific quality issue';
+        case 'other':
+            return 'Required: Please specify the exact reason for waste disposal';
+        default:
+            return 'Any additional information';
+    }
+}
+
+// Helper function for notes note
+function getNotesNote(reason) {
+    switch(reason) {
+        case 'human_error':
+            return 'Required: Explain the specific human error (e.g., incorrect preparation, mishandling, mislabeling, etc.)';
+        case 'customer_return':
+            return 'Required: Explain the reason for customer return (e.g., wrong order, customer dissatisfaction, etc.)';
+        case 'quality_issue':
+            return 'Required: Describe the specific quality problem (e.g., off-taste, wrong color, texture issue, etc.)';
+        case 'other':
+            return 'Required: Specify the exact reason for waste disposal';
+        default:
+            return '';
+    }
+}
+
 // ================================
 // TOGGLE ADDITIONAL NOTES REQUIREMENT
 // ================================
 function toggleAdditionalNotesRequirement(itemId) {
     const reasonSelect = document.getElementById(`reason-${itemId}`);
     const notesRequired = document.getElementById(`notes-required-${itemId}`);
+    const notesTextarea = document.getElementById(`wasteNotes-${itemId}`);
     const reasonNote = document.getElementById(`reason-note-${itemId}`);
     const notesNote = document.getElementById(`notes-note-${itemId}`);
     
@@ -708,10 +741,29 @@ function toggleAdditionalNotesRequirement(itemId) {
     if (reasonNote) reasonNote.textContent = '';
     if (notesNote) notesNote.textContent = '';
     
-    if (selectedReason === 'customer_return' || selectedReason === 'quality_issue' || selectedReason === 'other') {
+    // Update placeholder based on selected reason
+    if (notesTextarea) {
+        if (selectedReason === 'human_error') {
+            notesTextarea.placeholder = 'Required: Please describe the human error that caused the waste';
+        } else if (selectedReason === 'customer_return') {
+            notesTextarea.placeholder = 'Required: Please explain why the item was returned';
+        } else if (selectedReason === 'quality_issue') {
+            notesTextarea.placeholder = 'Required: Please describe the specific quality issue';
+        } else if (selectedReason === 'other') {
+            notesTextarea.placeholder = 'Required: Please specify the exact reason for waste disposal';
+        } else {
+            notesTextarea.placeholder = 'Any additional information';
+        }
+    }
+    
+    // Make notes required for human_error, customer_return, quality_issue, and other
+    if (selectedReason === 'human_error' || selectedReason === 'customer_return' || selectedReason === 'quality_issue' || selectedReason === 'other') {
         if (notesRequired) notesRequired.style.display = 'inline';
         
-        if (selectedReason === 'customer_return') {
+        if (selectedReason === 'human_error') {
+            if (reasonNote) reasonNote.textContent = '⚠️ Additional notes required: Please describe the human error';
+            if (notesNote) notesNote.textContent = 'Required: Explain the specific human error (e.g., incorrect preparation, mishandling, mislabeling, etc.)';
+        } else if (selectedReason === 'customer_return') {
             if (reasonNote) reasonNote.textContent = '⚠️ Additional notes required: Please explain why the item was returned';
             if (notesNote) notesNote.textContent = 'Required: Explain the reason for customer return (e.g., wrong order, customer dissatisfaction, etc.)';
         } else if (selectedReason === 'quality_issue') {
@@ -1079,7 +1131,7 @@ function addWasteItem() {
                     <option value="" disabled selected>Select reason</option>
                     <option value="spoilage">Spoilage</option>
                     <option value="damaged">Damaged Packaging</option>
-                    <option value="overproduction">Overproduction</option>
+                    <option value="human_error">Human Error</option>
                     <option value="customer_return">Customer Return</option>
                     <option value="quality_issue">Quality Issue</option>
                     <option value="other">Other</option>
@@ -1234,11 +1286,13 @@ function validateDynamicFields() {
             if (reasonSelect && notesTextarea) {
                 const selectedReason = reasonSelect.value;
                 
-                if ((selectedReason === 'customer_return' || selectedReason === 'quality_issue' || selectedReason === 'other') && 
+                if ((selectedReason === 'human_error' || selectedReason === 'customer_return' || selectedReason === 'quality_issue' || selectedReason === 'other') && 
                     (!notesTextarea.value || notesTextarea.value.trim() === '')) {
                     
                     let reasonText = '';
-                    if (selectedReason === 'customer_return') {
+                    if (selectedReason === 'human_error') {
+                        reasonText = 'human error';
+                    } else if (selectedReason === 'customer_return') {
                         reasonText = 'customer return';
                     } else if (selectedReason === 'quality_issue') {
                         reasonText = 'quality issue';
@@ -1324,8 +1378,11 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
                 htmlReportDetails += '<h4>Waste Items:</h4><ul>';
                 wasteItems.forEach((item, index) => {
                     const totalCost = (item.itemCost || 0) * (item.quantity || 0);
-                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})\n`;
-                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Reason: ${item.reason || 'N/A'}) (Cost: ₱${totalCost.toFixed(2)})`;
+                    let reasonDisplay = item.reason || 'N/A';
+                    if (reasonDisplay === 'human_error') reasonDisplay = 'Human Error';
+                    
+                    reportDetails += `${index + 1}. ${item.item || 'N/A'} - ${item.quantity || 0} ${item.unit || ''} (Reason: ${reasonDisplay}) (Cost: ₱${totalCost.toFixed(2)})\n`;
+                    htmlReportDetails += `<li><strong>${item.item || 'N/A'}</strong> - ${item.quantity || 0} ${item.unit || ''} (Reason: ${reasonDisplay}) (Cost: ₱${totalCost.toFixed(2)})`;
                     if (item.notes) {
                         reportDetails += `   Notes: ${item.notes}\n`;
                         htmlReportDetails += `<br><small>Notes: ${item.notes}</small>`;
@@ -2178,7 +2235,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 });
-//pusj
+
 // Export functions for global access
 window.loadRejectedItem = loadRejectedItem;
 window.addExpiredItem = addExpiredItem;
