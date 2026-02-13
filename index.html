@@ -407,6 +407,16 @@
                 grid-template-columns: 1fr;
             }
         }
+        
+        /* Percentage indicator */
+        .percentage-badge {
+            background: var(--color-primary);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -457,14 +467,17 @@
         <!-- Dual Charts Section -->
         <section class="chart-section">
             <div class="chart-header">
-                <h2><i class="fas fa-chart-bar"></i> Waste & Compliance Analytics</h2>
-                <div style="display: flex; gap: 15px; margin-top: 5px;">
-                    <span style="font-size: 13px; color: var(--color-gray);">
-                        <i class="fas fa-check-circle" style="color: #28a745;"></i> Compliance: Current month
+                <h2><i class="fas fa-chart-bar"></i> Current Month Performance</h2>
+                <div style="display: flex; gap: 15px; margin-top: 5px; flex-wrap: wrap;">
+                    <span style="font-size: 13px; color: var(--color-gray); background: rgba(40, 167, 69, 0.1); padding: 4px 12px; border-radius: 20px;">
+                        <i class="fas fa-check-circle" style="color: #28a745;"></i> Compliance Rate: % of days reported
                     </span>
-                    <span style="font-size: 13px; color: var(--color-gray);">
-                        <i class="fas fa-money-bill-wave" style="color: #dc3545;"></i> Waste Cost: All time
+                    <span style="font-size: 13px; color: var(--color-gray); background: rgba(220, 53, 69, 0.1); padding: 4px 12px; border-radius: 20px;">
+                        <i class="fas fa-percent" style="color: #dc3545;"></i> Waste Cost Share: % of total approved waste cost
                     </span>
+                </div>
+                <div style="margin-top: 10px; font-size: 12px; color: var(--color-primary); font-weight: 500;" id="currentMonthDisplay">
+                    Loading current month...
                 </div>
             </div>
 
@@ -473,7 +486,7 @@
                 <!-- Compliance Rate Chart Card - CURRENT MONTH ONLY -->
                 <div class="chart-card">
                     <div class="chart-card-header">
-                        <h3><i class="fas fa-check-circle" style="color: #28a745;"></i> Compliance Rate (Current Month)</h3>
+                        <h3><i class="fas fa-check-circle" style="color: #28a745;"></i> Compliance Rate</h3>
                         <div class="chart-card-type-selector">
                             <button class="chart-card-type-btn active" data-chart="compliance-pie" data-metric="compliance">
                                 <i class="fas fa-chart-pie"></i>
@@ -502,10 +515,10 @@
                     </div>
                 </div>
 
-                <!-- Waste Cost Chart Card - ALL TIME (APPROVED ITEMS ONLY) -->
+                <!-- Waste Cost Share Chart Card - CURRENT MONTH ONLY (PERCENTAGE) -->
                 <div class="chart-card">
                     <div class="chart-card-header">
-                        <h3><i class="fas fa-money-bill-wave" style="color: #dc3545;"></i> Waste Cost (All Time - Approved Items)</h3>
+                        <h3><i class="fas fa-percent" style="color: #dc3545;"></i> Waste Cost Share</h3>
                         <div class="chart-card-type-selector">
                             <button class="chart-card-type-btn active" data-chart="cost-pie" data-metric="cost">
                                 <i class="fas fa-chart-pie"></i>
@@ -524,12 +537,12 @@
                             <span id="costStoreCount">0 stores</span>
                         </div>
                         <div class="chart-card-stat">
-                            <i class="fas fa-money-bill-wave"></i>
-                            <span id="totalWasteCost">₱0</span>
+                            <i class="fas fa-percent"></i>
+                            <span id="costAverage">0% avg share</span>
                         </div>
                         <div class="chart-card-stat">
-                            <i class="fas fa-calculator"></i>
-                            <span id="costAverage">₱0 avg</span>
+                            <i class="fas fa-chart-pie"></i>
+                            <span id="totalWasteCost">100% total</span>
                         </div>
                     </div>
                 </div>
@@ -546,19 +559,19 @@
                 <div class="chart-stat-card">
                     <h4><i class="fas fa-chart-line"></i> Avg Compliance</h4>
                     <div class="value" id="overallComplianceAvg">0%</div>
-                    <div class="subtext">All Stores</div>
+                    <div class="subtext">This Month</div>
                 </div>
                 
                 <div class="chart-stat-card">
-                    <h4><i class="fas fa-money-bill-wave"></i> Highest Cost</h4>
+                    <h4><i class="fas fa-percent"></i> Highest Share</h4>
                     <div class="value" id="topCostStore">-</div>
-                    <div class="subtext" id="topCostValue">₱0</div>
+                    <div class="subtext" id="topCostValue">0%</div>
                 </div>
                 
                 <div class="chart-stat-card">
-                    <h4><i class="fas fa-calculator"></i> Total Cost</h4>
-                    <div class="value" id="overallCostTotal">₱0</div>
-                    <div class="subtext">All Stores</div>
+                    <h4><i class="fas fa-calculator"></i> Stores with Waste</h4>
+                    <div class="value" id="overallCostTotal">0</div>
+                    <div class="subtext">out of 12 stores</div>
                 </div>
             </div>
             
@@ -566,14 +579,14 @@
             <div class="chart-footer">
                 <div class="chart-info">
                     <i class="fas fa-info-circle"></i> 
-                    <span><strong>Compliance Rate</strong>: % of days with approved reports in current month | <strong>Waste Cost</strong>: Total ₱ value of approved waste items (ALL TIME - includes expired and waste)</span>
+                    <span><strong>Both charts show CURRENT MONTH data only</strong> • Compliance: % of days with approved reports • Waste Share: % of total approved waste cost (₱ values hidden)</span>
                 </div>
             </div>
         </section>
 
         <!-- Quick Stats Section -->
         <section class="quick-stats-section">
-            <h2><i class="fas fa-tachometer-alt"></i> Dashboard Overview</h2>
+            <h2><i class="fas fa-tachometer-alt"></i> Current Month Overview</h2>
             <div class="stat-grid">
                 <div class="quick-stat-card">
                     <div class="stat-icon-mini">
@@ -591,7 +604,7 @@
                         <i class="fas fa-file-alt"></i>
                     </div>
                     <div class="stat-content-mini">
-                        <h4>Total Reports</h4>
+                        <h4>Reports This Month</h4>
                         <div class="value-large" id="totalReports">0</div>
                         <div class="subtext" id="totalStoresWithReports">0 stores</div>
                     </div>
@@ -743,11 +756,8 @@
     // ================================
     // OPTIMIZED UTILITY FUNCTIONS
     // ================================
-    function formatCurrency(amount) {
-        return '₱' + amount.toLocaleString('en-US', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        });
+    function formatPercentage(value) {
+        return Math.round(value) + '%';
     }
 
     // ================================
@@ -821,10 +831,10 @@
     }
 
     // ================================
-    // DATA LOADING FUNCTIONS - FIXED FOR ALL TIME COST
+    // DATA LOADING FUNCTIONS - BOTH CHARTS SHOW CURRENT MONTH
     // ================================
     async function loadAllData() {
-        showLoading(true, 'Loading analytics...');
+        showLoading(true, 'Loading current month data...');
         
         try {
             const now = Date.now();
@@ -841,7 +851,7 @@
                 return;
             }
             
-            // Get ALL reports - NO DATE FILTER for cost data
+            // Get ALL reports
             const snapshot = await db.collection('wasteReports')
                 .orderBy('reportDate', 'desc')
                 .get();
@@ -874,8 +884,8 @@
             // Calculate compliance data - CURRENT MONTH ONLY
             const complianceData = calculateComplianceData(reports);
             
-            // Calculate cost data - ALL TIME (APPROVED ITEMS ONLY)
-            const costData = calculateCostDataAllTime(reports);
+            // Calculate cost share data - CURRENT MONTH ONLY (PERCENTAGES)
+            const costData = calculateCostShareDataCurrentMonth(reports);
             
             // Store statistics
             dataCache.statistics = {
@@ -887,12 +897,16 @@
             // Store data globally
             currentData = dataCache.statistics;
             
-            console.log('📊 Cost Data Summary:', {
-                totalCost: costData.totalCost,
+            console.log('📊 Current Month Cost Share Data:', {
+                month: complianceData.month,
+                daysSoFar: complianceData.daysSoFar,
                 storesWithCost: costData.storeCount,
                 topStore: costData.topStore,
-                topCost: costData.topCost,
-                results: costData.results.map(r => ({ store: r.store, cost: r.cost }))
+                topPercentage: costData.topPercentage,
+                results: costData.results.map(r => ({ 
+                    store: r.store, 
+                    percentage: r.percentage
+                }))
             });
             
             // Update all charts and stats
@@ -996,7 +1010,7 @@
         ALL_STORES.forEach(store => {
             const data = storeData[store];
             
-            // Only include stores with approved items or no-waste reports in current month
+            // Only include stores with approved reports in current month
             if (data.totalReports === 0) return;
             
             const reportedDays = data.reportedDays.size;
@@ -1045,27 +1059,37 @@
             storeCount: storeCountWithReports,
             coverage,
             daysSoFar,
-            month: now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+            month: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
         };
     }
 
     // ================================
-    // COST CALCULATION - ALL TIME (APPROVED ITEMS ONLY)
+    // COST SHARE CALCULATION - CURRENT MONTH ONLY (PERCENTAGES)
     // ================================
-    function calculateCostDataAllTime(reports) {
+    function calculateCostShareDataCurrentMonth(reports) {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        
         // Initialize store costs
         const storeCosts = {};
         ALL_STORES.forEach(store => {
             storeCosts[store] = 0;
         });
         
-        // Calculate total approved cost per store - ALL TIME, NO DATE FILTER
+        // Calculate total approved cost per store - CURRENT MONTH ONLY
         let totalApprovedCost = 0;
-        let reportCountWithCost = 0;
         
         reports.forEach(report => {
             const store = report.store;
             if (!store || !storeCosts.hasOwnProperty(store)) return;
+            
+            const reportDate = new Date(report.reportDate);
+            
+            // ONLY include reports from current month
+            if (reportDate.getFullYear() !== currentYear || reportDate.getMonth() !== currentMonth) {
+                return;
+            }
             
             // Skip no-waste reports (cost is 0)
             if (report.disposalTypes?.includes('noWaste')) {
@@ -1100,57 +1124,56 @@
             if (hasApprovedItem && reportApprovedCost > 0) {
                 storeCosts[store] += reportApprovedCost;
                 totalApprovedCost += reportApprovedCost;
-                reportCountWithCost++;
             }
         });
         
-        // Prepare results - SHOW ACTUAL COST, ALL STORES WITH COST > 0
+        // Prepare results - SHOW PERCENTAGES ONLY, HIDE ACTUAL COSTS
         const results = [];
         let topStore = null;
-        let topCost = 0;
+        let topPercentage = 0;
         let storeCountWithCost = 0;
         
         ALL_STORES.forEach(store => {
             const cost = storeCosts[store];
             
-            // Include ALL stores with ANY approved waste cost, regardless of amount
+            // Include stores with approved waste cost in current month
             if (cost > 0) {
+                const percentage = totalApprovedCost > 0 ? 
+                    Math.round((cost / totalApprovedCost) * 100) : 0;
+                
                 results.push({
                     store,
                     displayName: STORE_DISPLAY_NAMES[store] || store,
-                    value: cost, // ACTUAL COST, NOT PERCENTAGE
-                    cost: cost,
-                    label: formatCurrency(cost),
-                    description: formatCurrency(cost)
+                    value: percentage, // PERCENTAGE for chart
+                    percentage: percentage,
+                    cost: cost, // Keep for internal calculations, NOT displayed
+                    label: `${percentage}%`,
+                    description: `${percentage}% of total`
                 });
                 
                 storeCountWithCost++;
                 
-                if (cost > topCost) {
-                    topCost = cost;
+                if (percentage > topPercentage) {
+                    topPercentage = percentage;
                     topStore = store;
                 }
             }
         });
         
-        // Sort by cost (highest first)
+        // Sort by percentage (highest first)
         results.sort((a, b) => b.value - a.value);
         
-        // Calculate average cost per store (with costs)
-        const averageCost = storeCountWithCost > 0 ? 
-            totalApprovedCost / storeCountWithCost : 0;
-        
-        const coverage = Math.round((storeCountWithCost / ALL_STORES.length) * 100);
+        // Calculate average percentage per store (with costs)
+        const averagePercentage = storeCountWithCost > 0 ? 
+            Math.round(results.reduce((sum, r) => sum + r.percentage, 0) / storeCountWithCost) : 0;
         
         return {
             results,
-            totalCost: totalApprovedCost,
-            averageCost,
+            totalCost: totalApprovedCost, // Keep for internal use, NOT displayed
+            averagePercentage,
             topStore,
-            topCost,
-            storeCount: storeCountWithCost,
-            coverage,
-            reportCount: reportCountWithCost
+            topPercentage,
+            storeCount: storeCountWithCost
         };
     }
 
@@ -1175,8 +1198,8 @@
             return;
         }
         
-        // Take top stores for better visibility
-        const displayResults = data.results.slice(0, 8);
+        // Show ALL stores with compliance data
+        const displayResults = data.results;
         
         const labels = displayResults.map(store => store.displayName);
         const values = displayResults.map(store => store.value);
@@ -1271,13 +1294,14 @@
         document.getElementById('complianceStoreCount').textContent = `${data.storeCount} stores`;
         document.getElementById('complianceAverage').textContent = `${data.overallAverage}% avg`;
         document.getElementById('complianceDays').textContent = `${data.month} (${data.daysSoFar} days)`;
+        document.getElementById('currentMonthDisplay').textContent = `📅 Currently showing: ${data.month}`;
         
         // Update combined stats
         updateCombinedStats();
     }
 
     // ================================
-    // COST CHART - ACTUAL ₱ COST (ALL TIME)
+    // COST CHART - PERCENTAGE SHARE (CURRENT MONTH)
     // ================================
     function updateCostChart() {
         if (!currentData) return;
@@ -1292,9 +1316,13 @@
         
         const data = currentData.cost;
         
-        console.log('📊 Updating cost chart with:', {
+        console.log('📊 Updating cost share chart (Current Month):', {
             resultsCount: data.results.length,
-            results: data.results.map(r => ({ store: r.store, cost: r.cost }))
+            results: data.results.map(r => ({ 
+                store: r.store, 
+                percentage: r.percentage,
+                displayName: r.displayName 
+            }))
         });
         
         if (data.results.length === 0) {
@@ -1302,15 +1330,15 @@
             return;
         }
         
-        // Take top stores for better visibility
-        const displayResults = data.results.slice(0, 8);
+        // Show ALL stores with cost data from current month
+        const displayResults = data.results;
         
         const labels = displayResults.map(store => store.displayName);
-        const values = displayResults.map(store => store.value);
+        const values = displayResults.map(store => store.percentage); // PERCENTAGES
         const colors = CHART_COLORS.slice(0, displayResults.length);
         
         const datasets = [{
-            label: 'Waste Cost (₱)',
+            label: 'Waste Cost Share (%)',
             data: values,
             backgroundColor: colors,
             borderColor: '#fff',
@@ -1335,7 +1363,7 @@
                     callbacks: {
                         label: function(context) {
                             const store = displayResults[context.dataIndex];
-                            return `${store.displayName}: ${formatCurrency(store.cost)}`;
+                            return `${store.displayName}: ${store.percentage}% of total waste cost (This Month)`;
                         }
                     }
                 }
@@ -1356,18 +1384,16 @@
                     scales: {
                         y: {
                             beginAtZero: true,
+                            max: 100,
                             ticks: {
                                 callback: function(value) {
-                                    return '₱' + value.toLocaleString('en-US', {
-                                        minimumFractionDigits: 0,
-                                        maximumFractionDigits: 0
-                                    });
+                                    return value + '%';
                                 },
                                 font: { size: 9 }
                             },
                             title: {
                                 display: true,
-                                text: 'Waste Cost (₱)',
+                                text: 'Waste Cost Share (%)',
                                 font: { size: 10 }
                             }
                         },
@@ -1396,10 +1422,10 @@
         
         costChart = new Chart(ctx, chartConfig);
         
-        // Update footer stats
+        // Update footer stats - SHOW PERCENTAGES ONLY
         document.getElementById('costStoreCount').textContent = `${data.storeCount} stores`;
-        document.getElementById('totalWasteCost').textContent = formatCurrency(data.totalCost);
-        document.getElementById('costAverage').textContent = `${formatCurrency(data.averageCost)} avg`;
+        document.getElementById('costAverage').textContent = `${data.averagePercentage}% avg share`;
+        document.getElementById('totalWasteCost').textContent = `100% total`;
         
         // Update combined stats
         updateCombinedStats();
@@ -1421,7 +1447,7 @@
         complianceChart = new Chart(ctx, {
             type: 'pie',
             data: {
-                labels: ['No Data Available'],
+                labels: ['No Reports This Month'],
                 datasets: [{
                     data: [1],
                     backgroundColor: ['#e9ecef'],
@@ -1442,6 +1468,7 @@
         document.getElementById('complianceStoreCount').textContent = '0 stores';
         document.getElementById('complianceAverage').textContent = '0% avg';
         document.getElementById('complianceDays').textContent = 'Current month';
+        document.getElementById('currentMonthDisplay').textContent = `📅 Currently showing: ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
     }
 
     function createEmptyCostChart() {
@@ -1452,7 +1479,7 @@
         costChart = new Chart(ctx, {
             type: 'pie',
             data: {
-                labels: ['No Waste Data'],
+                labels: ['No Waste This Month'],
                 datasets: [{
                     data: [1],
                     backgroundColor: ['#e9ecef'],
@@ -1471,8 +1498,8 @@
         });
         
         document.getElementById('costStoreCount').textContent = '0 stores';
-        document.getElementById('totalWasteCost').textContent = '₱0';
-        document.getElementById('costAverage').textContent = '₱0 avg';
+        document.getElementById('costAverage').textContent = '0% avg share';
+        document.getElementById('totalWasteCost').textContent = '100% total';
     }
 
     // ================================
@@ -1492,13 +1519,13 @@
         // Overall compliance average
         document.getElementById('overallComplianceAvg').textContent = `${complianceData.overallAverage}%`;
         
-        // Top cost store
+        // Top cost share store
         document.getElementById('topCostStore').textContent = costData.topStore ? 
             STORE_DISPLAY_NAMES[costData.topStore]?.split(' ')[0] || costData.topStore : '-';
-        document.getElementById('topCostValue').textContent = formatCurrency(costData.topCost || 0);
+        document.getElementById('topCostValue').textContent = `${costData.topPercentage || 0}%`;
         
-        // Overall cost total
-        document.getElementById('overallCostTotal').textContent = formatCurrency(costData.totalCost || 0);
+        // Stores with waste cost this month
+        document.getElementById('overallCostTotal').textContent = costData.storeCount || 0;
     }
 
     function updateStats() {
@@ -1507,8 +1534,8 @@
         const complianceData = currentData.compliance;
         const costData = currentData.cost;
         
-        // Total reports
-        document.getElementById('totalReports').textContent = currentData.totalReports.toLocaleString();
+        // Total reports this month
+        document.getElementById('totalReports').textContent = complianceData.results.reduce((sum, store) => sum + store.totalReports, 0).toLocaleString();
         document.getElementById('totalStoresWithReports').textContent = `${complianceData.storeCount} stores`;
         
         // Store needing attention (lowest compliance among stores with reports)
@@ -1546,8 +1573,8 @@
         document.getElementById('topComplianceValue').textContent = '0%';
         document.getElementById('overallComplianceAvg').textContent = '0%';
         document.getElementById('topCostStore').textContent = '-';
-        document.getElementById('topCostValue').textContent = '₱0';
-        document.getElementById('overallCostTotal').textContent = '₱0';
+        document.getElementById('topCostValue').textContent = '0%';
+        document.getElementById('overallCostTotal').textContent = '0';
     }
 
     // ================================
