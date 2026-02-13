@@ -1579,7 +1579,7 @@ async function handleResubmission(originalItemData, updatedItem, newReportDate) 
 }
 
 // ================================
-// OPTIMIZED FORM SUBMISSION HANDLER - FIXED FOR IMAGES
+// OPTIMIZED FORM SUBMISSION HANDLER - FIXED FOR ITEMS SAVING
 // ================================
 async function handleSubmit(event) {
     console.log('Form submission started...');
@@ -1849,11 +1849,117 @@ async function handleSubmit(event) {
     console.log('Processing NEW report submission (NOT a resubmission)');
     const mainReportId = 'REPORT-' + Date.now().toString();
     
+    // ============================================
+    // CRITICAL FIX: COLLECT ALL ITEMS FIRST
+    // ============================================
+    let expiredItemsArray = [];
+    let wasteItemsArray = [];
+    let allItems = [];
+    
+    // Process expired items data
+    if (disposalTypes.includes('expired')) {
+        const expiredFields = document.querySelectorAll('#expiredFields .field-group');
+        
+        for (let field of expiredFields) {
+            const itemId = field.id.split('-')[1];
+            
+            const dropdown = document.getElementById(`expiredItem-${itemId}`);
+            let selectedItem = '';
+            if (dropdown && dropdown.value) {
+                selectedItem = dropdown.value;
+            } else {
+                const selectElement = $(`#expiredItem-${itemId}`);
+                if (selectElement.length > 0) {
+                    selectedItem = selectElement.select2('data')[0]?.id || '';
+                }
+            }
+            
+            const itemCost = await getItemCost(selectedItem);
+            
+            const expiredItem = {
+                type: 'expired',
+                item: selectedItem,
+                deliveredDate: document.getElementById(`deliveredDate-${itemId}`).value,
+                manufacturedDate: document.getElementById(`manufacturedDate-${itemId}`).value,
+                expirationDate: document.getElementById(`expirationDate-${itemId}`).value,
+                quantity: parseFloat(document.getElementById(`quantity-${itemId}`).value) || 0,
+                unit: document.getElementById(`unit-${itemId}`).value,
+                notes: document.getElementById(`notes-${itemId}`).value.trim() || '',
+                itemId: itemId,
+                itemCost: itemCost,
+                documentation: [],
+                approvalStatus: 'pending',
+                submittedAt: new Date().toISOString()
+            };
+            
+            // Check for files
+            const fileInput = document.getElementById(`documentation-${itemId}`);
+            if (fileInput && fileInput.files.length > 0) {
+                expiredItem.hasFiles = true;
+                expiredItem.fileCount = fileInput.files.length;
+            }
+            
+            expiredItemsArray.push(expiredItem);
+            allItems.push(expiredItem);
+        }
+    }
+    
+    // Process waste items data
+    if (disposalTypes.includes('waste')) {
+        const wasteFields = document.querySelectorAll('#wasteFields .field-group');
+        
+        for (let field of wasteFields) {
+            const itemId = field.id.split('-')[1];
+            
+            const dropdown = document.getElementById(`wasteItem-${itemId}`);
+            let selectedItem = '';
+            if (dropdown && dropdown.value) {
+                selectedItem = dropdown.value;
+            } else {
+                const selectElement = $(`#wasteItem-${itemId}`);
+                if (selectElement.length > 0) {
+                    selectedItem = selectElement.select2('data')[0]?.id || '';
+                }
+            }
+            
+            const itemCost = await getItemCost(selectedItem);
+            
+            const wasteItem = {
+                type: 'waste',
+                item: selectedItem,
+                reason: document.getElementById(`reason-${itemId}`).value,
+                quantity: parseFloat(document.getElementById(`wasteQuantity-${itemId}`).value) || 0,
+                unit: document.getElementById(`wasteUnit-${itemId}`).value,
+                notes: document.getElementById(`wasteNotes-${itemId}`).value.trim() || '',
+                itemId: itemId,
+                itemCost: itemCost,
+                documentation: [],
+                approvalStatus: 'pending',
+                submittedAt: new Date().toISOString()
+            };
+            
+            // Check for files
+            const fileInput = document.getElementById(`wasteDocumentation-${itemId}`);
+            if (fileInput && fileInput.files.length > 0) {
+                wasteItem.hasFiles = true;
+                wasteItem.fileCount = fileInput.files.length;
+            }
+            
+            wasteItemsArray.push(wasteItem);
+            allItems.push(wasteItem);
+        }
+    }
+    
+    const totalFiles = allItems.reduce((sum, item) => sum + (item.fileCount || 0), 0);
+    
+    // ============================================
+    // CRITICAL FIX: INCLUDE ITEMS IN BASE REPORT DATA
+    // ============================================
     const baseReportData = {
         email: document.getElementById('email').value.trim(),
         store: document.getElementById('store').value,
         personnel: document.getElementById('personnel').value.trim(),
-        reportDate: currentReportDate, // Use the date from the form
+        reportDate: currentReportDate,
         disposalTypes: disposalTypes,
         reportId: mainReportId,
         submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1861,7 +1967,15 @@ async function handleSubmit(event) {
         createdAt: new Date().toISOString(),
         emailSent: false,
         emailStatus: 'pending',
-        isResubmission: false
+        isResubmission: false,
+        // CRITICAL: Include items in initial save
+        expiredItems: expiredItemsArray,
+        wasteItems: wasteItemsArray,
+        totalExpiredItems: expiredItemsArray.length,
+        totalWasteItems: wasteItemsArray.length,
+        hasImages: totalFiles > 0,
+        imageCount: totalFiles,
+        fileUploadComplete: false
     };
     
     if (disposalTypes.includes('noWaste')) {
@@ -1871,120 +1985,14 @@ async function handleSubmit(event) {
     
     try {
         console.log('Processing new report data for ID:', mainReportId);
+        console.log(`📊 Found ${expiredItemsArray.length} expired items, ${wasteItemsArray.length} waste items`);
         
-        // Collect all items data first (without files)
-        let allItems = [];
-        let totalFiles = 0;
-        
-        // Process expired items data
-        if (disposalTypes.includes('expired')) {
-            const expiredFields = document.querySelectorAll('#expiredFields .field-group');
-            
-            for (let field of expiredFields) {
-                const itemId = field.id.split('-')[1];
-                
-                const dropdown = document.getElementById(`expiredItem-${itemId}`);
-                let selectedItem = '';
-                if (dropdown && dropdown.value) {
-                    selectedItem = dropdown.value;
-                } else {
-                    const selectElement = $(`#expiredItem-${itemId}`);
-                    if (selectElement.length > 0) {
-                        selectedItem = selectElement.select2('data')[0]?.id || '';
-                    }
-                }
-                
-                const itemCost = await getItemCost(selectedItem);
-                
-                const expiredItem = {
-                    type: 'expired',
-                    item: selectedItem,
-                    deliveredDate: document.getElementById(`deliveredDate-${itemId}`).value,
-                    manufacturedDate: document.getElementById(`manufacturedDate-${itemId}`).value,
-                    expirationDate: document.getElementById(`expirationDate-${itemId}`).value,
-                    quantity: parseFloat(document.getElementById(`quantity-${itemId}`).value) || 0,
-                    unit: document.getElementById(`unit-${itemId}`).value,
-                    notes: document.getElementById(`notes-${itemId}`).value.trim() || '',
-                    itemId: itemId,
-                    itemCost: itemCost,
-                    documentation: [],
-                    approvalStatus: 'pending',
-                    submittedAt: new Date().toISOString()
-                };
-                
-                // Check for files
-                const fileInput = document.getElementById(`documentation-${itemId}`);
-                if (fileInput && fileInput.files.length > 0) {
-                    expiredItem.hasFiles = true;
-                    expiredItem.fileCount = fileInput.files.length;
-                    totalFiles += fileInput.files.length;
-                }
-                
-                allItems.push(expiredItem);
-            }
-            
-            baseReportData.totalExpiredItems = allItems.filter(item => item.type === 'expired').length;
-        }
-        
-        // Process waste items data
-        if (disposalTypes.includes('waste')) {
-            const wasteFields = document.querySelectorAll('#wasteFields .field-group');
-            
-            for (let field of wasteFields) {
-                const itemId = field.id.split('-')[1];
-                
-                const dropdown = document.getElementById(`wasteItem-${itemId}`);
-                let selectedItem = '';
-                if (dropdown && dropdown.value) {
-                    selectedItem = dropdown.value;
-                } else {
-                    const selectElement = $(`#wasteItem-${itemId}`);
-                    if (selectElement.length > 0) {
-                        selectedItem = selectElement.select2('data')[0]?.id || '';
-                    }
-                }
-                
-                const itemCost = await getItemCost(selectedItem);
-                
-                const wasteItem = {
-                    type: 'waste',
-                    item: selectedItem,
-                    reason: document.getElementById(`reason-${itemId}`).value,
-                    quantity: parseFloat(document.getElementById(`wasteQuantity-${itemId}`).value) || 0,
-                    unit: document.getElementById(`wasteUnit-${itemId}`).value,
-                    notes: document.getElementById(`wasteNotes-${itemId}`).value.trim() || '',
-                    itemId: itemId,
-                    itemCost: itemCost,
-                    documentation: [],
-                    approvalStatus: 'pending',
-                    submittedAt: new Date().toISOString()
-                };
-                
-                // Check for files
-                const fileInput = document.getElementById(`wasteDocumentation-${itemId}`);
-                if (fileInput && fileInput.files.length > 0) {
-                    wasteItem.hasFiles = true;
-                    wasteItem.fileCount = fileInput.files.length;
-                    totalFiles += fileInput.files.length;
-                }
-                
-                allItems.push(wasteItem);
-            }
-            
-            baseReportData.totalWasteItems = allItems.filter(item => item.type === 'waste').length;
-        }
-        
-        // Update with file info
-        baseReportData.hasImages = totalFiles > 0;
-        baseReportData.imageCount = totalFiles;
-        baseReportData.fileUploadComplete = false;
-        
-        // Save to Firestore FIRST (before file uploads)
-        console.log('Saving report to Firestore (initial)...');
+        // Save to Firestore FIRST (with items already included)
+        console.log('Saving report to Firestore (with items)...');
         const docRef = db.collection('wasteReports').doc(mainReportId);
         await docRef.set(baseReportData);
         
-        console.log('✅ Initial report saved to Firestore');
+        console.log('✅ Initial report saved to Firestore with items');
         
         // Step 1: Send email confirmation NOW (before file uploads)
         showLoading(true, 'Sending email confirmation...');
@@ -2013,7 +2021,7 @@ async function handleSubmit(event) {
             showNotification('⚠️ Report saved, but email failed. Please check email configuration.', 'warning');
         }
         
-        // If there are files, upload them in background
+        // If there are files, upload them in background and update items
         if (totalFiles > 0) {
             showLoading(true, 'Uploading files in background...');
             showUploadProgress(true, 0, totalFiles, 'Starting file upload...');
@@ -2028,19 +2036,20 @@ async function handleSubmit(event) {
                 }
             );
             
+            // Separate processed items back into expired and waste
+            const processedExpiredItems = processedItems.filter(item => item.type === 'expired');
+            const processedWasteItems = processedItems.filter(item => item.type === 'waste');
+            
             // Update Firestore with file information
             const updateData = {};
             
-            const expiredItems = processedItems.filter(item => item.type === 'expired');
-            const wasteItems = processedItems.filter(item => item.type === 'waste');
-            
-            if (expiredItems.length > 0) {
-                updateData.expiredItems = expiredItems;
-                updateData.totalExpiredItems = expiredItems.length;
+            if (processedExpiredItems.length > 0) {
+                updateData.expiredItems = processedExpiredItems;
+                updateData.totalExpiredItems = processedExpiredItems.length;
             }
-            if (wasteItems.length > 0) {
-                updateData.wasteItems = wasteItems;
-                updateData.totalWasteItems = wasteItems.length;
+            if (processedWasteItems.length > 0) {
+                updateData.wasteItems = processedWasteItems;
+                updateData.totalWasteItems = processedWasteItems.length;
             }
             
             // Calculate totals
@@ -2057,7 +2066,7 @@ async function handleSubmit(event) {
             
             await docRef.update(updateData);
             
-            console.log('✅ Files uploaded and report updated');
+            console.log('✅ Files uploaded and report updated with processed items');
             showUploadProgress(false);
             showLoading(false);
             
@@ -2068,9 +2077,7 @@ async function handleSubmit(event) {
         } else {
             // No files, just mark as complete
             await docRef.update({
-                fileUploadComplete: true,
-                hasImages: false,
-                imageCount: 0
+                fileUploadComplete: true
             });
             
             showLoading(false);
@@ -2115,7 +2122,7 @@ async function handleSubmit(event) {
         // Ask user to view reports
         setTimeout(() => {
             const viewReports = confirm(
-                `Report ${mainReportId} has been submitted successfully!\n\n✅ Data saved to database\n📧 Email sent to ${baseReportData.email}\n${totalFiles > 0 ? '📁 Files uploaded successfully\n' : ''}\nWould you like to view all reports?`
+                `Report ${mainReportId} has been submitted successfully!\n\n✅ Data saved to database\n📧 Email sent to ${baseReportData.email}\n📦 ${expiredItemsArray.length} expired items, ${wasteItemsArray.length} waste items saved\n${totalFiles > 0 ? '📁 Files uploaded successfully\n' : ''}\nWould you like to view all reports?`
             );
             if (viewReports) {
                 window.location.href = 'waste_report_table.html';
