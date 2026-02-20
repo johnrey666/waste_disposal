@@ -117,11 +117,11 @@ const FILE_CONFIG = {
 };
 
 // ================================
-// ITEMS LIST FOR DROPDOWN - UPDATED WITH KITCHEN CATEGORIES
+// ITEMS LIST FOR DROPDOWN - UPDATED WITH STRICT SEPARATION
 // ================================
 let ALL_ITEMS_LIST = [];           // All items from database
-let REGULAR_ITEMS_LIST = [];       // Only regular items
-let KITCHEN_ITEMS_LIST = [];       // Only kitchen items
+let REGULAR_ITEMS_LIST = [];       // ONLY regular items (category: 'regular')
+let KITCHEN_ITEMS_LIST = [];       // ONLY kitchen items (category: 'kitchen')
 let KITCHEN_ITEMS_BY_CATEGORY = {  // Kitchen items grouped by category
     meat: [],
     vegetables: [],
@@ -131,7 +131,11 @@ let KITCHEN_ITEMS_BY_CATEGORY = {  // Kitchen items grouped by category
 let itemsLoaded = false;
 let isResubmitting = false;
 let originalItemData = null;
-let currentStoreType = 'regular'; // 'regular' or 'kitchen'
+let currentStoreType = null; // 'regular', 'kitchen', or null (no store selected)
+let currentStoreValue = '';
+
+// Kitchen stores list
+const KITCHEN_STORES = ['CTK', 'Concourse', 'FG Kitchen LC', 'FG Kitchen Naga'];
 
 // Initialize Firebase
 let db, storage;
@@ -199,33 +203,34 @@ function formatFileSize(bytes) {
 }
 
 // ================================
-// STORE HANDLER - NEW FUNCTION
+// STORE HANDLER - WITH DISABLED DROPDOWNS WHEN NO STORE SELECTED
 // ================================
 function handleStoreChange(selectElement) {
     const selectedStore = selectElement.value;
     const indicator = document.getElementById('storeTypeIndicator');
     const indicatorText = document.getElementById('storeTypeText');
     
-    // Define kitchen stores
-    const kitchenStores = ['CTK', 'Concourse', 'FG Kitchen LC', 'FG Kitchen Naga'];
+    currentStoreValue = selectedStore;
     
-    if (kitchenStores.includes(selectedStore)) {
+    if (!selectedStore) {
+        // No store selected
+        currentStoreType = null;
+        indicator.style.display = 'none';
+        showNotification('Please select a store location first.', 'info');
+    } else if (KITCHEN_STORES.includes(selectedStore)) {
         currentStoreType = 'kitchen';
         indicator.style.display = 'flex';
         indicator.className = 'store-type-indicator kitchen';
-        indicatorText.innerHTML = '<strong>Kitchen Location Selected</strong> - Only kitchen items (Meat, Vegetables, Seafood) will be available in dropdowns.';
+        indicatorText.innerHTML = '<strong>🍳 KITCHEN LOCATION</strong> - Only kitchen items (Meat, Vegetables, Seafood) are available.';
         
-        showNotification('Kitchen location selected. Item dropdowns now show kitchen items only.', 'info');
-    } else if (selectedStore && selectedStore !== '') {
+        showNotification('Kitchen location selected. Item dropdowns now show KITCHEN ITEMS ONLY.', 'info');
+    } else {
         currentStoreType = 'regular';
         indicator.style.display = 'flex';
         indicator.className = 'store-type-indicator regular';
-        indicatorText.innerHTML = '<strong>Regular Store Selected</strong> - All store items will be available in dropdowns.';
+        indicatorText.innerHTML = '<strong>📦 REGULAR STORE</strong> - Only store items are available.';
         
-        showNotification('Regular store selected. Item dropdowns now show all store items.', 'info');
-    } else {
-        currentStoreType = 'regular';
-        indicator.style.display = 'none';
+        showNotification('Regular store selected. Item dropdowns now show STORE ITEMS ONLY.', 'info');
     }
     
     // Refresh all dropdowns with the new filtered items
@@ -410,7 +415,7 @@ async function processAllItemsWithUploads(reportId, allItems, progressCallback) 
 }
 
 // ================================
-// FETCH ITEMS FROM FIRESTORE - UPDATED WITH KITCHEN CATEGORIES
+// FETCH ITEMS FROM FIRESTORE - UPDATED WITH STRICT SEPARATION
 // ================================
 async function fetchItemsFromFirestore() {
     try {
@@ -444,7 +449,7 @@ async function fetchItemsFromFirestore() {
             // Add to all items
             ALL_ITEMS_LIST.push(itemName);
             
-            // Categorize by type
+            // STRICT SEPARATION: Categorize by type
             if (category === 'kitchen') {
                 KITCHEN_ITEMS_LIST.push(itemName);
                 
@@ -469,8 +474,8 @@ async function fetchItemsFromFirestore() {
         KITCHEN_ITEMS_BY_CATEGORY.seafood.sort();
         
         console.log(`✅ Loaded ${ALL_ITEMS_LIST.length} total items from Firestore`);
-        console.log(`   - Regular items: ${REGULAR_ITEMS_LIST.length}`);
-        console.log(`   - Kitchen items: ${KITCHEN_ITEMS_LIST.length}`);
+        console.log(`   - REGULAR store items: ${REGULAR_ITEMS_LIST.length}`);
+        console.log(`   - KITCHEN items: ${KITCHEN_ITEMS_LIST.length}`);
         console.log(`     • Meat: ${KITCHEN_ITEMS_BY_CATEGORY.meat.length}`);
         console.log(`     • Vegetables: ${KITCHEN_ITEMS_BY_CATEGORY.vegetables.length}`);
         console.log(`     • Seafood: ${KITCHEN_ITEMS_BY_CATEGORY.seafood.length}`);
@@ -517,7 +522,7 @@ async function getItemCost(itemName) {
 }
 
 // ================================
-// REFRESH ALL DROPDOWNS - NEW FUNCTION
+// REFRESH ALL DROPDOWNS - NOW WITH DISABLED STATE WHEN NO STORE SELECTED
 // ================================
 function refreshAllDropdowns() {
     // Refresh all expired item dropdowns
@@ -548,21 +553,38 @@ function refreshAllDropdowns() {
 }
 
 // ================================
-// INITIALIZE SELECT2 DROPDOWN - UPDATED WITH KITCHEN CATEGORIES
+// INITIALIZE SELECT2 DROPDOWN - WITH STORE DEPENDENCY
 // ================================
 function initSelect2Dropdown(selectElementId) {
     const selectElement = document.getElementById(selectElementId);
     if (!selectElement) return;
     
-    // Determine which items to show based on store type
-    let itemsToShow = [];
+    // Check if store is selected
+    const storeSelect = document.getElementById('store');
+    const hasStoreSelected = storeSelect && storeSelect.value && storeSelect.value !== '';
+    
+    if (!hasStoreSelected || !currentStoreType) {
+        // No store selected - disable dropdown and show placeholder
+        console.log(`⚠️ No store selected - disabling dropdown ${selectElementId}`);
+        
+        $(`#${selectElementId}`).select2({
+            data: [{ id: '', text: 'Please select a store location first', disabled: true }],
+            placeholder: 'Select store first',
+            disabled: true,
+            allowClear: false,
+            width: '100%',
+            dropdownParent: $(`#${selectElementId}`).parent()
+        });
+        return;
+    }
+    
+    // STRICT SEPARATION: Show ONLY the relevant items based on store type
     let groupedItems = [];
     
     if (currentStoreType === 'kitchen') {
-        // Kitchen store - show kitchen items grouped by category
-        itemsToShow = KITCHEN_ITEMS_LIST;
+        // KITCHEN STORE - Show ONLY kitchen items grouped by category
+        console.log(`🍳 Kitchen store: Showing ONLY kitchen items (${KITCHEN_ITEMS_LIST.length} items)`);
         
-        // Create grouped options
         if (KITCHEN_ITEMS_BY_CATEGORY.meat.length > 0) {
             groupedItems.push({
                 text: '🥩 MEAT',
@@ -581,32 +603,31 @@ function initSelect2Dropdown(selectElementId) {
                 children: KITCHEN_ITEMS_BY_CATEGORY.seafood.map(item => ({ id: item, text: item }))
             });
         }
-    } else {
-        // Regular store - show all items (regular + kitchen)
-        // But separate them into groups for better UX
+    } else if (currentStoreType === 'regular') {
+        // REGULAR STORE - Show ONLY regular store items
+        console.log(`📦 Regular store: Showing ONLY store items (${REGULAR_ITEMS_LIST.length} items)`);
+        
         if (REGULAR_ITEMS_LIST.length > 0) {
             groupedItems.push({
                 text: '📦 STORE ITEMS',
                 children: REGULAR_ITEMS_LIST.map(item => ({ id: item, text: item }))
             });
         }
-        if (KITCHEN_ITEMS_LIST.length > 0) {
-            groupedItems.push({
-                text: '🍳 KITCHEN ITEMS',
-                children: KITCHEN_ITEMS_LIST.map(item => ({ id: item, text: item }))
-            });
-        }
     }
     
-    // If no grouped items, show all items flat
-    if (groupedItems.length === 0 && itemsToShow.length > 0) {
-        groupedItems = itemsToShow.map(item => ({ id: item, text: item }));
+    // If no items found, show a placeholder
+    if (groupedItems.length === 0) {
+        const placeholderText = currentStoreType === 'kitchen' ? 
+            'No kitchen items available' : 'No store items available';
+        groupedItems = [{ id: '', text: placeholderText, disabled: true }];
     }
     
-    // Initialize select2
+    // Initialize select2 with items
     $(`#${selectElementId}`).select2({
         data: groupedItems,
-        placeholder: "Select or type to search...",
+        placeholder: currentStoreType === 'kitchen' ? 
+            "Select a kitchen item..." : "Select a store item...",
+        disabled: false,
         allowClear: false,
         width: '100%',
         dropdownParent: $(`#${selectElementId}`).parent(),
@@ -617,14 +638,12 @@ function initSelect2Dropdown(selectElementId) {
 
 // Format item result for dropdown display
 function formatItemResult(item) {
-    if (!item.id) {
+    if (!item.id || item.disabled) {
         return item.text;
     }
     
-    // Check if this is a kitchen item
-    const isKitchenItem = KITCHEN_ITEMS_LIST.includes(item.id);
-    
-    if (isKitchenItem) {
+    // For kitchen items, show category badge
+    if (currentStoreType === 'kitchen') {
         // Determine kitchen category
         let categoryClass = '';
         let categoryText = '';
@@ -642,6 +661,7 @@ function formatItemResult(item) {
         
         return $(`<span><i class="fas fa-utensils" style="margin-right: 5px; color: #856404;"></i> ${item.text} <span class="kitchen-category-badge ${categoryClass}">${categoryText}</span></span>`);
     } else {
+        // Regular store items
         return $(`<span><i class="fas fa-box" style="margin-right: 5px; color: #2e7d32;"></i> ${item.text}</span>`);
     }
 }
@@ -664,7 +684,7 @@ function initializeAllSelect2Dropdowns() {
 }
 
 // ================================
-// LOAD REJECTED ITEM FUNCTION - UPDATED TO ALLOW DATE EDITING
+// LOAD REJECTED ITEM FUNCTION - UPDATED
 // ================================
 async function loadRejectedItem() {
     const itemIdInput = document.getElementById('itemId');
@@ -1316,6 +1336,15 @@ function addExpiredItem() {
     const expiredFields = document.getElementById('expiredFields');
     if (!expiredFields) return;
     
+    // Check if store is selected before allowing item addition
+    const storeSelect = document.getElementById('store');
+    const hasStoreSelected = storeSelect && storeSelect.value && storeSelect.value !== '';
+    
+    if (!hasStoreSelected || !currentStoreType) {
+        showNotification('Please select a store location first before adding items.', 'error');
+        return;
+    }
+    
     const itemId = Date.now() + Math.random().toString(36).substr(2, 9);
     const today = new Date().toISOString().split('T')[0];
     
@@ -1387,6 +1416,15 @@ function addExpiredItem() {
 function addWasteItem() {
     const wasteFields = document.getElementById('wasteFields');
     if (!wasteFields) return;
+    
+    // Check if store is selected before allowing item addition
+    const storeSelect = document.getElementById('store');
+    const hasStoreSelected = storeSelect && storeSelect.value && storeSelect.value !== '';
+    
+    if (!hasStoreSelected || !currentStoreType) {
+        showNotification('Please select a store location first before adding items.', 'error');
+        return;
+    }
     
     const itemId = Date.now() + Math.random().toString(36).substr(2, 9);
     
@@ -1884,6 +1922,15 @@ async function handleSubmit(event) {
     
     if (!itemsLoaded || ALL_ITEMS_LIST.length === 0) {
         showNotification('Please wait for items to load before submitting.', 'error');
+        return;
+    }
+    
+    // Check if store is selected
+    const storeSelect = document.getElementById('store');
+    const hasStoreSelected = storeSelect && storeSelect.value && storeSelect.value !== '';
+    
+    if (!hasStoreSelected || !currentStoreType) {
+        showNotification('Please select a store location first.', 'error');
         return;
     }
     
@@ -2394,6 +2441,9 @@ async function handleSubmit(event) {
             if (itemIdInput) {
                 itemIdInput.value = '';
             }
+            
+            // Reset currentStoreType but keep it for next submission
+            // currentStoreType remains as set by user
         }
         
         // Re-enable submit button
