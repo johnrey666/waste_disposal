@@ -217,7 +217,8 @@ const STORE_DISPLAY_NAMES = {
 // Admin emails list
 const ADMIN_EMAILS = [
     'admin@fgoperations.com',
-    'admin@gmail.com'
+    'admin@gmail.com',
+    'rmcbien61@gmail.com',
 ];
 
 // ================================
