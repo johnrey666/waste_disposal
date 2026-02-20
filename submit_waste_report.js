@@ -117,12 +117,21 @@ const FILE_CONFIG = {
 };
 
 // ================================
-// ITEMS LIST FOR DROPDOWN
+// ITEMS LIST FOR DROPDOWN - UPDATED WITH KITCHEN CATEGORIES
 // ================================
-let ITEMS_LIST = [];
+let ALL_ITEMS_LIST = [];           // All items from database
+let REGULAR_ITEMS_LIST = [];       // Only regular items
+let KITCHEN_ITEMS_LIST = [];       // Only kitchen items
+let KITCHEN_ITEMS_BY_CATEGORY = {  // Kitchen items grouped by category
+    meat: [],
+    vegetables: [],
+    seafood: []
+};
+
 let itemsLoaded = false;
 let isResubmitting = false;
 let originalItemData = null;
+let currentStoreType = 'regular'; // 'regular' or 'kitchen'
 
 // Initialize Firebase
 let db, storage;
@@ -187,6 +196,40 @@ function formatFileSize(bytes) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// ================================
+// STORE HANDLER - NEW FUNCTION
+// ================================
+function handleStoreChange(selectElement) {
+    const selectedStore = selectElement.value;
+    const indicator = document.getElementById('storeTypeIndicator');
+    const indicatorText = document.getElementById('storeTypeText');
+    
+    // Define kitchen stores
+    const kitchenStores = ['CTK', 'Concourse', 'FG Kitchen LC', 'FG Kitchen Naga'];
+    
+    if (kitchenStores.includes(selectedStore)) {
+        currentStoreType = 'kitchen';
+        indicator.style.display = 'flex';
+        indicator.className = 'store-type-indicator kitchen';
+        indicatorText.innerHTML = '<strong>Kitchen Location Selected</strong> - Only kitchen items (Meat, Vegetables, Seafood) will be available in dropdowns.';
+        
+        showNotification('Kitchen location selected. Item dropdowns now show kitchen items only.', 'info');
+    } else if (selectedStore && selectedStore !== '') {
+        currentStoreType = 'regular';
+        indicator.style.display = 'flex';
+        indicator.className = 'store-type-indicator regular';
+        indicatorText.innerHTML = '<strong>Regular Store Selected</strong> - All store items will be available in dropdowns.';
+        
+        showNotification('Regular store selected. Item dropdowns now show all store items.', 'info');
+    } else {
+        currentStoreType = 'regular';
+        indicator.style.display = 'none';
+    }
+    
+    // Refresh all dropdowns with the new filtered items
+    refreshAllDropdowns();
 }
 
 // ================================
@@ -367,7 +410,7 @@ async function processAllItemsWithUploads(reportId, allItems, progressCallback) 
 }
 
 // ================================
-// FETCH ITEMS FROM FIRESTORE
+// FETCH ITEMS FROM FIRESTORE - UPDATED WITH KITCHEN CATEGORIES
 // ================================
 async function fetchItemsFromFirestore() {
     try {
@@ -383,18 +426,60 @@ async function fetchItemsFromFirestore() {
             .orderBy('name', 'asc')
             .get();
         
-        ITEMS_LIST = [];
+        ALL_ITEMS_LIST = [];
+        REGULAR_ITEMS_LIST = [];
+        KITCHEN_ITEMS_LIST = [];
+        KITCHEN_ITEMS_BY_CATEGORY = {
+            meat: [],
+            vegetables: [],
+            seafood: []
+        };
         
         snapshot.forEach(doc => {
             const itemData = doc.data();
-            ITEMS_LIST.push(itemData.name);
+            const itemName = itemData.name;
+            const category = itemData.category || 'regular';
+            const kitchenCategory = itemData.kitchenCategory;
+            
+            // Add to all items
+            ALL_ITEMS_LIST.push(itemName);
+            
+            // Categorize by type
+            if (category === 'kitchen') {
+                KITCHEN_ITEMS_LIST.push(itemName);
+                
+                // Group by kitchen category
+                if (kitchenCategory === 'meat') {
+                    KITCHEN_ITEMS_BY_CATEGORY.meat.push(itemName);
+                } else if (kitchenCategory === 'vegetables') {
+                    KITCHEN_ITEMS_BY_CATEGORY.vegetables.push(itemName);
+                } else if (kitchenCategory === 'seafood') {
+                    KITCHEN_ITEMS_BY_CATEGORY.seafood.push(itemName);
+                }
+            } else {
+                REGULAR_ITEMS_LIST.push(itemName);
+            }
         });
         
-        console.log(`✅ Loaded ${ITEMS_LIST.length} items from Firestore`);
+        // Sort all lists alphabetically
+        REGULAR_ITEMS_LIST.sort();
+        KITCHEN_ITEMS_LIST.sort();
+        KITCHEN_ITEMS_BY_CATEGORY.meat.sort();
+        KITCHEN_ITEMS_BY_CATEGORY.vegetables.sort();
+        KITCHEN_ITEMS_BY_CATEGORY.seafood.sort();
+        
+        console.log(`✅ Loaded ${ALL_ITEMS_LIST.length} total items from Firestore`);
+        console.log(`   - Regular items: ${REGULAR_ITEMS_LIST.length}`);
+        console.log(`   - Kitchen items: ${KITCHEN_ITEMS_LIST.length}`);
+        console.log(`     • Meat: ${KITCHEN_ITEMS_BY_CATEGORY.meat.length}`);
+        console.log(`     • Vegetables: ${KITCHEN_ITEMS_BY_CATEGORY.vegetables.length}`);
+        console.log(`     • Seafood: ${KITCHEN_ITEMS_BY_CATEGORY.seafood.length}`);
+        
         itemsLoaded = true;
         
+        // Initialize any existing dropdowns
         initializeAllSelect2Dropdowns();
-        return ITEMS_LIST;
+        return ALL_ITEMS_LIST;
         
     } catch (error) {
         console.error('❌ Error fetching items from Firestore:', error);
@@ -431,24 +516,150 @@ async function getItemCost(itemName) {
     }
 }
 
+// ================================
+// REFRESH ALL DROPDOWNS - NEW FUNCTION
+// ================================
+function refreshAllDropdowns() {
+    // Refresh all expired item dropdowns
+    const expiredFields = document.querySelectorAll('#expiredFields .field-group');
+    expiredFields.forEach(field => {
+        const itemId = field.id.split('-')[1];
+        const selectId = `expiredItem-${itemId}`;
+        const selectElement = document.getElementById(selectId);
+        if (selectElement) {
+            // Destroy and recreate
+            $(`#${selectId}`).select2('destroy');
+            initSelect2Dropdown(selectId);
+        }
+    });
+    
+    // Refresh all waste item dropdowns
+    const wasteFields = document.querySelectorAll('#wasteFields .field-group');
+    wasteFields.forEach(field => {
+        const itemId = field.id.split('-')[1];
+        const selectId = `wasteItem-${itemId}`;
+        const selectElement = document.getElementById(selectId);
+        if (selectElement) {
+            // Destroy and recreate
+            $(`#${selectId}`).select2('destroy');
+            initSelect2Dropdown(selectId);
+        }
+    });
+}
+
+// ================================
+// INITIALIZE SELECT2 DROPDOWN - UPDATED WITH KITCHEN CATEGORIES
+// ================================
+function initSelect2Dropdown(selectElementId) {
+    const selectElement = document.getElementById(selectElementId);
+    if (!selectElement) return;
+    
+    // Determine which items to show based on store type
+    let itemsToShow = [];
+    let groupedItems = [];
+    
+    if (currentStoreType === 'kitchen') {
+        // Kitchen store - show kitchen items grouped by category
+        itemsToShow = KITCHEN_ITEMS_LIST;
+        
+        // Create grouped options
+        if (KITCHEN_ITEMS_BY_CATEGORY.meat.length > 0) {
+            groupedItems.push({
+                text: '🥩 MEAT',
+                children: KITCHEN_ITEMS_BY_CATEGORY.meat.map(item => ({ id: item, text: item }))
+            });
+        }
+        if (KITCHEN_ITEMS_BY_CATEGORY.vegetables.length > 0) {
+            groupedItems.push({
+                text: '🥬 VEGETABLES',
+                children: KITCHEN_ITEMS_BY_CATEGORY.vegetables.map(item => ({ id: item, text: item }))
+            });
+        }
+        if (KITCHEN_ITEMS_BY_CATEGORY.seafood.length > 0) {
+            groupedItems.push({
+                text: '🦐 SEAFOOD',
+                children: KITCHEN_ITEMS_BY_CATEGORY.seafood.map(item => ({ id: item, text: item }))
+            });
+        }
+    } else {
+        // Regular store - show all items (regular + kitchen)
+        // But separate them into groups for better UX
+        if (REGULAR_ITEMS_LIST.length > 0) {
+            groupedItems.push({
+                text: '📦 STORE ITEMS',
+                children: REGULAR_ITEMS_LIST.map(item => ({ id: item, text: item }))
+            });
+        }
+        if (KITCHEN_ITEMS_LIST.length > 0) {
+            groupedItems.push({
+                text: '🍳 KITCHEN ITEMS',
+                children: KITCHEN_ITEMS_LIST.map(item => ({ id: item, text: item }))
+            });
+        }
+    }
+    
+    // If no grouped items, show all items flat
+    if (groupedItems.length === 0 && itemsToShow.length > 0) {
+        groupedItems = itemsToShow.map(item => ({ id: item, text: item }));
+    }
+    
+    // Initialize select2
+    $(`#${selectElementId}`).select2({
+        data: groupedItems,
+        placeholder: "Select or type to search...",
+        allowClear: false,
+        width: '100%',
+        dropdownParent: $(`#${selectElementId}`).parent(),
+        templateResult: formatItemResult,
+        templateSelection: formatItemSelection
+    });
+}
+
+// Format item result for dropdown display
+function formatItemResult(item) {
+    if (!item.id) {
+        return item.text;
+    }
+    
+    // Check if this is a kitchen item
+    const isKitchenItem = KITCHEN_ITEMS_LIST.includes(item.id);
+    
+    if (isKitchenItem) {
+        // Determine kitchen category
+        let categoryClass = '';
+        let categoryText = '';
+        
+        if (KITCHEN_ITEMS_BY_CATEGORY.meat.includes(item.id)) {
+            categoryClass = 'category-meat';
+            categoryText = 'MEAT';
+        } else if (KITCHEN_ITEMS_BY_CATEGORY.vegetables.includes(item.id)) {
+            categoryClass = 'category-vegetables';
+            categoryText = 'VEG';
+        } else if (KITCHEN_ITEMS_BY_CATEGORY.seafood.includes(item.id)) {
+            categoryClass = 'category-seafood';
+            categoryText = 'SEA';
+        }
+        
+        return $(`<span><i class="fas fa-utensils" style="margin-right: 5px; color: #856404;"></i> ${item.text} <span class="kitchen-category-badge ${categoryClass}">${categoryText}</span></span>`);
+    } else {
+        return $(`<span><i class="fas fa-box" style="margin-right: 5px; color: #2e7d32;"></i> ${item.text}</span>`);
+    }
+}
+
+// Format item selection
+function formatItemSelection(item) {
+    if (!item.id) {
+        return item.text;
+    }
+    return item.text;
+}
+
 function initializeAllSelect2Dropdowns() {
     $('.item-dropdown').each(function() {
         const selectId = $(this).attr('id');
         if (selectId) {
             initSelect2Dropdown(selectId);
         }
-    });
-}
-
-function initSelect2Dropdown(selectElementId) {
-    if (ITEMS_LIST.length === 0) return;
-    
-    $(`#${selectElementId}`).select2({
-        data: ITEMS_LIST.map(item => ({ id: item, text: item })),
-        placeholder: "Select or type to search...",
-        allowClear: false,
-        width: '100%',
-        dropdownParent: $(`#${selectElementId}`).parent()
     });
 }
 
@@ -509,6 +720,16 @@ async function loadRejectedItem() {
         
         isResubmitting = true;
         
+        // Set store based on original item
+        const store = report.store || '';
+        const storeSelect = document.getElementById('store');
+        if (storeSelect) {
+            // Use Select2 to set value
+            $(storeSelect).val(store).trigger('change');
+            // Trigger store change handler
+            handleStoreChange({ value: store });
+        }
+        
         // FIX: Use original report date instead of today's date
         const reportDateInput = document.getElementById('reportDate');
         const reportDateNote = document.getElementById('reportDateNote');
@@ -530,7 +751,6 @@ async function loadRejectedItem() {
         
         // Fill other form fields from original report
         document.getElementById('email').value = report.email || '';
-        document.getElementById('store').value = report.store || '';
         document.getElementById('personnel').value = report.personnel || '';
         
         // Set disposal types based on item type
@@ -573,7 +793,7 @@ async function loadRejectedItem() {
 }
 
 // ================================
-// ADD ITEM WITH PRE-POPULATED DATA
+// ADD ITEM WITH PRE-POPULATED DATA - UPDATED
 // ================================
 function addExpiredItemWithData(itemData) {
     const expiredFields = document.getElementById('expiredFields');
@@ -1662,7 +1882,7 @@ async function handleSubmit(event) {
     
     const originalText = submitBtn.textContent;
     
-    if (!itemsLoaded || ITEMS_LIST.length === 0) {
+    if (!itemsLoaded || ALL_ITEMS_LIST.length === 0) {
         showNotification('Please wait for items to load before submitting.', 'error');
         return;
     }
@@ -2313,3 +2533,4 @@ window.removeField = removeField;
 window.toggleDisposalType = toggleDisposalType;
 window.toggleAdditionalNotesRequirement = toggleAdditionalNotesRequirement;
 window.debugSubmit = handleSubmit;
+window.handleStoreChange = handleStoreChange;

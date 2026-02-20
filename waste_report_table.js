@@ -219,6 +219,7 @@ const ADMIN_EMAILS = [
     'admin@fgoperations.com',
     'admin@gmail.com',
     'rmcbien61@gmail.com',
+    'johnreydado3@gmail.com'
 ];
 
 // ================================
