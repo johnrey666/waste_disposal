@@ -133,6 +133,9 @@ let kitchenItemsData = [];
 let regularItemsData = [];
 let regularItemsCount = 0;
 let kitchenItemsCount = 0;
+let meatCount = 0;
+let vegetablesCount = 0;
+let seafoodCount = 0;
 
 // State variables
 let currentRejectionData = null;
@@ -4569,7 +4572,7 @@ function hideExportDate() {
 }
 
 // ================================
-// ITEMS MANAGEMENT FUNCTIONS
+// ITEMS MANAGEMENT FUNCTIONS - UPDATED WITH IMPORT AND CATEGORY
 // ================================
 function openItemsManagement() {
     if (!isAuthenticated()) {
@@ -4593,6 +4596,8 @@ function openItemsManagement() {
         itemsLastVisibleDoc = null;
         loadItems();
         updateItemCounts();
+        updateKitchenCategoryVisibility();
+        updateKitchenCategoryStats();
     }
 }
 
@@ -4620,33 +4625,74 @@ async function updateItemCounts() {
             .get();
         kitchenItemsCount = kitchenSnapshot.size;
         
-        // Update UI
-        const totalEl = Performance.getElement('#totalItemsCount');
-        const kitchenEl = Performance.getElement('#kitchenItemsCount');
+        // Get kitchen category counts
+        meatCount = 0;
+        vegetablesCount = 0;
+        seafoodCount = 0;
         
-        if (totalEl) totalEl.textContent = regularItemsCount;
-        if (kitchenEl) kitchenEl.textContent = kitchenItemsCount;
+        kitchenSnapshot.forEach(doc => {
+            const item = doc.data();
+            if (item.kitchenCategory === 'meat') meatCount++;
+            else if (item.kitchenCategory === 'vegetables') vegetablesCount++;
+            else if (item.kitchenCategory === 'seafood') seafoodCount++;
+        });
+        
+        // Update UI
+        const regularTotalEl = Performance.getElement('#totalRegularItemsCount');
+        const kitchenTotalEl = Performance.getElement('#totalKitchenItemsCount');
+        
+        if (regularTotalEl) regularTotalEl.textContent = regularItemsCount;
+        if (kitchenTotalEl) kitchenTotalEl.textContent = kitchenItemsCount;
+        
+        updateKitchenCategoryStats();
         
     } catch (error) {
         console.error('Error updating item counts:', error);
     }
 }
 
-// ================================
-// UPDATED ITEMS MANAGEMENT FUNCTIONS - COMPLETE FIX
-// ================================
+function updateKitchenCategoryStats() {
+    const statsEl = Performance.getElement('#kitchenCategoryStats');
+    const meatEl = Performance.getElement('#meatCount');
+    const vegetablesEl = Performance.getElement('#vegetablesCount');
+    const seafoodEl = Performance.getElement('#seafoodCount');
+    
+    if (statsEl && meatEl && vegetablesEl && seafoodEl) {
+        if (currentItemType === 'kitchen') {
+            statsEl.style.display = 'block';
+            meatEl.textContent = meatCount;
+            vegetablesEl.textContent = vegetablesCount;
+            seafoodEl.textContent = seafoodCount;
+        } else {
+            statsEl.style.display = 'none';
+        }
+    }
+}
 
+function updateKitchenCategoryVisibility() {
+    const kitchenCategoryGroup = Performance.getElement('#kitchenCategoryGroup');
+    if (kitchenCategoryGroup) {
+        kitchenCategoryGroup.style.display = currentItemType === 'kitchen' ? 'block' : 'none';
+    }
+    
+    const kitchenCategorySelect = Performance.getElement('#newItemKitchenCategory');
+    if (kitchenCategorySelect) {
+        kitchenCategorySelect.required = (currentItemType === 'kitchen');
+    }
+}
+
+// UPDATED loadItems function to handle kitchen categories
 async function loadItems() {
     if (!isAuthenticated()) return;
     
     showLoading(true, 'Loading items...');
     
     try {
-        const searchTerm = document.getElementById('searchItems')?.value || '';
-        currentItemType = document.getElementById('itemTypeSelect')?.value || 'regular';
+        const searchTerm = Performance.getElement('#searchItems')?.value || '';
+        currentItemType = Performance.getElement('#itemTypeSelect')?.value || 'regular';
         
         // Update badge
-        const badge = document.getElementById('itemTypeBadge');
+        const badge = Performance.getElement('#itemTypeBadge');
         if (badge) {
             if (currentItemType === 'regular') {
                 badge.innerHTML = '<i class="fas fa-box"></i> Store Items';
@@ -4656,6 +4702,9 @@ async function loadItems() {
                 badge.style.background = '#856404';
             }
         }
+        
+        // Update kitchen category visibility
+        updateKitchenCategoryVisibility();
         
         // Get ALL items of the selected category first (without pagination)
         let query = db.collection('items').where('category', '==', currentItemType);
@@ -4682,7 +4731,7 @@ async function loadItems() {
         // Sort alphabetically
         filteredItems.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         
-        // Update total counts for both categories (for the stats cards)
+        // Update total counts for both categories
         await updateItemCounts();
         
         // Apply pagination to filtered results
@@ -4699,21 +4748,21 @@ async function loadItems() {
         renderItemsTable(itemsData);
         
         // Update UI elements
-        const showingEl = document.getElementById('showingItemsCount');
+        const showingEl = Performance.getElement('#showingItemsCount');
         if (showingEl) {
             showingEl.textContent = itemsData.length;
         }
         
         // Update page info
-        const pageInfo = document.getElementById('itemsPageInfo');
+        const pageInfo = Performance.getElement('#itemsPageInfo');
         if (pageInfo) {
             const totalPages = Math.ceil(filteredItems.length / itemsPageSize) || 1;
             pageInfo.textContent = `Page ${itemsCurrentPage} of ${totalPages}`;
         }
         
         // Update pagination buttons
-        const prevBtn = document.getElementById('prevItemsPageBtn');
-        const nextBtn = document.getElementById('nextItemsPageBtn');
+        const prevBtn = Performance.getElement('#prevItemsPageBtn');
+        const nextBtn = Performance.getElement('#nextItemsPageBtn');
         
         if (prevBtn) {
             prevBtn.disabled = itemsCurrentPage <= 1;
@@ -4724,7 +4773,7 @@ async function loadItems() {
         }
         
         // Update category item count display
-        const categoryCountEl = document.getElementById('categoryItemCount');
+        const categoryCountEl = Performance.getElement('#categoryItemCount');
         if (categoryCountEl) {
             const totalInCategory = currentItemType === 'regular' ? regularItemsCount : kitchenItemsCount;
             const showingCount = itemsData.length;
@@ -4737,6 +4786,9 @@ async function loadItems() {
             }
         }
         
+        // Update kitchen category stats
+        updateKitchenCategoryStats();
+        
     } catch (error) {
         console.error('Error loading items:', error);
         showNotification('Error loading items: ' + error.message, 'error');
@@ -4745,9 +4797,9 @@ async function loadItems() {
     }
 }
 
-// Helper function to render items table
+// Helper function to render items table with kitchen category
 function renderItemsTable(items) {
-    const tableBody = document.getElementById('itemsTableBody');
+    const tableBody = Performance.getElement('#itemsTableBody');
     if (!tableBody) return;
     
     const fragment = document.createDocumentFragment();
@@ -4756,6 +4808,22 @@ function renderItemsTable(items) {
         const row = document.createElement('tr');
         const categoryIcon = item.category === 'kitchen' ? '🍳' : '📦';
         const categoryName = item.category === 'kitchen' ? 'Kitchen' : 'Regular';
+        
+        // Kitchen category display
+        let kitchenCategoryDisplay = 'N/A';
+        let kitchenCategoryClass = '';
+        if (item.category === 'kitchen' && item.kitchenCategory) {
+            const categoryMap = {
+                'meat': '🥩 Meat',
+                'vegetables': '🥬 Vegetables',
+                'seafood': '🦐 Seafood'
+            };
+            kitchenCategoryDisplay = categoryMap[item.kitchenCategory] || item.kitchenCategory;
+            
+            if (item.kitchenCategory === 'meat') kitchenCategoryClass = 'category-meat';
+            else if (item.kitchenCategory === 'vegetables') kitchenCategoryClass = 'category-vegetables';
+            else if (item.kitchenCategory === 'seafood') kitchenCategoryClass = 'category-seafood';
+        }
         
         row.innerHTML = `
             <td><strong>${escapeHtml(item.name)}</strong></td>
@@ -4769,10 +4837,15 @@ function renderItemsTable(items) {
                     ${categoryIcon} ${categoryName}
                 </span>
             </td>
+            <td>
+                ${item.category === 'kitchen' && item.kitchenCategory ? 
+                    `<span class="kitchen-category-badge ${kitchenCategoryClass}">${kitchenCategoryDisplay}</span>` : 
+                    '<span style="color: #999;">-</span>'}
+            </td>
             <td><small style="color: var(--color-gray);">${formatDate(item.createdAt)}</small></td>
             <td>
                 <div class="item-actions">
-                    <button class="item-action-btn edit-item-btn" onclick="openEditItemModal('${item.id}', '${escapeHtml(item.name).replace(/'/g, "\\'")}', ${item.cost || 0}, '${item.category || 'regular'}')">
+                    <button class="item-action-btn edit-item-btn" onclick="openEditItemModal('${item.id}', '${escapeHtml(item.name).replace(/'/g, "\\'")}', ${item.cost || 0}, '${item.category || 'regular'}', '${item.kitchenCategory || ''}')">
                         <i class="fas fa-edit"></i> Edit
                     </button>
                     <button class="item-action-btn delete-item-btn" onclick="deleteItem('${item.id}', '${escapeHtml(item.name).replace(/'/g, "\\'")}')">
@@ -4789,12 +4862,12 @@ function renderItemsTable(items) {
     tableBody.appendChild(fragment);
     
     if (items.length === 0) {
-        const searchTerm = document.getElementById('searchItems')?.value;
+        const searchTerm = Performance.getElement('#searchItems')?.value;
         const searchMessage = searchTerm ? ` matching "${searchTerm}"` : '';
         
         tableBody.innerHTML = `
             <tr>
-                <td colspan="5" style="text-align: center; padding: 40px; color: var(--color-gray);">
+                <td colspan="6" style="text-align: center; padding: 40px; color: var(--color-gray);">
                     <i class="fas ${currentItemType === 'kitchen' ? 'fa-utensils' : 'fa-box-open'}" style="font-size: 24px; margin-bottom: 10px;"></i>
                     <p>No ${currentItemType} items${searchMessage} found.</p>
                     <p style="font-size: 11px; margin-top: 5px;">Add your first ${currentItemType} item using the form above.</p>
@@ -4804,34 +4877,7 @@ function renderItemsTable(items) {
     }
 }
 
-// Update the item counts function to get totals for both categories
-async function updateItemCounts() {
-    try {
-        // Get regular items count (all)
-        const regularSnapshot = await db.collection('items')
-            .where('category', '==', 'regular')
-            .get();
-        regularItemsCount = regularSnapshot.size;
-        
-        // Get kitchen items count (all)
-        const kitchenSnapshot = await db.collection('items')
-            .where('category', '==', 'kitchen')
-            .get();
-        kitchenItemsCount = kitchenSnapshot.size;
-        
-        // Update UI with total counts
-        const regularTotalEl = document.getElementById('totalRegularItemsCount');
-        const kitchenTotalEl = document.getElementById('totalKitchenItemsCount');
-        
-        if (regularTotalEl) regularTotalEl.textContent = regularItemsCount;
-        if (kitchenTotalEl) kitchenTotalEl.textContent = kitchenItemsCount;
-        
-    } catch (error) {
-        console.error('Error updating item counts:', error);
-    }
-}
-
-// Helper function to escape HTML
+// Escape HTML helper
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
@@ -4839,24 +4885,19 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Update pagination functions
-function changeItemsPage(direction) {
-    itemsCurrentPage += direction;
-    loadItems();
-}
-
-// Update search input handler
+// Setup item type listener
 function setupItemTypeListener() {
-    const itemTypeSelect = document.getElementById('itemTypeSelect');
+    const itemTypeSelect = Performance.getElement('#itemTypeSelect');
     if (itemTypeSelect) {
         itemTypeSelect.addEventListener('change', function() {
             currentItemType = this.value;
             itemsCurrentPage = 1;
             loadItems();
+            updateKitchenCategoryVisibility();
         });
     }
     
-    const searchItemsInput = document.getElementById('searchItems');
+    const searchItemsInput = Performance.getElement('#searchItems');
     if (searchItemsInput) {
         searchItemsInput.addEventListener('input', Performance.debounce(() => {
             itemsCurrentPage = 1;
@@ -4864,39 +4905,8 @@ function setupItemTypeListener() {
         }, 300, 'itemsSearch'));
     }
 }
-function updateItemsStatistics(totalCount) {
-    const totalEl = Performance.getElement('#totalItemsCount');
-    const showingEl = Performance.getElement('#showingItemsCount');
-    
-    if (totalEl) totalEl.textContent = totalCount;
-    if (showingEl) showingEl.textContent = itemsData.length;
-}
 
-function updateItemsPageInfo() {
-    const pageInfo = Performance.getElement('#itemsPageInfo');
-    if (pageInfo) {
-        pageInfo.textContent = `Page ${itemsCurrentPage}`;
-    }
-}
-
-function updateItemsPaginationButtons() {
-    const prevBtn = Performance.getElement('#prevItemsPageBtn');
-    const nextBtn = Performance.getElement('#nextItemsPageBtn');
-    
-    if (prevBtn) {
-        prevBtn.disabled = itemsCurrentPage <= 1;
-    }
-    
-    if (nextBtn) {
-        nextBtn.disabled = itemsData.length < itemsPageSize;
-    }
-}
-
-function changeItemsPage(direction) {
-    itemsCurrentPage += direction;
-    loadItems();
-}
-
+// Updated addItemToDatabase to handle kitchen category
 async function addItemToDatabase() {
     if (!isAuthenticated()) {
         showNotification('Please login to add items', 'error');
@@ -4911,10 +4921,12 @@ async function addItemToDatabase() {
     const nameInput = Performance.getElement('#newItemName');
     const costInput = Performance.getElement('#newItemCost');
     const itemTypeSelect = Performance.getElement('#itemTypeSelect');
+    const kitchenCategorySelect = Performance.getElement('#newItemKitchenCategory');
     
     const name = nameInput?.value.trim();
     const cost = parseFloat(costInput?.value) || 0;
     const category = itemTypeSelect?.value || 'regular';
+    const kitchenCategory = kitchenCategorySelect?.value;
     
     if (!name) {
         showNotification('Please enter item name', 'error');
@@ -4933,15 +4945,21 @@ async function addItemToDatabase() {
         return;
     }
     
+    if (category === 'kitchen' && !kitchenCategory) {
+        showNotification('Please select a kitchen category (Meat, Vegetables, or Seafood)', 'error');
+        kitchenCategorySelect?.focus();
+        return;
+    }
+    
     showLoading(true, 'Adding item...');
     
     try {
         // Check if item exists in the same category
-        const existingQuery = await db.collection('items')
+        let query = db.collection('items')
             .where('nameLowerCase', '==', name.toLowerCase())
-            .where('category', '==', category)
-            .limit(1)
-            .get();
+            .where('category', '==', category);
+        
+        const existingQuery = await query.limit(1).get();
         
         if (!existingQuery.empty) {
             showNotification(`${category === 'kitchen' ? 'Kitchen' : 'Regular'} item already exists in database`, 'error');
@@ -4958,6 +4976,11 @@ async function addItemToDatabase() {
             updatedAt: new Date().toISOString(),
             usageCount: 0
         };
+        
+        // Add kitchen category if applicable
+        if (category === 'kitchen' && kitchenCategory) {
+            newItem.kitchenCategory = kitchenCategory;
+        }
         
         await db.collection('items').add(newItem);
         
@@ -4977,7 +5000,8 @@ async function addItemToDatabase() {
     }
 }
 
-function openEditItemModal(itemId, name, cost = 0, category = 'regular') {
+// Updated openEditItemModal to include kitchen category
+function openEditItemModal(itemId, name, cost = 0, category = 'regular', kitchenCategory = '') {
     if (!isAdmin()) {
         showNotification('Only administrators can edit items', 'error');
         return;
@@ -4988,13 +5012,27 @@ function openEditItemModal(itemId, name, cost = 0, category = 'regular') {
     const nameInput = Performance.getElement('#editItemName');
     const costInput = Performance.getElement('#editItemCost');
     const categorySelect = Performance.getElement('#editItemCategory');
+    const kitchenCategoryGroup = Performance.getElement('#editKitchenCategoryGroup');
+    const kitchenCategorySelect = Performance.getElement('#editItemKitchenCategory');
     const itemInfo = Performance.getElement('#editItemInfo');
     
     if (nameInput) nameInput.value = name;
     if (costInput) costInput.value = cost;
     if (categorySelect) categorySelect.value = category;
+    if (kitchenCategorySelect) kitchenCategorySelect.value = kitchenCategory;
+    
+    // Show/hide kitchen category based on category
+    if (kitchenCategoryGroup) {
+        kitchenCategoryGroup.style.display = category === 'kitchen' ? 'block' : 'none';
+    }
+    
     if (itemInfo) {
-        itemInfo.innerHTML = `Editing ${category === 'kitchen' ? 'kitchen' : 'regular'} item: <strong>${name}</strong>`;
+        const categoryText = category === 'kitchen' ? 'kitchen' : 'regular';
+        let infoHtml = `Editing ${categoryText} item: <strong>${name}</strong>`;
+        if (category === 'kitchen' && kitchenCategory) {
+            infoHtml += ` (${kitchenCategory})`;
+        }
+        itemInfo.innerHTML = infoHtml;
     }
     
     const editModal = Performance.getElement('#editItemModal');
@@ -5023,10 +5061,12 @@ async function saveItemChanges() {
     const nameInput = Performance.getElement('#editItemName');
     const costInput = Performance.getElement('#editItemCost');
     const categorySelect = Performance.getElement('#editItemCategory');
+    const kitchenCategorySelect = Performance.getElement('#editItemKitchenCategory');
     
     const name = nameInput?.value.trim();
     const cost = parseFloat(costInput?.value) || 0;
     const category = categorySelect?.value || 'regular';
+    const kitchenCategory = kitchenCategorySelect?.value;
     
     if (!name) {
         showNotification('Item name is required', 'error');
@@ -5042,6 +5082,12 @@ async function saveItemChanges() {
     if (isNaN(cost) || cost < 0) {
         showNotification('Cost must be a valid positive number', 'error');
         costInput?.focus();
+        return;
+    }
+    
+    if (category === 'kitchen' && !kitchenCategory) {
+        showNotification('Please select a kitchen category for kitchen items', 'error');
+        kitchenCategorySelect?.focus();
         return;
     }
     
@@ -5075,6 +5121,14 @@ async function saveItemChanges() {
             updatedAt: new Date().toISOString(),
             updatedBy: currentUser?.email || 'Administrator'
         };
+        
+        // Add kitchen category if applicable
+        if (category === 'kitchen') {
+            updates.kitchenCategory = kitchenCategory;
+        } else {
+            // Remove kitchen category if switching to regular
+            updates.kitchenCategory = null;
+        }
         
         await db.collection('items').doc(currentEditItemId).update(updates);
         
@@ -5178,16 +5232,259 @@ async function migrateItemsToCategories() {
     }
 }
 
-// Setup item type change listener
-function setupItemTypeListener() {
-    const itemTypeSelect = Performance.getElement('#itemTypeSelect');
-    if (itemTypeSelect) {
-        itemTypeSelect.addEventListener('change', function() {
-            currentItemType = this.value;
-            itemsCurrentPage = 1;
-            itemsLastVisibleDoc = null;
-            loadItems();
+// ================================
+// IMPORT FUNCTIONS - NEW
+// ================================
+
+// Setup import button listener
+function setupImportListener() {
+    const importButton = Performance.getElement('#importItemsButton');
+    const importFileInput = document.getElementById('importFileInput');
+    
+    if (importButton) {
+        importButton.addEventListener('click', () => {
+            // Create file input if it doesn't exist
+            if (!importFileInput) {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.id = 'importFileInput';
+                input.accept = '.xlsx, .xls';
+                input.style.display = 'none';
+                document.body.appendChild(input);
+                
+                input.addEventListener('change', handleFileImport);
+            } else {
+                importFileInput.click();
+            }
         });
+    }
+    
+    // Re-attach listener if file input exists
+    const existingInput = document.getElementById('importFileInput');
+    if (existingInput) {
+        existingInput.removeEventListener('change', handleFileImport);
+        existingInput.addEventListener('change', handleFileImport);
+    }
+}
+
+// Handle file import
+async function handleFileImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const fileInput = event.target;
+    
+    showLoading(true, 'Reading Excel file...');
+    
+    try {
+        const data = await readExcelFile(file);
+        await processImportedData(data);
+    } catch (error) {
+        console.error('Import error:', error);
+        showNotification('Error importing file: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+        // Clear file input
+        fileInput.value = '';
+    }
+}
+
+// Read Excel file
+function readExcelFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            try {
+                const data = e.target.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                
+                // Remove empty rows
+                const filteredData = jsonData.filter(row => row.some(cell => cell && cell.toString().trim() !== ''));
+                
+                if (filteredData.length < 2) {
+                    reject(new Error('File has no data rows'));
+                    return;
+                }
+                
+                // Parse headers
+                const headers = filteredData[0].map(h => (h || '').toString().toLowerCase().trim());
+                
+                // Expected headers
+                const expectedHeaders = ['item name', 'cost', 'category'];
+                
+                // Check if required columns exist
+                const nameIndex = headers.findIndex(h => h.includes('item name') || h.includes('name'));
+                const costIndex = headers.findIndex(h => h.includes('cost') || h.includes('price'));
+                const categoryIndex = headers.findIndex(h => h.includes('category'));
+                
+                if (nameIndex === -1) throw new Error('Column "Item Name" not found');
+                if (costIndex === -1) throw new Error('Column "Cost" not found');
+                
+                // Parse data rows
+                const items = [];
+                const errors = [];
+                
+                for (let i = 1; i < filteredData.length; i++) {
+                    const row = filteredData[i];
+                    const itemName = row[nameIndex] ? row[nameIndex].toString().trim() : '';
+                    const itemCost = parseFloat(row[costIndex]) || 0;
+                    
+                    // Determine category
+                    let category = 'regular';
+                    let kitchenCategory = null;
+                    
+                    if (categoryIndex !== -1) {
+                        const rawCategory = row[categoryIndex] ? row[categoryIndex].toString().toLowerCase().trim() : '';
+                        
+                        // Check if it's a kitchen category
+                        if (rawCategory === 'meat' || rawCategory.includes('meat')) {
+                            category = 'kitchen';
+                            kitchenCategory = 'meat';
+                        } else if (rawCategory === 'vegetables' || rawCategory.includes('vegetable')) {
+                            category = 'kitchen';
+                            kitchenCategory = 'vegetables';
+                        } else if (rawCategory === 'seafood' || rawCategory.includes('seafood') || rawCategory.includes('fish')) {
+                            category = 'kitchen';
+                            kitchenCategory = 'seafood';
+                        }
+                    }
+                    
+                    if (!itemName) {
+                        errors.push(`Row ${i + 1}: Missing item name`);
+                        continue;
+                    }
+                    
+                    if (isNaN(itemCost) || itemCost < 0) {
+                        errors.push(`Row ${i + 1}: Invalid cost value`);
+                        continue;
+                    }
+                    
+                    items.push({
+                        name: itemName,
+                        nameLowerCase: itemName.toLowerCase(),
+                        cost: itemCost,
+                        category: category,
+                        kitchenCategory: kitchenCategory,
+                        createdAt: new Date().toISOString(),
+                        createdBy: currentUser?.email || 'Administrator',
+                        usageCount: 0
+                    });
+                }
+                
+                if (errors.length > 0) {
+                    console.warn('Import errors:', errors);
+                    showNotification(`${errors.length} rows had errors. Check console for details.`, 'warning');
+                }
+                
+                resolve(items);
+                
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        reader.onerror = reject;
+        reader.readAsBinaryString(file);
+    });
+}
+
+// Process imported data
+async function processImportedData(items) {
+    if (items.length === 0) {
+        showNotification('No valid items found in file', 'warning');
+        return;
+    }
+    
+    // Show preview
+    const importPreview = Performance.getElement('#importPreview');
+    if (importPreview) {
+        const kitchenCount = items.filter(i => i.category === 'kitchen').length;
+        const regularCount = items.filter(i => i.category === 'regular').length;
+        
+        importPreview.innerHTML = `
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                <h5 style="margin: 0 0 10px 0;"><i class="fas fa-file-import"></i> Import Preview</h5>
+                <p>Found ${items.length} items to import:</p>
+                <ul style="margin: 0 0 15px 20px;">
+                    <li>📦 Regular items: ${regularCount}</li>
+                    <li>🍳 Kitchen items: ${kitchenCount}</li>
+                </ul>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-primary" id="confirmImportBtn">
+                        <i class="fas fa-check"></i> Confirm Import
+                    </button>
+                    <button class="btn btn-secondary" id="cancelImportBtn">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                </div>
+            </div>
+        `;
+        importPreview.style.display = 'block';
+        
+        // Add event listeners
+        const confirmBtn = document.getElementById('confirmImportBtn');
+        const cancelBtn = document.getElementById('cancelImportBtn');
+        
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', async () => {
+                importPreview.style.display = 'none';
+                await saveImportedItems(items);
+            });
+        }
+        
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                importPreview.style.display = 'none';
+            });
+        }
+    }
+}
+
+// Save imported items to database
+async function saveImportedItems(items) {
+    showLoading(true, 'Importing items...');
+    
+    try {
+        const batch = db.batch();
+        let addedCount = 0;
+        let skippedCount = 0;
+        
+        for (const item of items) {
+            // Check if item already exists
+            const existingQuery = await db.collection('items')
+                .where('nameLowerCase', '==', item.nameLowerCase)
+                .where('category', '==', item.category)
+                .limit(1)
+                .get();
+            
+            if (existingQuery.empty) {
+                const docRef = db.collection('items').doc();
+                batch.set(docRef, item);
+                addedCount++;
+            } else {
+                skippedCount++;
+            }
+        }
+        
+        if (addedCount > 0) {
+            await batch.commit();
+        }
+        
+        showNotification(`Successfully imported ${addedCount} items. ${skippedCount} items skipped (already exist).`, 'success');
+        
+        // Refresh items list
+        await loadItems();
+        await updateItemCounts();
+        
+    } catch (error) {
+        console.error('Error saving imported items:', error);
+        showNotification('Error saving imported items: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
     }
 }
 
@@ -5328,6 +5625,9 @@ function setupEventListeners() {
     // Item type selector
     setupItemTypeListener();
     
+    // Import button
+    setupImportListener();
+    
     // Edit item modal
     const closeEditItemModalBtn = Performance.getElement('#closeEditItemModal');
     const cancelEditItemButton = Performance.getElement('#cancelEditItemButton');
@@ -5336,6 +5636,17 @@ function setupEventListeners() {
     if (closeEditItemModalBtn) closeEditItemModalBtn.addEventListener('click', closeEditItemModal);
     if (cancelEditItemButton) cancelEditItemButton.addEventListener('click', closeEditItemModal);
     if (saveItemButton) saveItemButton.addEventListener('click', saveItemChanges);
+    
+    // Category change in edit modal
+    const editCategorySelect = Performance.getElement('#editItemCategory');
+    if (editCategorySelect) {
+        editCategorySelect.addEventListener('change', function() {
+            const kitchenCategoryGroup = Performance.getElement('#editKitchenCategoryGroup');
+            if (kitchenCategoryGroup) {
+                kitchenCategoryGroup.style.display = this.value === 'kitchen' ? 'block' : 'none';
+            }
+        });
+    }
     
     // Report details modal
     const closeDetailsModalBtn = Performance.getElement('#closeDetailsModal');
