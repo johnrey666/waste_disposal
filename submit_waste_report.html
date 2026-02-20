@@ -75,12 +75,72 @@
             color: var(--color-primary);
             margin-right: 5px;
         }
+        
+        /* Enhanced progress bar */
+        .upload-progress {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 20px;
+            border-radius: var(--border-radius-lg);
+            box-shadow: var(--shadow-lg);
+            width: 300px;
+            text-align: center;
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translate(-50%, 20px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+        
+        .upload-progress .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: var(--color-accent);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 12px 0 8px;
+        }
+        
+        .upload-progress .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--color-primary), #4aa180);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        
+        .upload-progress .progress-text {
+            font-size: var(--font-size-sm);
+            font-weight: 600;
+            color: var(--color-primary);
+            margin-bottom: 4px;
+        }
+        
+        .upload-progress .progress-details {
+            font-size: var(--font-size-xs);
+            color: var(--color-gray);
+        }
     </style>
 </head>
 <body>
-    <!-- Loading Overlay -->
+    <!-- Enhanced Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
-        <div class="loading-spinner"></div>
+        <div class="modern-loader">
+            <div class="pulse-loader">
+                <div class="pulse-circle"></div>
+                <div class="pulse-circle"></div>
+            </div>
+            <div class="loader-text" id="loaderText">Loading...</div>
+        </div>
         <div id="uploadProgress" class="upload-progress" style="display: none;">
             <div class="progress-bar">
                 <div class="progress-fill" id="progressFill"></div>

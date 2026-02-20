@@ -38,6 +38,52 @@ const Performance = {
 };
 
 // ================================
+// ENHANCED LOADER FUNCTIONS
+// ================================
+const Loader = {
+    overlay: document.getElementById('loadingOverlay'),
+    textElement: document.getElementById('loaderText'),
+    
+    show(message = 'Loading...') {
+        if (!this.overlay) return;
+        
+        requestAnimationFrame(() => {
+            this.overlay.style.display = 'flex';
+            if (this.textElement) {
+                this.textElement.textContent = message;
+            }
+        });
+    },
+    
+    hide() {
+        if (!this.overlay) return;
+        
+        requestAnimationFrame(() => {
+            this.overlay.style.opacity = '0';
+            setTimeout(() => {
+                this.overlay.style.display = 'none';
+                this.overlay.style.opacity = '1';
+            }, 200);
+        });
+    },
+    
+    updateMessage(message) {
+        if (this.textElement) {
+            this.textElement.textContent = message;
+        }
+    }
+};
+
+// Replace the existing showLoading function with:
+function showLoading(show, message = 'Loading...') {
+    if (show) {
+        Loader.show(message);
+    } else {
+        Loader.hide();
+    }
+}
+
+// ================================
 // CONFIGURATION
 // ================================
 
@@ -4603,7 +4649,7 @@ async function loadItems() {
         const badge = document.getElementById('itemTypeBadge');
         if (badge) {
             if (currentItemType === 'regular') {
-                badge.innerHTML = '<i class="fas fa-box"></i> Regular Items';
+                badge.innerHTML = '<i class="fas fa-box"></i> Store Items';
                 badge.style.background = 'var(--color-primary)';
             } else {
                 badge.innerHTML = '<i class="fas fa-utensils"></i> Kitchen Items';

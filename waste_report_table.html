@@ -486,11 +486,71 @@ body.user .user-only {
 .close-modal:hover {
     color: #2a3b4c;
 }
+
+/* Import button styles */
+.import-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s;
+}
+
+.import-btn:hover {
+    background: #218838;
+}
+
+.import-section {
+    margin: 15px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px dashed #2a5934;
+}
+
+.import-section.hidden {
+    display: none;
+}
+
+.kitchen-category-badge {
+    background: #fff3cd;
+    color: #856404;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 500;
+}
+
+/* Kitchen category colors */
+.category-meat {
+    background: #f8d7da !important;
+    color: #721c24 !important;
+}
+
+.category-vegetables {
+    background: #d4edda !important;
+    color: #155724 !important;
+}
+
+.category-seafood {
+    background: #d1ecf1 !important;
+    color: #0c5460 !important;
+}
 </style>
 <body class="">
-    <!-- Loading Overlay -->
+    <!-- Enhanced Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
-        <div class="loading-spinner"></div>
+        <div class="modern-loader">
+            <div class="gradient-loader"></div>
+            <div class="loader-text" id="loaderText">Loading...</div>
+        </div>
     </div>
     
     <!-- Notification Container -->
@@ -1147,31 +1207,31 @@ body.user .user-only {
         </div>
     </div>
 
-    <!-- Items Management Modal with Category Dropdown -->
+    <!-- Items Management Modal with Category Dropdown and Import -->
     <div id="itemsManagementModal" class="modal">
-        <div class="modal-content" style="max-width: 700px; max-height: 80vh;">
+        <div class="modal-content" style="max-width: 800px; max-height: 85vh;">
             <div class="modal-header">
                 <h3><i class="fas fa-boxes"></i> Manage Items Database</h3>
                 <span class="close-modal" id="closeItemsModal">&times;</span>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="overflow-y: auto;">
                 <!-- Item Type Selector Dropdown -->
-                <div class="item-type-selector" style="margin-bottom: 20px; padding: 15px; background: var(--color-offwhite); border-radius: var(--border-radius); border: var(--border-base);">
+                <div class="item-type-selector" style="margin-bottom: 15px; padding: 15px; background: var(--color-offwhite); border-radius: var(--border-radius); border: var(--border-base);">
                     <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                         <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
                             <i class="fas fa-layer-group" style="color: var(--color-primary);"></i>
                             <label for="itemTypeSelect" style="font-weight: 500; color: var(--color-darkgray);">Item Category:</label>
                             <select id="itemTypeSelect" class="filter-select" style="min-width: 180px; background: white;">
-                                <option value="regular">📦 Regular Items</option>
+                                <option value="regular">📦 Store Items</option>
                                 <option value="kitchen">🍳 Kitchen Items</option>
                             </select>
                         </div>
                         <div class="item-type-badge" id="itemTypeBadge" style="background: var(--color-primary); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500;">
-                            <i class="fas fa-box"></i> Regular Items
+                            <i class="fas fa-box"></i> Store Items
                         </div>
                     </div>
                     <div style="margin-top: 8px; font-size: 11px; color: var(--color-gray); display: flex; gap: 15px; flex-wrap: wrap;">
-                        <span><i class="fas fa-info-circle"></i> Switch between regular and kitchen item categories</span>
+                        <span><i class="fas fa-info-circle"></i> Switch between store and kitchen item categories</span>
                         <span id="categoryItemCount">0 items</span>
                     </div>
                 </div>
@@ -1180,18 +1240,44 @@ body.user .user-only {
                 <div class="add-item-section">
                     <h4><i class="fas fa-plus-circle"></i> Add New Item</h4>
                     <div class="form-grid">
-                        <div class="form-group">
+                        <div class="form-group" style="flex: 1;">
                             <label for="newItemName">Item Name *</label>
                             <input type="text" id="newItemName" placeholder="Enter item name" maxlength="100">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="flex: 1;">
                             <label for="newItemCost">Unit Cost (₱) *</label>
                             <input type="number" id="newItemCost" step="0.01" min="0" placeholder="0.00" value="0">
+                        </div>
+                        <!-- Kitchen Category Dropdown - Only shown when kitchen items are selected -->
+                        <div class="form-group" id="kitchenCategoryGroup" style="flex: 1; display: none;">
+                            <label for="newItemKitchenCategory">Kitchen Category <span class="required">*</span></label>
+                            <select id="newItemKitchenCategory" class="filter-select">
+                                <option value="meat">🥩 Meat</option>
+                                <option value="vegetables">🥬 Vegetables</option>
+                                <option value="seafood">🦐 Seafood</option>
+                            </select>
                         </div>
                     </div>
                     <button class="btn btn-primary" id="addItemButton">
                         <i class="fas fa-plus"></i> Add Item to Database
                     </button>
+                </div>
+
+                <!-- Import Section -->
+                <div class="import-section">
+                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <div style="flex: 1;">
+                            <h4 style="margin: 0 0 5px 0;"><i class="fas fa-file-import"></i> Import Items from Excel</h4>
+                            <p style="font-size: 11px; color: #666; margin: 0;">Upload XLSX file with columns: Item Name, Cost, Category (meat/vegetables/seafood for kitchen items)</p>
+                        </div>
+                        <input type="file" id="importFileInput" accept=".xlsx, .xls" style="display: none;">
+                        <button class="import-btn" id="importItemsButton">
+                            <i class="fas fa-upload"></i> Import XLSX
+                        </button>
+                    </div>
+                    <div id="importPreview" style="margin-top: 15px; display: none;">
+                        <!-- Import preview will be shown here -->
+                    </div>
                 </div>
 
                 <!-- Search -->
@@ -1203,13 +1289,14 @@ body.user .user-only {
                 </div>
 
                 <!-- Items Table -->
-                <div class="table-container" style="max-height: 300px; overflow-y: auto; margin: 15px 0;">
+                <div class="table-container" style="max-height: 250px; overflow-y: auto; margin: 15px 0;">
                     <table id="itemsTable">
                         <thead>
                             <tr>
                                 <th>Item Name</th>
                                 <th>Unit Cost (₱)</th>
                                 <th>Category</th>
+                                <th>Kitchen Category</th>
                                 <th>Created</th>
                                 <th>Actions</th>
                             </tr>
@@ -1236,15 +1323,15 @@ body.user .user-only {
                     </div>
                 </div>
 
-                <!-- Stats - UPDATED: Shows total of all items across all pages -->
-                <div class="stats-cards" style="margin-top: 20px;">
+                <!-- Stats -->
+                <div class="stats-cards" style="margin-top: 15px;">
                     <div class="stat-card" style="flex: 1; min-width: 150px;">
                         <div class="stat-icon total-reports">
                             <i class="fas fa-box"></i>
                         </div>
                         <div class="stat-content">
                             <h3 id="totalRegularItemsCount">0</h3>
-                            <p>Total Regular Items</p>
+                            <p>Total Store Items</p>
                         </div>
                     </div>
                     <div class="stat-card" style="flex: 1; min-width: 150px;">
@@ -1255,6 +1342,15 @@ body.user .user-only {
                             <h3 id="totalKitchenItemsCount">0</h3>
                             <p>Total Kitchen Items</p>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Kitchen Category Stats -->
+                <div id="kitchenCategoryStats" style="margin-top: 10px; display: none;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <span class="kitchen-category-badge category-meat">🥩 Meat: <span id="meatCount">0</span></span>
+                        <span class="kitchen-category-badge category-vegetables">🥬 Vegetables: <span id="vegetablesCount">0</span></span>
+                        <span class="kitchen-category-badge category-seafood">🦐 Seafood: <span id="seafoodCount">0</span></span>
                     </div>
                 </div>
             </div>
@@ -1268,7 +1364,7 @@ body.user .user-only {
 
     <!-- Edit Item Modal -->
     <div id="editItemModal" class="modal">
-        <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-content" style="max-width: 450px;">
             <div class="modal-header">
                 <h3><i class="fas fa-edit"></i> Edit Item</h3>
                 <span class="close-modal" id="closeEditItemModal">&times;</span>
@@ -1283,10 +1379,18 @@ body.user .user-only {
                     <input type="number" id="editItemCost" step="0.01" min="0" placeholder="0.00">
                 </div>
                 <div class="form-group">
-                    <label for="editItemCategory">Category</label>
+                    <label for="editItemCategory">Main Category</label>
                     <select id="editItemCategory" class="filter-select">
-                        <option value="regular">📦 Regular Items</option>
+                        <option value="regular">📦 Store Items</option>
                         <option value="kitchen">🍳 Kitchen Items</option>
+                    </select>
+                </div>
+                <div class="form-group" id="editKitchenCategoryGroup">
+                    <label for="editItemKitchenCategory">Kitchen Category</label>
+                    <select id="editItemKitchenCategory" class="filter-select">
+                        <option value="meat">🥩 Meat</option>
+                        <option value="vegetables">🥬 Vegetables</option>
+                        <option value="seafood">🦐 Seafood</option>
                     </select>
                 </div>
                 <div id="editItemInfo" style="font-size: 12px; color: var(--color-gray); margin-top: 10px;"></div>

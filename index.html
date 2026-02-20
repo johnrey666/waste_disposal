@@ -420,9 +420,12 @@
     </style>
 </head>
 <body>
-    <!-- Loading Overlay -->
+    <!-- Enhanced Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
-        <div class="loading-spinner"></div>
+        <div class="modern-loader">
+            <div class="morph-loader"></div>
+            <div class="loader-text" id="loaderText">Loading dashboard...</div>
+        </div>
     </div>
     
     <!-- Notification Container -->
@@ -684,6 +687,67 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script>
     // ================================
+    // ENHANCED LOADER FUNCTIONS
+    // ================================
+    const Loader = {
+        overlay: document.getElementById('loadingOverlay'),
+        textElement: document.getElementById('loaderText'),
+        
+        show(message = 'Loading...') {
+            if (!this.overlay) return;
+            
+            requestAnimationFrame(() => {
+                this.overlay.style.display = 'flex';
+                if (this.textElement) {
+                    this.textElement.textContent = message;
+                }
+            });
+        },
+        
+        hide() {
+            if (!this.overlay) return;
+            
+            requestAnimationFrame(() => {
+                this.overlay.style.opacity = '0';
+                setTimeout(() => {
+                    this.overlay.style.display = 'none';
+                    this.overlay.style.opacity = '1';
+                }, 200);
+            });
+        },
+        
+        updateMessage(message) {
+            if (this.textElement) {
+                this.textElement.textContent = message;
+            }
+        }
+    };
+
+    function showNotification(message, type = 'success', duration = 3000) {
+        const notification = document.getElementById('notification');
+        if (!notification) return;
+        
+        if (notification.timeoutId) {
+            clearTimeout(notification.timeoutId);
+        }
+        
+        notification.textContent = message;
+        notification.className = `notification ${type}`;
+        notification.style.display = 'block';
+        notification.style.animation = 'slideInRight 0.3s ease';
+        
+        notification.timeoutId = setTimeout(() => {
+            notification.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => {
+                notification.style.display = 'none';
+                notification.style.animation = '';
+            }, 300);
+        }, duration);
+        
+        return notification;
+    }
+
+    // ================================
     // CONFIGURATION
     // ================================
 
@@ -761,60 +825,11 @@
     }
 
     // ================================
-    // OPTIMIZED LOADING & NOTIFICATION
-    // ================================
-    function showNotification(message, type = 'success', duration = 3000) {
-        const notification = document.getElementById('notification');
-        if (!notification) return;
-        
-        if (notification.timeoutId) {
-            clearTimeout(notification.timeoutId);
-        }
-        
-        notification.textContent = message;
-        notification.className = `notification ${type}`;
-        notification.style.display = 'block';
-        notification.style.animation = 'slideInRight 0.3s ease';
-        
-        notification.timeoutId = setTimeout(() => {
-            notification.style.animation = 'fadeOut 0.3s ease';
-            setTimeout(() => {
-                notification.style.display = 'none';
-                notification.style.animation = '';
-            }, 300);
-        }, duration);
-        
-        return notification;
-    }
-
-    function showLoading(show, message = 'Loading...') {
-        const overlay = document.getElementById('loadingOverlay');
-        if (!overlay) return;
-        
-        requestAnimationFrame(() => {
-            overlay.style.display = show ? 'flex' : 'none';
-            if (show && message !== 'Loading...') {
-                const spinner = overlay.querySelector('.loading-spinner');
-                if (spinner) {
-                    spinner.style.marginBottom = '15px';
-                    const existingText = spinner.nextElementSibling;
-                    if (existingText && existingText.tagName === 'P') {
-                        existingText.textContent = message;
-                    } else {
-                        const text = document.createElement('p');
-                        text.textContent = message;
-                        text.style.cssText = 'color: white; margin: 0; font-size: 14px; text-align: center;';
-                        overlay.appendChild(text);
-                    }
-                }
-            }
-        });
-    }
-
-    // ================================
     // FIREBASE INITIALIZATION
     // ================================
     function initializeFirebase() {
+        Loader.show('Connecting to database...');
+        
         try {
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
@@ -827,14 +842,15 @@
         } catch (error) {
             console.error('❌ Firebase initialization error:', error);
             showNotification('Firebase connection failed. Please check console.', 'error');
+            Loader.hide();
         }
     }
 
     // ================================
-    // DATA LOADING FUNCTIONS - BOTH CHARTS SHOW CURRENT MONTH
+    // DATA LOADING FUNCTIONS
     // ================================
     async function loadAllData() {
-        showLoading(true, 'Loading current month data...');
+        Loader.show('Loading current month data...');
         
         try {
             const now = Date.now();
@@ -847,11 +863,12 @@
                 console.log('📊 Using cached data');
                 currentData = dataCache.statistics;
                 updateAllChartsAndStats();
-                showLoading(false);
+                Loader.hide();
                 return;
             }
             
             // Get ALL reports
+            Loader.updateMessage('Fetching reports...');
             const snapshot = await db.collection('wasteReports')
                 .orderBy('reportDate', 'desc')
                 .get();
@@ -859,11 +876,12 @@
             if (snapshot.empty) {
                 createEmptyCharts();
                 updateEmptyStats();
-                showLoading(false);
+                Loader.hide();
                 return;
             }
             
             // Process reports
+            Loader.updateMessage('Processing data...');
             const reports = [];
             snapshot.forEach(doc => {
                 const data = doc.data();
@@ -882,9 +900,11 @@
             dataCache.timestamp = now;
             
             // Calculate compliance data - CURRENT MONTH ONLY
+            Loader.updateMessage('Calculating compliance...');
             const complianceData = calculateComplianceData(reports);
             
             // Calculate cost share data - CURRENT MONTH ONLY (PERCENTAGES)
+            Loader.updateMessage('Calculating cost shares...');
             const costData = calculateCostShareDataCurrentMonth(reports);
             
             // Store statistics
@@ -897,19 +917,8 @@
             // Store data globally
             currentData = dataCache.statistics;
             
-            console.log('📊 Current Month Cost Share Data:', {
-                month: complianceData.month,
-                daysSoFar: complianceData.daysSoFar,
-                storesWithCost: costData.storeCount,
-                topStore: costData.topStore,
-                topPercentage: costData.topPercentage,
-                results: costData.results.map(r => ({ 
-                    store: r.store, 
-                    percentage: r.percentage
-                }))
-            });
-            
             // Update all charts and stats
+            Loader.updateMessage('Rendering charts...');
             updateAllChartsAndStats();
             
         } catch (error) {
@@ -917,7 +926,8 @@
             showNotification('Error loading data: ' + error.message, 'error');
             createEmptyCharts();
         } finally {
-            showLoading(false);
+            // Slight delay before hiding for smoother transition
+            setTimeout(() => Loader.hide(), 300);
         }
     }
 
@@ -1316,15 +1326,6 @@
         
         const data = currentData.cost;
         
-        console.log('📊 Updating cost share chart (Current Month):', {
-            resultsCount: data.results.length,
-            results: data.results.map(r => ({ 
-                store: r.store, 
-                percentage: r.percentage,
-                displayName: r.displayName 
-            }))
-        });
-        
         if (data.results.length === 0) {
             createEmptyCostChart();
             return;
@@ -1607,6 +1608,7 @@
         document.querySelectorAll('.chart-card').forEach(card => {
             card.addEventListener('dblclick', function() {
                 dataCache.timestamp = 0;
+                Loader.show('Refreshing data...');
                 loadAllData();
                 showNotification('Chart data refreshed', 'info');
             });
@@ -1624,6 +1626,7 @@
         // Refresh every 5 minutes
         setInterval(() => {
             dataCache.timestamp = 0;
+            Loader.show('Auto-refreshing...');
             loadAllData();
         }, 5 * 60 * 1000);
     });

@@ -1,4 +1,91 @@
 // ================================
+// ENHANCED LOADER FUNCTIONS
+// ================================
+const Loader = {
+    overlay: document.getElementById('loadingOverlay'),
+    textElement: document.getElementById('loaderText'),
+    progressContainer: document.getElementById('uploadProgress'),
+    progressFill: document.getElementById('progressFill'),
+    progressText: document.getElementById('progressText'),
+    progressDetails: document.getElementById('progressDetails'),
+    
+    show(message = 'Loading...') {
+        if (!this.overlay) return;
+        
+        requestAnimationFrame(() => {
+            this.overlay.style.display = 'flex';
+            if (this.textElement) {
+                this.textElement.textContent = message;
+            }
+            if (this.progressContainer) {
+                this.progressContainer.style.display = 'none';
+            }
+        });
+    },
+    
+    hide() {
+        if (!this.overlay) return;
+        
+        requestAnimationFrame(() => {
+            this.overlay.style.opacity = '0';
+            setTimeout(() => {
+                this.overlay.style.display = 'none';
+                this.overlay.style.opacity = '1';
+            }, 200);
+        });
+    },
+    
+    updateMessage(message) {
+        if (this.textElement) {
+            this.textElement.textContent = message;
+        }
+    },
+    
+    showUpload(current = 0, total = 0, fileName = '') {
+        if (!this.progressContainer || !this.progressFill || !this.progressText) return;
+        
+        this.progressContainer.style.display = 'block';
+        
+        if (total > 0) {
+            const percentage = Math.round((current / total) * 100);
+            this.progressFill.style.width = `${percentage}%`;
+            this.progressText.textContent = `Uploading: ${percentage}%`;
+            
+            if (fileName) {
+                this.progressDetails.textContent = `File: ${fileName}`;
+            }
+        }
+    },
+    
+    hideUpload() {
+        if (this.progressContainer) {
+            this.progressContainer.style.display = 'none';
+        }
+        if (this.progressFill) {
+            this.progressFill.style.width = '0%';
+        }
+        if (this.progressText) {
+            this.progressText.textContent = 'Uploading: 0%';
+        }
+        if (this.progressDetails) {
+            this.progressDetails.textContent = '';
+        }
+    },
+    
+    updateUpload(current, total, fileName = '') {
+        if (!this.progressContainer || !this.progressFill || !this.progressText) return;
+        
+        const percentage = Math.round((current / total) * 100);
+        this.progressFill.style.width = `${percentage}%`;
+        this.progressText.textContent = `Uploading: ${percentage}%`;
+        
+        if (fileName) {
+            this.progressDetails.textContent = `File: ${fileName}`;
+        }
+    }
+};
+
+// ================================
 // FIREBASE CONFIGURATION
 // ================================
 const firebaseConfig = {
@@ -67,45 +154,20 @@ function showNotification(message, type = 'success') {
     }, 5000);
 }
 
+// Wrapper functions for backward compatibility
 function showLoading(show, message = '') {
-    const overlay = document.getElementById('loadingOverlay');
-    if (overlay) {
-        overlay.style.display = show ? 'flex' : 'none';
-        
-        if (message) {
-            const progressText = document.getElementById('progressText');
-            if (progressText) {
-                progressText.textContent = message;
-            }
-        }
+    if (show) {
+        Loader.show(message);
+    } else {
+        Loader.hide();
     }
 }
 
 function showUploadProgress(show, current = 0, total = 0, fileName = '') {
-    const progressContainer = document.getElementById('uploadProgress');
-    const progressFill = document.getElementById('progressFill');
-    const progressText = document.getElementById('progressText');
-    const progressDetails = document.getElementById('progressDetails');
-    
-    if (!progressContainer || !progressFill || !progressText) return;
-    
     if (show) {
-        progressContainer.style.display = 'block';
-        
-        if (total > 0) {
-            const percentage = Math.round((current / total) * 100);
-            progressFill.style.width = `${percentage}%`;
-            progressText.textContent = `Uploading: ${percentage}%`;
-            
-            if (fileName) {
-                progressDetails.textContent = `File: ${fileName}`;
-            }
-        }
+        Loader.showUpload(current, total, fileName);
     } else {
-        progressContainer.style.display = 'none';
-        progressFill.style.width = '0%';
-        progressText.textContent = 'Uploading: 0%';
-        progressDetails.textContent = '';
+        Loader.hideUpload();
     }
 }
 
@@ -228,7 +290,7 @@ async function uploadFilesForItemParallel(files, reportId, itemId, itemType, ite
             
             // Update progress
             const currentProgress = (uploadedFiles.length / files.length) * 100;
-            showUploadProgress(true, uploadedFiles.length, files.length, `${uploadedFiles.length}/${files.length} files`);
+            Loader.updateUpload(uploadedFiles.length, files.length, `${uploadedFiles.length}/${files.length} files`);
             
         } catch (error) {
             console.error(`❌ Failed to upload file ${file.name}:`, error);
@@ -315,7 +377,7 @@ async function fetchItemsFromFirestore() {
         }
         
         console.log('Fetching items from Firestore...');
-        showLoading(true, 'Loading items...');
+        Loader.show('Loading items...');
         
         const snapshot = await db.collection('items')
             .orderBy('name', 'asc')
@@ -339,7 +401,7 @@ async function fetchItemsFromFirestore() {
         showNotification('Failed to load items from database. Please try again.', 'error');
         throw error;
     } finally {
-        showLoading(false);
+        Loader.hide();
     }
 }
 
@@ -402,7 +464,7 @@ async function loadRejectedItem() {
         return;
     }
     
-    showLoading(true, 'Searching for rejected item...');
+    Loader.show('Searching for rejected item...');
     
     try {
         const parts = itemId.split('_');
@@ -506,7 +568,7 @@ async function loadRejectedItem() {
         console.error('Error loading rejected item:', error);
         showNotification('Error loading item: ' + error.message, 'error');
     } finally {
-        showLoading(false);
+        Loader.hide();
     }
 }
 
@@ -1619,8 +1681,7 @@ async function handleSubmit(event) {
     
     submitBtn.textContent = 'Submitting...';
     submitBtn.disabled = true;
-    showLoading(true, 'Preparing submission...');
-    showUploadProgress(false);
+    Loader.show('Preparing submission...');
     
     const disposalTypes = [];
     const disposalTypeCheckboxes = document.querySelectorAll('input[name="disposalType"]:checked');
@@ -1685,6 +1746,7 @@ async function handleSubmit(event) {
                     resubmittedItem.hasFiles = true;
                     resubmittedItem.fileCount = fileInput.files.length;
                     
+                    Loader.showUpload(0, fileInput.files.length, 'Starting upload...');
                     const files = Array.from(fileInput.files);
                     const uploadedFiles = await uploadFilesForItemParallel(
                         files, 
@@ -1705,6 +1767,7 @@ async function handleSubmit(event) {
                         originalName: file.originalName,
                         uploadedAt: file.uploadedAt
                     }));
+                    Loader.hideUpload();
                 }
                 
             } else {
@@ -1750,6 +1813,7 @@ async function handleSubmit(event) {
                     resubmittedItem.hasFiles = true;
                     resubmittedItem.fileCount = fileInput.files.length;
                     
+                    Loader.showUpload(0, fileInput.files.length, 'Starting upload...');
                     const files = Array.from(fileInput.files);
                     const uploadedFiles = await uploadFilesForItemParallel(
                         files, 
@@ -1770,6 +1834,7 @@ async function handleSubmit(event) {
                         originalName: file.originalName,
                         uploadedAt: file.uploadedAt
                     }));
+                    Loader.hideUpload();
                 }
             }
             
@@ -1822,7 +1887,7 @@ async function handleSubmit(event) {
             
             submitBtn.textContent = originalText;
             submitBtn.disabled = false;
-            showLoading(false);
+            Loader.hide();
             
             setTimeout(() => {
                 const viewReports = confirm(
@@ -1839,7 +1904,7 @@ async function handleSubmit(event) {
             
             submitBtn.textContent = originalText;
             submitBtn.disabled = false;
-            showLoading(false);
+            Loader.hide();
         }
         
         return;
@@ -1995,7 +2060,7 @@ async function handleSubmit(event) {
         console.log('✅ Initial report saved to Firestore with items');
         
         // Step 1: Send email confirmation NOW (before file uploads)
-        showLoading(true, 'Sending email confirmation...');
+        Loader.updateMessage('Sending email confirmation...');
         
         const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems, false);
         
@@ -2023,8 +2088,8 @@ async function handleSubmit(event) {
         
         // If there are files, upload them in background and update items
         if (totalFiles > 0) {
-            showLoading(true, 'Uploading files in background...');
-            showUploadProgress(true, 0, totalFiles, 'Starting file upload...');
+            Loader.updateMessage('Uploading files...');
+            Loader.showUpload(0, totalFiles, 'Starting file upload...');
             
             // Process uploads with proper file structure
             const processedItems = await processAllItemsWithUploads(
@@ -2032,7 +2097,7 @@ async function handleSubmit(event) {
                 allItems,
                 (completed, total) => {
                     const progress = (completed / total) * 100;
-                    showUploadProgress(true, completed, total, `Item ${completed}/${total}`);
+                    Loader.updateUpload(completed, total, `Item ${completed}/${total}`);
                 }
             );
             
@@ -2067,8 +2132,7 @@ async function handleSubmit(event) {
             await docRef.update(updateData);
             
             console.log('✅ Files uploaded and report updated with processed items');
-            showUploadProgress(false);
-            showLoading(false);
+            Loader.hideUpload();
             
             if (uploadedFiles > 0) {
                 showNotification('✅ All files uploaded successfully!', 'success');
@@ -2079,9 +2143,6 @@ async function handleSubmit(event) {
             await docRef.update({
                 fileUploadComplete: true
             });
-            
-            showLoading(false);
-            showNotification('✅ Report submitted successfully! Email sent.', 'success');
         }
         
         // Reset form
@@ -2118,6 +2179,7 @@ async function handleSubmit(event) {
         // Re-enable submit button
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
+        Loader.hide();
         
         // Ask user to view reports
         setTimeout(() => {
@@ -2139,8 +2201,8 @@ async function handleSubmit(event) {
         
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
-        showLoading(false);
-        showUploadProgress(false);
+        Loader.hide();
+        Loader.hideUpload();
         
         // Save to localStorage as backup
         try {
