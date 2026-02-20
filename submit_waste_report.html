@@ -28,6 +28,53 @@
             color: #0056b3;
             font-weight: 500;
         }
+        /* Nested dropdown styles */
+        .select2-container--default .select2-results__group {
+            color: var(--color-primary);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background-color: var(--color-accent);
+            padding: 8px 12px;
+            margin-top: 4px;
+        }
+        
+        .select2-container--default .select2-results__option--group {
+            padding: 0;
+        }
+        
+        .select2-container--default .select2-results__option .select2-results__option {
+            padding-left: 25px !important;
+            font-size: 12px;
+        }
+        
+        .select2-container--default .select2-results__group {
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .select2-container--default .select2-results__group:hover {
+            background-color: #e0f0e3;
+        }
+        
+        .select2-container--default .select2-results__group:before {
+            content: '▼';
+            font-size: 10px;
+            margin-right: 8px;
+            display: inline-block;
+            transition: transform 0.2s;
+        }
+        
+        .select2-container--default .select2-results__group.collapsed:before {
+            transform: rotate(-90deg);
+        }
+        
+        /* Kitchen icon */
+        .kitchen-icon {
+            color: var(--color-primary);
+            margin-right: 5px;
+        }
     </style>
 </head>
 <body>
@@ -99,26 +146,41 @@
                     <span class="note">Confirmation email will be sent to this address</span>
                 </div>
 
-                <!-- Store -->
+                <!-- Store with collapsible Kitchen dropdown -->
                 <div class="form-group">
                     <label for="store">
                         <i class="fas fa-store"></i> Name of Store <span class="required">*</span>
                     </label>
                     <select id="store" name="store" required>
                         <option value="" disabled selected>Select store location</option>
-                        <option>FG Express IROSIN</option>
-                        <option>FG Express LIGAO</option>
-                        <option>FG Express POLANGUI</option>
-                        <option>FG Express MASBATE</option>
-                        <option>FG Express DARAGA</option>
-                        <option>FG Express BAAO</option>
-                        <option>FG Express PIODURAN</option>
-                        <option>FG Express RIZAL</option>
-                        <option>FG to go TABACO</option>
-                        <option>FG to go LEGAZPI</option>
-                        <option>FG LEGAZPI</option>
-                        <option>FG NAGA</option>
+                        
+                        <!-- FG Express Stores -->
+                        <option value="FG Express IROSIN">FG Express IROSIN</option>
+                        <option value="FG Express LIGAO">FG Express LIGAO</option>
+                        <option value="FG Express POLANGUI">FG Express POLANGUI</option>
+                        <option value="FG Express MASBATE">FG Express MASBATE</option>
+                        <option value="FG Express DARAGA">FG Express DARAGA</option>
+                        <option value="FG Express BAAO">FG Express BAAO</option>
+                        <option value="FG Express PIODURAN">FG Express PIODURAN</option>
+                        <option value="FG Express RIZAL">FG Express RIZAL</option>
+                        
+                        <!-- FG to go Stores -->
+                        <option value="FG to go TABACO">FG to go TABACO</option>
+                        <option value="FG to go LEGAZPI">FG to go LEGAZPI</option>
+                        
+                        <!-- FG Stores -->
+                        <option value="FG LEGAZPI">FG LEGAZPI</option>
+                        <option value="FG NAGA">FG NAGA</option>
+                        
+                        <!-- Kitchen Group with nested options -->
+                        <optgroup label="🍽️ KITCHEN">
+                            <option value="CTK">&nbsp;&nbsp;&nbsp;└─ CTK</option>
+                            <option value="Concourse">&nbsp;&nbsp;&nbsp;└─ Concourse</option>
+                            <option value="FG Kitchen LC">&nbsp;&nbsp;&nbsp;└─ FG Kitchen LC</option>
+                            <option value="FG Kitchen Naga">&nbsp;&nbsp;&nbsp;└─ FG Kitchen Naga</option>
+                        </optgroup>
                     </select>
+                    <span class="note">Click on "KITCHEN" to expand/collapse kitchen locations</span>
                 </div>
 
                 <!-- Personnel -->
@@ -130,14 +192,15 @@
                     <span class="note">Please indicate your complete name</span>
                 </div>
 
-         <!-- Report Date -->
-<div class="form-group">
-    <label for="reportDate">
-        <i class="fas fa-calendar"></i> Disposal Report Date <span class="required">*</span>
-    </label>
-    <input type="date" id="reportDate" name="reportDate" required>
-    <span id="reportDateNote" class="note">Date of disposal report</span>
-</div>
+                <!-- Report Date -->
+                <div class="form-group">
+                    <label for="reportDate">
+                        <i class="fas fa-calendar"></i> Disposal Report Date <span class="required">*</span>
+                    </label>
+                    <input type="date" id="reportDate" name="reportDate" required>
+                    <span id="reportDateNote" class="note">Date of disposal report</span>
+                </div>
+                
                 <!-- Disposal Type Selection (Now checkboxes for multiple selection) -->
                 <div class="form-group">
                     <label>
@@ -266,5 +329,71 @@
     
     <!-- Main JavaScript -->
     <script src="submit_waste_report.js"></script>
+    
+    <script>
+        // Initialize Select2 with custom template for collapsible groups
+        $(document).ready(function() {
+            $('#store').select2({
+                placeholder: "Select store location",
+                allowClear: false,
+                width: '100%',
+                templateResult: formatState,
+                templateSelection: formatState
+            });
+            
+            // Add click handler for group headers
+            $(document).on('click', '.select2-results__group', function() {
+                $(this).toggleClass('collapsed');
+                $(this).nextUntil('.select2-results__group').toggle();
+            });
+        });
+
+        function formatState(state) {
+            if (!state.id) {
+                return state.text;
+            }
+            
+            // Add icon to kitchen options
+            if (state.text.includes('KITCHEN')) {
+                return $('<span><i class="fas fa-utensils kitchen-icon"></i> ' + state.text + '</span>');
+            }
+            
+            // Add small icon to kitchen sub-options
+            if (state.text.includes('CTK') || state.text.includes('Concourse') || 
+                state.text.includes('FG Kitchen')) {
+                return $('<span><i class="fas fa-chevron-right" style="font-size: 10px; margin-right: 5px; color: #256334;"></i> ' + state.text.replace(/[└─\s]/g, '') + '</span>');
+            }
+            
+            return state.text;
+        }
+
+        // Custom function to make the Kitchen group collapsible
+        function makeKitchenCollapsible() {
+            setTimeout(function() {
+                $('.select2-results__group:contains("KITCHEN")').each(function() {
+                    if (!$(this).hasClass('initialized')) {
+                        $(this).addClass('initialized collapsed');
+                        $(this).nextUntil('.select2-results__group').hide();
+                        
+                        $(this).off('click').on('click', function(e) {
+                            e.stopPropagation();
+                            $(this).toggleClass('collapsed');
+                            $(this).nextUntil('.select2-results__group').slideToggle(200);
+                        });
+                    }
+                });
+            }, 500);
+        }
+
+        // Call after dropdown opens
+        $('#store').on('select2:open', function() {
+            makeKitchenCollapsible();
+        });
+
+        // Also call after any select2 render
+        $('#store').on('select2:select', function() {
+            setTimeout(makeKitchenCollapsible, 100);
+        });
+    </script>
 </body>
 </html>

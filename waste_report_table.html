@@ -12,6 +12,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Add EmailJS -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <!-- Add Firebase Auth -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 </head>
 <style>
     /* Enhanced dropdown styling */
@@ -116,8 +118,376 @@
     z-index: -1;
     opacity: 0.1;
 }
+
+/* Auth Section Styles - EXTREMELY MINIMAL */
+.auth-section {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.auth-container {
+    background: white;
+    width: 100%;
+    max-width: 300px;
+    border: 1px solid #eaeef2;
+}
+
+.auth-header {
+    padding: 24px 20px 8px 20px;
+    text-align: center;
+}
+
+.auth-header h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #2a5934;
+    letter-spacing: 0.5px;
+}
+
+/* Login Form - ULTRA MINIMAL */
+#loginForm {
+    padding: 16px 20px 20px 20px;
+}
+
+.form-group {
+    margin-bottom: 14px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 2px;
+    font-weight: 400;
+    color: #7c8b9a;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #eef2f6;
+    border-radius: 2px;
+    font-size: 12px;
+    transition: all 0.15s;
+    background: #ffffff;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #2a5934;
+}
+
+.password-field {
+    position: relative;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #b8c4ce;
+    font-size: 11px;
+    padding: 0;
+}
+
+.password-toggle:hover {
+    color: #2a5934;
+}
+
+.form-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+}
+
+.auth-btn {
+    flex: 1;
+    padding: 8px 10px;
+    border: none;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.3px;
+}
+
+.auth-btn.primary {
+    background: #2a5934;
+    color: white;
+}
+
+.auth-btn.primary:hover {
+    background: #1e4227;
+}
+
+.auth-btn.secondary {
+    background: #f8fafc;
+    color: #5f6b7a;
+    border: 1px solid #eef2f6;
+}
+
+.auth-btn.secondary:hover {
+    background: #eef2f6;
+}
+
+.auth-footer {
+    padding: 14px 20px;
+    text-align: center;
+    border-top: 1px solid #f0f4f8;
+    background: #fafcfd;
+}
+
+.auth-footer p {
+    margin: 0;
+    color: #8f9eb0;
+    font-size: 10px;
+}
+
+/* Admin create account button - MINIMAL */
+.admin-create-account-btn {
+    background: transparent;
+    color: #2a5934;
+    border: 1px solid #dde5ed;
+    padding: 6px 14px;
+    border-radius: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-right: 10px;
+    letter-spacing: 0.2px;
+}
+
+.admin-create-account-btn:hover {
+    background: #f0f7f2;
+    border-color: #2a5934;
+}
+
+/* Create Account Modal - MINIMAL PROFESSIONAL */
+#createAccountModal .modal-content {
+    max-width: 340px;
+    border-radius: 0;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    border: 1px solid #eef2f6;
+}
+
+#createAccountModal .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #f0f4f8;
+    background: #fafcfd;
+}
+
+#createAccountModal .modal-header h3 {
+    font-size: 13px;
+    font-weight: 500;
+    color: #2a3b4c;
+    margin: 0;
+    letter-spacing: 0.2px;
+}
+
+#createAccountModal .modal-header h3 i {
+    color: #2a5934;
+    font-size: 12px;
+    margin-right: 6px;
+}
+
+#createAccountModal .modal-body {
+    padding: 20px;
+}
+
+.create-account-form .form-group {
+    margin-bottom: 16px;
+}
+
+.create-account-form .form-group label {
+    font-size: 10px;
+    color: #7c8b9a;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+}
+
+.create-account-form .form-group input {
+    padding: 8px 10px;
+    font-size: 12px;
+    border: 1px solid #eef2f6;
+    border-radius: 2px;
+}
+
+.role-selector {
+    margin: 16px 0 8px;
+    padding: 12px;
+    background: #fafcfd;
+    border: 1px solid #eef2f6;
+}
+
+.role-option {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.role-option:last-child {
+    margin-bottom: 0;
+}
+
+.role-option input[type="radio"] {
+    width: auto;
+    margin-right: 8px;
+    accent-color: #2a5934;
+}
+
+.role-option label {
+    font-size: 11px;
+    font-weight: 400;
+    color: #2a3b4c;
+}
+
+.role-description {
+    font-size: 10px;
+    color: #8f9eb0;
+    margin-left: 22px;
+    margin-top: 2px;
+}
+
+#createAccountModal .modal-actions {
+    padding: 16px 20px;
+    border-top: 1px solid #f0f4f8;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+#createAccountModal .btn {
+    padding: 6px 14px;
+    font-size: 11px;
+    border-radius: 2px;
+    font-weight: 500;
+}
+
+#createAccountModal .btn-primary {
+    background: #2a5934;
+    color: white;
+    border: none;
+}
+
+#createAccountModal .btn-primary:hover {
+    background: #1e4227;
+}
+
+#createAccountModal .btn-secondary {
+    background: transparent;
+    color: #5f6b7a;
+    border: 1px solid #dde5ed;
+}
+
+#createAccountModal .btn-secondary:hover {
+    background: #f8fafc;
+}
+
+/* User info - minimal */
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 12px;
+    padding: 4px 10px;
+    background: #f8fafc;
+    border: 1px solid #eef2f6;
+    font-size: 11px;
+}
+
+.user-role-badge {
+    background: #2a5934;
+    color: white;
+    padding: 2px 6px;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+}
+
+.logout-btn {
+    background: none;
+    border: 1px solid #dde5ed;
+    color: #7c8b9a;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 2px;
+}
+
+.logout-btn:hover {
+    border-color: #dc3545;
+    color: #dc3545;
+    background: #fff5f5;
+}
+
+/* Admin-only elements */
+.admin-only {
+    display: none;
+}
+
+body.admin .admin-only {
+    display: inline-flex;
+}
+
+body.user .admin-only {
+    display: none;
+}
+
+/* Delete button styling based on role */
+.delete-btn-small {
+    background: #dc3545;
+    color: white;
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+}
+
+.delete-btn-small:hover {
+    background: #bd2130;
+}
+
+body.user .delete-btn-small {
+    display: none;
+}
+
+/* User-only elements */
+.user-only {
+    display: none;
+}
+
+body.user .user-only {
+    display: flex;
+}
+
+.close-modal {
+    color: #b8c4ce;
+    font-size: 18px;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+
+.close-modal:hover {
+    color: #2a3b4c;
+}
 </style>
-<body>
+<body class="">
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="loading-spinner"></div>
@@ -138,44 +508,41 @@
                 <li><a href="submit_waste_report.html">Report Waste</a></li>
                 <li><a href="waste_report_table.html" class="active">View Reports</a></li>
             </ul>
-            <div class="nav-actions">
-                <button class="btn btn-primary" onclick="window.location.href='submit_waste_report.html'">
-                    <i class="fas fa-plus"></i> New Report
-                </button>
+            <div class="nav-actions" id="navActions">
+                <!-- User info and logout will be inserted here by JavaScript -->
             </div>
         </nav>
 
-        <!-- Password Protection Section -->
-        <section id="passwordSection" class="password-section">
-            <div class="password-container">
-                <div class="password-header">
-                    <h1><i class="fas fa-lock"></i> Secure Access</h1>
-                    <p>Enter password to view waste reports</p>
+        <!-- Authentication Section - EXTREMELY MINIMAL LOGIN -->
+        <section id="authSection" class="auth-section">
+            <div class="auth-container">
+                <div class="auth-header">
+                    <h1>FG OPERATIONS</h1>
                 </div>
                 
-                <div class="password-form">
+                <!-- Login Form - Ultra Minimal -->
+                <div id="loginForm">
                     <div class="form-group">
-                        <label for="password">
-                            <i class="fas fa-key"></i> Password <span class="required">*</span>
-                        </label>
-                        <input type="password" id="password" name="password" required 
-                               placeholder="Enter your password" 
-                               autocomplete="current-password">
-                        <span class="note">Contact your administrator for access credentials</span>
+                        <label for="loginEmail">EMAIL</label>
+                        <input type="email" id="loginEmail" placeholder="user@example.com">
                     </div>
-                    
+                    <div class="form-group">
+                        <label for="loginPassword">PASSWORD</label>
+                        <div class="password-field">
+                            <input type="password" id="loginPassword" placeholder="••••••">
+                            <button type="button" class="password-toggle" onclick="togglePassword('loginPassword')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
                     <div class="form-actions">
-                        <button class="btn btn-secondary" onclick="window.location.href='index.html'">
-                            <i class="fas fa-home"></i> Back to Home
-                        </button>
-                        <button class="btn btn-primary" id="accessButton">
-                            <i class="fas fa-unlock"></i> Access Reports
-                        </button>
+                        <button class="auth-btn primary" onclick="handleLogin()">LOGIN</button>
+                        <button class="auth-btn secondary" onclick="window.location.href='index.html'">HOME</button>
                     </div>
                 </div>
                 
-                <div class="password-footer">
-                    <p><i class="fas fa-shield-alt"></i> Protected area. Unauthorized access is strictly prohibited.</p>
+                <div class="auth-footer">
+                    <p>Authorized personnel only</p>
                 </div>
             </div>
         </section>
@@ -188,14 +555,29 @@
                     <p>Waste & Disposal Reports Database</p>
                 </div>
                 <div class="header-actions">
-                    <button class="btn btn-secondary" id="manageItemsButton" style="margin-right: 10px;">
+                    <!-- Admin-only buttons -->
+                    <button class="btn btn-secondary admin-only" id="manageItemsButton" style="margin-right: 10px;">
                         <i class="fas fa-boxes"></i> Manage Items
                     </button>
-                    <button class="btn btn-danger" id="deleteAllButton" style="margin-right: 10px;">
+                    <button class="btn btn-danger admin-only" id="deleteAllButton" style="margin-right: 10px;">
                         <i class="fas fa-trash-alt"></i> Delete All Reports
                     </button>
-                    <button class="lock-btn" id="lockButton">
-                        <i class="fas fa-lock"></i> Lock Session
+                    
+                    <!-- MINIMAL Admin Create Account Button -->
+                    <button class="admin-create-account-btn admin-only" id="createAccountButton" style="margin-right: 10px;">
+                        <i class="fas fa-user-plus"></i> Create Account
+                    </button>
+                    
+                    <!-- User-only indicator -->
+                    <div class="user-info user-only">
+                        <i class="fas fa-user"></i>
+                        <span id="userNameDisplay"></span>
+                        <span class="user-role-badge">User</span>
+                    </div>
+                    
+                    <!-- Logout button for everyone -->
+                    <button class="logout-btn" id="logoutButton">
+                        <i class="fas fa-sign-out-alt"></i> Logout
                     </button>
                 </div>
             </div>
@@ -305,7 +687,8 @@
                             <th>Items</th>
                             <th>At-Cost (₱)</th>
                             <th>Approval</th>
-                            <th>Actions</th>
+                            <th class="admin-only">Actions</th>
+                            <th class="user-only">View</th>
                         </tr>
                     </thead>
                     <tbody id="reportsTableBody">
@@ -495,7 +878,6 @@
                                 <option value="thisYear">This Year</option>
                             </select>
                         </div>
-
                     </div>
                 </div>
                 <div class="stats-cards">
@@ -590,7 +972,7 @@
                 </div>
             </div>
             <div class="modal-actions">
-                <button class="btn btn-danger" id="deleteReportButton" style="margin-right: auto;">
+                <button class="btn btn-danger admin-only" id="deleteReportButton" style="margin-right: auto;">
                     <i class="fas fa-trash-alt"></i> Delete This Report
                 </button>
                 <button class="btn btn-secondary" onclick="closeDetailsModal()">
@@ -626,7 +1008,7 @@
                 <button class="btn btn-primary" id="downloadImageBtn" onclick="downloadCurrentImage()" style="display: none;">
                     <i class="fas fa-download"></i> Download
                 </button>
-                <button class="btn btn-danger" id="deleteImageBtn" onclick="deleteCurrentImage()" style="display: none;">
+                <button class="btn btn-danger admin-only" id="deleteImageBtn" onclick="deleteCurrentImage()" style="display: none;">
                     <i class="fas fa-trash-alt"></i> Delete Image
                 </button>
             </div>
@@ -765,7 +1147,7 @@
         </div>
     </div>
 
-    <!-- Items Management Modal -->
+    <!-- Items Management Modal with Category Dropdown -->
     <div id="itemsManagementModal" class="modal">
         <div class="modal-content" style="max-width: 700px; max-height: 80vh;">
             <div class="modal-header">
@@ -773,6 +1155,27 @@
                 <span class="close-modal" id="closeItemsModal">&times;</span>
             </div>
             <div class="modal-body">
+                <!-- Item Type Selector Dropdown -->
+                <div class="item-type-selector" style="margin-bottom: 20px; padding: 15px; background: var(--color-offwhite); border-radius: var(--border-radius); border: var(--border-base);">
+                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                            <i class="fas fa-layer-group" style="color: var(--color-primary);"></i>
+                            <label for="itemTypeSelect" style="font-weight: 500; color: var(--color-darkgray);">Item Category:</label>
+                            <select id="itemTypeSelect" class="filter-select" style="min-width: 180px; background: white;">
+                                <option value="regular">📦 Regular Items</option>
+                                <option value="kitchen">🍳 Kitchen Items</option>
+                            </select>
+                        </div>
+                        <div class="item-type-badge" id="itemTypeBadge" style="background: var(--color-primary); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500;">
+                            <i class="fas fa-box"></i> Regular Items
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 11px; color: var(--color-gray); display: flex; gap: 15px; flex-wrap: wrap;">
+                        <span><i class="fas fa-info-circle"></i> Switch between regular and kitchen item categories</span>
+                        <span id="categoryItemCount">0 items</span>
+                    </div>
+                </div>
+
                 <!-- Add Item Form -->
                 <div class="add-item-section">
                     <h4><i class="fas fa-plus-circle"></i> Add New Item</h4>
@@ -806,6 +1209,7 @@
                             <tr>
                                 <th>Item Name</th>
                                 <th>Unit Cost (₱)</th>
+                                <th>Category</th>
                                 <th>Created</th>
                                 <th>Actions</th>
                             </tr>
@@ -840,7 +1244,16 @@
                         </div>
                         <div class="stat-content">
                             <h3 id="totalItemsCount">0</h3>
-                            <p>Total Items</p>
+                            <p id="totalItemsLabel">Total Regular Items</p>
+                        </div>
+                    </div>
+                    <div class="stat-card" style="flex: 1; min-width: 150px;">
+                        <div class="stat-icon" style="background: #fff3cd; color: #856404;">
+                            <i class="fas fa-utensils"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="kitchenItemsCount">0</h3>
+                            <p>Kitchen Items</p>
                         </div>
                     </div>
                 </div>
@@ -868,6 +1281,13 @@
                 <div class="form-group">
                     <label for="editItemCost">Unit Cost (₱) *</label>
                     <input type="number" id="editItemCost" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label for="editItemCategory">Category</label>
+                    <select id="editItemCategory" class="filter-select">
+                        <option value="regular">📦 Regular Items</option>
+                        <option value="kitchen">🍳 Kitchen Items</option>
+                    </select>
                 </div>
                 <div id="editItemInfo" style="font-size: 12px; color: var(--color-gray); margin-top: 10px;"></div>
             </div>
@@ -911,10 +1331,68 @@
         </div>
     </div>
 
-    <!-- Update Firebase imports to include Storage -->
+    <!-- MINIMAL Create Account Modal -->
+    <div id="createAccountModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-plus"></i> New Account</h3>
+                <span class="close-modal" id="closeCreateAccountModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="create-account-form">
+                    <div class="form-group">
+                        <label for="newAccountEmail">EMAIL</label>
+                        <input type="email" id="newAccountEmail" placeholder="user@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="newAccountPassword">PASSWORD</label>
+                        <div class="password-field">
+                            <input type="password" id="newAccountPassword" placeholder="••••••">
+                            <button type="button" class="password-toggle" onclick="togglePassword('newAccountPassword')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="newAccountConfirmPassword">CONFIRM</label>
+                        <div class="password-field">
+                            <input type="password" id="newAccountConfirmPassword" placeholder="••••••">
+                            <button type="button" class="password-toggle" onclick="togglePassword('newAccountConfirmPassword')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="newAccountFullName">FULL NAME</label>
+                        <input type="text" id="newAccountFullName" placeholder="John Smith">
+                    </div>
+                    
+                    <div class="role-selector">
+                        <div class="role-option">
+                            <input type="radio" id="roleUser" name="accountRole" value="user" checked>
+                            <label for="roleUser">User</label>
+                            <div class="role-description">Submit and view reports</div>
+                        </div>
+                        <div class="role-option">
+                            <input type="radio" id="roleAdmin" name="accountRole" value="admin">
+                            <label for="roleAdmin">Admin</label>
+                            <div class="role-description">Full access including user mgmt</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelCreateAccount">Cancel</button>
+                <button class="btn btn-primary" id="createAccountSubmit">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Update Firebase imports to include Storage and Auth -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="waste_report_table.js"></script>
 </body>
 </html>

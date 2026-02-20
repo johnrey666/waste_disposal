@@ -46,11 +46,6 @@ const GAS_CONFIG = {
     ENDPOINT: 'https://script.google.com/macros/s/AKfycbyPGgZ54q-lDUu5YxaeQbSJ-z2pDqM8ia4eTfshdpSNbrqBFF7fQZvglx9IeZn0PqHSTg/exec'
 };
 
-// Password configuration
-const CORRECT_PASSWORD = "admin123";
-const PASSWORD_KEY = "fg_operations_auth";
-const SESSION_TIMEOUT = 30 * 60 * 1000;
-
 // Firestore configuration
 const firebaseConfig = {
     apiKey: "AIzaSyAyp2f1b6cG4E_Dx9eako31LgTDuZrZ8_E",
@@ -67,15 +62,18 @@ const firebaseConfig = {
 // ================================
 let db;
 let storage;
+let auth;
+let currentUser = null;
+let currentUserRole = 'user';
 let currentPage = 1;
 const pageSize = 10;
 let lastVisibleDoc = null;
 let firstVisibleDoc = null;
 let reportsData = [];
 let isDataLoading = false;
-let allReportsData = []; // For chart analysis
-let filteredReportsData = []; // For pagination with filters
-let totalFilteredCount = 0; // Track total filtered reports
+let allReportsData = [];
+let filteredReportsData = [];
+let totalFilteredCount = 0;
 
 // Items management variables
 let itemsData = [];
@@ -84,6 +82,11 @@ const itemsPageSize = 10;
 let itemsLastVisibleDoc = null;
 let itemsFirstVisibleDoc = null;
 let currentEditItemId = null;
+let currentItemType = 'regular'; // 'regular' or 'kitchen'
+let kitchenItemsData = [];
+let regularItemsData = [];
+let regularItemsCount = 0;
+let kitchenItemsCount = 0;
 
 // State variables
 let currentRejectionData = null;
@@ -95,23 +98,23 @@ let currentImageToDeleteData = null;
 
 // Chart variables
 let storeChart = null;
-let currentChartType = 'bar'; // Default chart type
+let currentChartType = 'bar';
 let chartAnalysis = {
     stores: {},
     dailyReports: {},
     monthlyCosts: {},
     dailyCosts: {},
-    timeSeriesData: {} // NEW: For line chart time series
+    timeSeriesData: {}
 };
 
 // Statistics variables
-let statsFilterPeriod = 'all'; // Default to "All Time"
+let statsFilterPeriod = 'all';
 
-// Cache for reports to reduce database calls
+// Cache for reports
 let reportsCache = {
     data: [],
     timestamp: 0,
-    ttl: 5 * 60 * 1000 // 5 minutes cache
+    ttl: 5 * 60 * 1000
 };
 
 // Define all store names
@@ -157,13 +160,378 @@ const STORE_DISPLAY_NAMES = {
     'FG Express PIODURAN': 'PIODURAN',
     'FG Express RIZAL': 'RIZAL',
     'FG to go TABACO': 'TABACO',
-    'FG to go LEGAZPI': 'LEGAZPI( to go )',
+    'FG to go LEGAZPI': 'LEGAZPI(to go)',
     'FG LEGAZPI': 'LEGAZPI',
     'FG NAGA': 'NAGA'
 };
 
+// Admin emails list
+const ADMIN_EMAILS = [
+    'admin@fgoperations.com',
+    'admin@gmail.com'
+];
+
 // ================================
-// STATISTICS FUNCTIONS - UPDATED WITH FILTER
+// AUTHENTICATION FUNCTIONS
+// ================================
+
+// Initialize Firebase Auth
+function initializeAuth() {
+    auth = firebase.auth();
+    
+    // Set up auth state observer
+    auth.onAuthStateChanged(async (user) => {
+        if (user) {
+            currentUser = user;
+            await determineUserRole(user);
+            showReportsSection();
+            updateNavBar(user);
+            loadReports();
+            showNotification(`Welcome ${user.displayName || user.email}!`, 'success');
+        } else {
+            currentUser = null;
+            currentUserRole = 'user';
+            showAuthSection();
+            updateNavBar(null);
+        }
+    });
+}
+
+// Determine user role
+async function determineUserRole(user) {
+    if (!user) {
+        currentUserRole = 'user';
+        return;
+    }
+    
+    try {
+        if (ADMIN_EMAILS.includes(user.email)) {
+            currentUserRole = 'admin';
+        } else {
+            const idTokenResult = await user.getIdTokenResult();
+            if (idTokenResult.claims.admin || idTokenResult.claims.role === 'admin') {
+                currentUserRole = 'admin';
+            } else {
+                currentUserRole = 'user';
+            }
+        }
+        
+        document.body.className = currentUserRole;
+        
+    } catch (error) {
+        console.error('Error determining user role:', error);
+        currentUserRole = 'user';
+        document.body.className = 'user';
+    }
+}
+
+// Update navigation bar
+function updateNavBar(user) {
+    const navActions = Performance.getElement('#navActions');
+    if (!navActions) return;
+    
+    if (user) {
+        const displayName = user.displayName || user.email.split('@')[0];
+        navActions.innerHTML = `
+            <div class="user-info ${currentUserRole}">
+                <i class="fas fa-user-circle"></i>
+                <span>${displayName}</span>
+                <span class="user-role-badge">${currentUserRole.toUpperCase()}</span>
+            </div>
+            <button class="logout-btn" onclick="handleLogout()">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        `;
+    } else {
+        navActions.innerHTML = `
+            <button class="btn btn-primary" onclick="showAuthSection()">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </button>
+        `;
+    }
+}
+
+// Handle login
+async function handleLogin() {
+    const email = Performance.getElement('#loginEmail')?.value.trim();
+    const password = Performance.getElement('#loginPassword')?.value;
+    
+    if (!email || !password) {
+        showNotification('Please enter email and password', 'error');
+        return;
+    }
+    
+    showLoading(true, 'Logging in...');
+    
+    try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        showNotification('Login successful!', 'success');
+        
+        Performance.getElement('#loginEmail').value = '';
+        Performance.getElement('#loginPassword').value = '';
+        
+    } catch (error) {
+        console.error('Login error:', error);
+        
+        let errorMessage = 'Login failed';
+        switch (error.code) {
+            case 'auth/user-not-found':
+                errorMessage = 'User not found. Please contact administrator.';
+                break;
+            case 'auth/wrong-password':
+                errorMessage = 'Incorrect password.';
+                break;
+            case 'auth/invalid-email':
+                errorMessage = 'Invalid email address.';
+                break;
+            case 'auth/user-disabled':
+                errorMessage = 'This account has been disabled.';
+                break;
+            default:
+                errorMessage = error.message;
+        }
+        
+        showNotification(errorMessage, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ================================
+// CREATE ACCOUNT MODAL FUNCTIONS - FIXED
+// ================================
+
+// Open create account modal
+function openCreateAccountModal() {
+    if (!isAdmin()) {
+        showNotification('Only administrators can create accounts', 'error');
+        return;
+    }
+    
+    const modal = document.getElementById('createAccountModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+// Close create account modal - FIXED: Now properly closes the modal
+function closeCreateAccountModal() {
+    const modal = document.getElementById('createAccountModal');
+    if (modal) {
+        modal.style.display = 'none';
+        
+        // Clear form fields
+        const emailInput = document.getElementById('newAccountEmail');
+        const passwordInput = document.getElementById('newAccountPassword');
+        const confirmInput = document.getElementById('newAccountConfirmPassword');
+        const nameInput = document.getElementById('newAccountFullName');
+        
+        if (emailInput) emailInput.value = '';
+        if (passwordInput) passwordInput.value = '';
+        if (confirmInput) confirmInput.value = '';
+        if (nameInput) nameInput.value = '';
+        
+        // Reset radio to default
+        const userRadio = document.getElementById('roleUser');
+        if (userRadio) userRadio.checked = true;
+    }
+}
+
+// Setup create account modal event listeners
+function setupCreateAccountModalListeners() {
+    const closeBtn = document.getElementById('closeCreateAccountModal');
+    const cancelBtn = document.getElementById('cancelCreateAccount');
+    const createBtn = document.getElementById('createAccountSubmit');
+    
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeCreateAccountModal);
+    }
+    
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', closeCreateAccountModal);
+    }
+    
+    if (createBtn) {
+        createBtn.addEventListener('click', handleAdminCreateAccount);
+    }
+    
+    // Handle backdrop click
+    const modal = document.getElementById('createAccountModal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeCreateAccountModal();
+            }
+        });
+    }
+    
+    // Handle escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('createAccountModal');
+            if (modal && modal.style.display === 'flex') {
+                closeCreateAccountModal();
+            }
+        }
+    });
+}
+
+// Handle admin creating new account
+async function handleAdminCreateAccount() {
+    if (!isAuthenticated()) {
+        showNotification('You must be logged in', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can create accounts', 'error');
+        return;
+    }
+    
+    const email = document.getElementById('newAccountEmail')?.value.trim();
+    const password = document.getElementById('newAccountPassword')?.value;
+    const confirmPassword = document.getElementById('newAccountConfirmPassword')?.value;
+    const fullName = document.getElementById('newAccountFullName')?.value.trim();
+    const roleRadios = document.getElementsByName('accountRole');
+    let selectedRole = 'user';
+    
+    for (const radio of roleRadios) {
+        if (radio.checked) {
+            selectedRole = radio.value;
+            break;
+        }
+    }
+    
+    // Validation
+    if (!email || !password || !confirmPassword || !fullName) {
+        showNotification('Please fill in all fields', 'error');
+        return;
+    }
+    
+    if (password.length < 6) {
+        showNotification('Password must be at least 6 characters', 'error');
+        return;
+    }
+    
+    if (password !== confirmPassword) {
+        showNotification('Passwords do not match', 'error');
+        return;
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showNotification('Please enter a valid email address', 'error');
+        return;
+    }
+    
+    showLoading(true, 'Creating account...');
+    
+    try {
+        // Create user in Firebase Auth
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        
+        // Update profile
+        await userCredential.user.updateProfile({
+            displayName: fullName
+        });
+        
+        // Store in users collection
+        await db.collection('users').doc(userCredential.user.uid).set({
+            email: email,
+            displayName: fullName,
+            role: selectedRole,
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.email || 'Administrator'
+        });
+        
+        // Add to admin list if role is admin
+        if (selectedRole === 'admin' && !ADMIN_EMAILS.includes(email)) {
+            ADMIN_EMAILS.push(email);
+        }
+        
+        showNotification(`Account created successfully for ${fullName} (${selectedRole})`, 'success');
+        
+        // Clear form and close modal
+        closeCreateAccountModal();
+        
+    } catch (error) {
+        console.error('Create account error:', error);
+        
+        let errorMessage = 'Failed to create account';
+        switch (error.code) {
+            case 'auth/email-already-in-use':
+                errorMessage = 'Email already in use.';
+                break;
+            case 'auth/invalid-email':
+                errorMessage = 'Invalid email address.';
+                break;
+            case 'auth/weak-password':
+                errorMessage = 'Password is too weak.';
+                break;
+            default:
+                errorMessage = error.message;
+        }
+        
+        showNotification(errorMessage, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Handle logout
+async function handleLogout() {
+    try {
+        await auth.signOut();
+        showNotification('Logged out successfully', 'info');
+        showAuthSection();
+    } catch (error) {
+        console.error('Logout error:', error);
+        showNotification('Error logging out', 'error');
+    }
+}
+
+// Check if user is authenticated
+function isAuthenticated() {
+    return currentUser !== null;
+}
+
+// Check if user is admin
+function isAdmin() {
+    return currentUserRole === 'admin';
+}
+
+// Toggle password visibility
+function togglePassword(inputId) {
+    const input = Performance.getElement(`#${inputId}`);
+    const toggleBtn = input?.nextElementSibling;
+    
+    if (input && toggleBtn) {
+        const type = input.type === 'password' ? 'text' : 'password';
+        input.type = type;
+        toggleBtn.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+    }
+}
+
+// Show auth section
+function showAuthSection() {
+    const authSection = Performance.getElement('#authSection');
+    const reportsSection = Performance.getElement('#reportsSection');
+    
+    if (authSection) authSection.style.display = 'flex';
+    if (reportsSection) reportsSection.style.display = 'none';
+}
+
+// Show reports section
+function showReportsSection() {
+    const authSection = Performance.getElement('#authSection');
+    const reportsSection = Performance.getElement('#reportsSection');
+    
+    if (authSection) authSection.style.display = 'none';
+    if (reportsSection) reportsSection.style.display = 'block';
+}
+
+// ================================
+// STATISTICS FUNCTIONS
 // ================================
 function updateStatisticsFromAllReports() {
     if (!allReportsData || allReportsData.length === 0) {
@@ -171,36 +539,22 @@ function updateStatisticsFromAllReports() {
         return;
     }
     
-    // Filter reports based on selected period
     const filteredReports = filterReportsByPeriod(allReportsData, statsFilterPeriod);
     
     let expiredCount = 0;
     let wasteCount = 0;
     let noWasteCount = 0;
     let pendingApprovalCount = 0;
-    let rejectedCount = 0;
-    let partialCount = 0;
-    let completeCount = 0;
-    let totalCost = 0;
-    let approvedCost = 0;
     
     filteredReports.forEach(report => {
         const disposalTypes = report.disposalTypes;
         
-        // Count for statistics
         if (disposalTypes.includes('expired')) expiredCount++;
         if (disposalTypes.includes('waste')) wasteCount++;
         if (disposalTypes.includes('noWaste')) noWasteCount++;
         
         const approvalStatus = getReportApprovalStatus(report);
         if (approvalStatus === 'pending') pendingApprovalCount++;
-        if (approvalStatus === 'rejected') rejectedCount++;
-        if (approvalStatus === 'partial') partialCount++;
-        if (approvalStatus === 'complete') completeCount++;
-        
-        // Calculate costs
-        totalCost += calculateReportCost(report);
-        approvedCost += calculateApprovedReportCost(report);
     });
     
     updateStatistics(
@@ -211,7 +565,6 @@ function updateStatisticsFromAllReports() {
         pendingApprovalCount
     );
     
-    // Update stats period info
     const statsPeriodInfo = Performance.getElement('#statsPeriodInfo');
     if (statsPeriodInfo) {
         const periodText = getStatsPeriodText(statsFilterPeriod);
@@ -236,10 +589,10 @@ function filterReportsByPeriod(reports, period) {
             break;
         case 'thisWeek':
             startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - startDate.getDay()); // Start of week (Sunday)
+            startDate.setDate(startDate.getDate() - startDate.getDay());
             startDate.setHours(0, 0, 0, 0);
             endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + 6); // End of week (Saturday)
+            endDate.setDate(endDate.getDate() + 6);
             endDate.setHours(23, 59, 59, 999);
             break;
         case 'thisMonth':
@@ -321,7 +674,6 @@ function changeStatsPeriod(period) {
 // OPTIMIZED IMAGE FUNCTIONS
 // ================================
 const ImageManager = {
-    // Cache for image URLs to avoid repeated processing
     urlCache: new Map(),
     
     displayImagesInItem(item, index, type) {
@@ -334,7 +686,6 @@ const ImageManager = {
             return '';
         }
         
-        // Generate HTML with optimized image loading
         let imagesHTML = `
             <div class="image-gallery-section">
                 <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
@@ -344,7 +695,6 @@ const ImageManager = {
         `;
         
         images.forEach((doc, docIndex) => {
-            // Use cached URL or generate new one
             let imageUrl = this.urlCache.get(doc.path);
             if (!imageUrl) {
                 imageUrl = doc.url || this.getFirebaseStorageUrl(doc.path || doc.fullPath || doc.filePath);
@@ -358,10 +708,10 @@ const ImageManager = {
             imagesHTML += `
                 <div class="thumbnail-container" onclick="ImageManager.openModal('${imageUrl}', '${safeImageName}', '${uniqueId}', ${JSON.stringify(doc).replace(/"/g, '&quot;')}, '${currentReportDetailsId}', ${index}, '${type}', ${docIndex})">
                     <img src="${imageUrl}" 
-                         alt="${safeImageName}"
-                         loading="lazy"
-                         style="width: 80px; height: 80px; object-fit: cover;"
-                         onerror="ImageManager.handleError(this, '${safeImageName}')">
+                        alt="${safeImageName}"
+                        loading="lazy"
+                        style="width: 80px; height: 80px; object-fit: cover;"
+                        onerror="ImageManager.handleError(this, '${safeImageName}')">
                     <div class="thumbnail-index">${docIndex + 1}</div>
                 </div>
             `;
@@ -374,35 +724,28 @@ const ImageManager = {
     getFirebaseStorageUrl(storagePath) {
         if (!storagePath) return null;
         
-        // Use cached result if available
         const cached = this.urlCache.get(storagePath);
         if (cached) return cached;
         
-        // Process path
         let cleanPath = storagePath;
         
-        // Remove leading slash if present
         if (cleanPath.startsWith('/')) {
             cleanPath = cleanPath.substring(1);
         }
         
-        // Remove bucket prefix if present
         const bucketPrefix = `gs://${firebaseConfig.storageBucket}/`;
         if (cleanPath.startsWith(bucketPrefix)) {
             cleanPath = cleanPath.substring(bucketPrefix.length);
         }
         
-        // Remove appspot prefix if present
         const appspotPrefix = 'disposal-e6b83.appspot.com/';
         if (cleanPath.startsWith(appspotPrefix)) {
             cleanPath = cleanPath.substring(appspotPrefix.length);
         }
         
-        // Encode and construct URL
         const encodedPath = encodeURIComponent(cleanPath);
         const url = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/${encodedPath}?alt=media`;
         
-        // Cache the result
         this.urlCache.set(storagePath, url);
         return url;
     },
@@ -417,12 +760,10 @@ const ImageManager = {
         
         if (!modal || !modalImage) return;
         
-        // Reset modal state
         modalImage.style.display = 'none';
         modalImage.src = '';
         if (imageLoading) imageLoading.style.display = 'block';
         
-        // Update info
         if (imageInfo) {
             imageInfo.innerHTML = `
                 <div style="text-align: center;">
@@ -432,13 +773,11 @@ const ImageManager = {
             `;
         }
         
-        // Set download handler
         if (downloadBtn) {
             downloadBtn.onclick = () => this.downloadImage(imageUrl, imageName);
         }
         
-        // Set delete handler if imageData is provided
-        if (deleteBtn && imageData && reportId) {
+        if (deleteBtn && imageData && reportId && isAdmin()) {
             currentImageToDeleteData = {
                 reportId: reportId,
                 itemIndex: itemIndex,
@@ -452,7 +791,6 @@ const ImageManager = {
             deleteBtn.style.display = 'none';
         }
         
-        // Preload image with timeout
         const preloadTimer = setTimeout(() => {
             if (imageLoading) imageLoading.style.display = 'none';
             modalImage.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="%23f8f9fa"/><text x="200" y="140" font-family="Arial" font-size="14" text-anchor="middle" fill="%23666">Loading...</text></svg>';
@@ -535,6 +873,11 @@ const ImageManager = {
     },
     
     openDeleteImageModal(imageData, reportId, itemIndex, itemType, imageIndex) {
+        if (!isAdmin()) {
+            showNotification('Only admins can delete images', 'error');
+            return;
+        }
+        
         currentImageToDelete = { imageData, reportId, itemIndex, itemType, imageIndex };
         
         const deleteImageInfo = Performance.getElement('#deleteImageInfo');
@@ -568,31 +911,25 @@ const ImageManager = {
         }
         
         try {
-            // Clean up the path
             let filePath = imageData.path;
             
-            // Remove leading slash if present
             if (filePath.startsWith('/')) {
                 filePath = filePath.substring(1);
             }
             
-            // Remove bucket prefix if present
             const bucketPrefix = `gs://${firebaseConfig.storageBucket}/`;
             if (filePath.startsWith(bucketPrefix)) {
                 filePath = filePath.substring(bucketPrefix.length);
             }
             
-            // Remove appspot prefix if present
             const appspotPrefix = 'disposal-e6b83.appspot.com/';
             if (filePath.startsWith(appspotPrefix)) {
                 filePath = filePath.substring(appspotPrefix.length);
             }
             
-            // Delete from Firebase Storage
             const storageRef = storage.ref(filePath);
             await storageRef.delete();
             
-            // Remove from cache
             this.urlCache.delete(imageData.path);
             
             return true;
@@ -671,109 +1008,6 @@ function showLoading(show, message = 'Loading...') {
 }
 
 // ================================
-// OPTIMIZED AUTHENTICATION
-// ================================
-function authenticate(enteredPassword) {
-    if (!enteredPassword) return false;
-    return enteredPassword === CORRECT_PASSWORD;
-}
-
-function isAuthenticated() {
-    const authData = localStorage.getItem(PASSWORD_KEY);
-    if (!authData) return false;
-    
-    try {
-        const { authenticated, timestamp } = JSON.parse(authData);
-        const now = Date.now();
-        const isExpired = (now - timestamp) >= SESSION_TIMEOUT;
-        
-        if (isExpired) {
-            localStorage.removeItem(PASSWORD_KEY);
-            return false;
-        }
-        
-        // Refresh timestamp on activity
-        localStorage.setItem(PASSWORD_KEY, JSON.stringify({
-            authenticated: true,
-            timestamp: now
-        }));
-        
-        return authenticated;
-    } catch {
-        localStorage.removeItem(PASSWORD_KEY);
-        return false;
-    }
-}
-
-function lockSession() {
-    localStorage.removeItem(PASSWORD_KEY);
-}
-
-function checkPassword() {
-    const passwordInput = Performance.getElement('#password');
-    if (!passwordInput) return;
-    
-    const enteredPassword = passwordInput.value.trim();
-    
-    if (!enteredPassword) {
-        showNotification('Please enter the password', 'error');
-        passwordInput.focus();
-        return;
-    }
-    
-    if (authenticate(enteredPassword)) {
-        localStorage.setItem(PASSWORD_KEY, JSON.stringify({
-            authenticated: true,
-            timestamp: Date.now()
-        }));
-        
-        showNotification('Access granted! Loading reports...', 'success');
-        
-        const passwordSection = Performance.getElement('#passwordSection');
-        const reportsSection = Performance.getElement('#reportsSection');
-        const statisticsSection = Performance.getElement('#statisticsSection');
-        
-        if (passwordSection) passwordSection.style.display = 'none';
-        if (reportsSection) reportsSection.style.display = 'block';
-        if (statisticsSection) statisticsSection.style.display = 'block';
-        
-        passwordInput.value = '';
-        
-        // Load reports after UI update
-        setTimeout(() => {
-            loadReports();
-        }, 300);
-    } else {
-        showNotification('Incorrect password. Please try again.', 'error');
-        passwordInput.value = '';
-        passwordInput.focus();
-        passwordInput.style.animation = 'shake 0.5s';
-        setTimeout(() => {
-            passwordInput.style.animation = '';
-        }, 500);
-    }
-}
-
-function lockReports() {
-    lockSession();
-    
-    const passwordSection = Performance.getElement('#passwordSection');
-    const reportsSection = Performance.getElement('#reportsSection');
-    const statisticsSection = Performance.getElement('#statisticsSection');
-    
-    if (passwordSection) passwordSection.style.display = 'block';
-    if (reportsSection) reportsSection.style.display = 'none';
-    if (statisticsSection) statisticsSection.style.display = 'none';
-    
-    showNotification('Session locked. Enter password to access again.', 'info');
-    
-    const passwordInput = Performance.getElement('#password');
-    if (passwordInput) {
-        passwordInput.focus();
-    }
-}
-
-// ================================
 // OPTIMIZED INITIALIZATION
 // ================================
 function initializeApp() {
@@ -783,8 +1017,8 @@ function initializeApp() {
         }
         db = firebase.firestore();
         storage = firebase.storage();
+        auth = firebase.auth();
         
-        // Enable offline persistence for better performance
         db.enablePersistence()
             .then(() => console.log('✅ Firebase persistence enabled'))
             .catch(err => {
@@ -795,52 +1029,24 @@ function initializeApp() {
                 }
             });
         
+        initializeAuth();
+        
+        // Migrate existing items to have category field
+        setTimeout(() => {
+            if (isAdmin()) {
+                migrateItemsToCategories();
+            }
+        }, 2000);
+        
     } catch (error) {
         console.error('❌ Firebase initialization error:', error);
         showNotification('Firebase connection failed. Please check console.', 'error');
         return;
     }
-    
-    if (isAuthenticated()) {
-        showReportsSection();
-        // Use requestIdleCallback for smoother initial load
-        if ('requestIdleCallback' in window) {
-            requestIdleCallback(() => {
-                loadReports();
-            }, { timeout: 1000 });
-        } else {
-            setTimeout(() => {
-                loadReports();
-            }, 300);
-        }
-    } else {
-        showPasswordSection();
-    }
-}
-
-function showPasswordSection() {
-    const passwordSection = Performance.getElement('#passwordSection');
-    if (passwordSection) {
-        passwordSection.style.display = 'block';
-        const passwordInput = Performance.getElement('#password');
-        if (passwordInput) {
-            passwordInput.focus();
-        }
-    }
-}
-
-function showReportsSection() {
-    const passwordSection = Performance.getElement('#passwordSection');
-    const reportsSection = Performance.getElement('#reportsSection');
-    const statisticsSection = Performance.getElement('#statisticsSection');
-    
-    if (passwordSection) passwordSection.style.display = 'none';
-    if (reportsSection) reportsSection.style.display = 'block';
-    if (statisticsSection) statisticsSection.style.display = 'block';
 }
 
 // ================================
-// CHART FUNCTIONS - OPTIMIZED
+// CHART FUNCTIONS
 // ================================
 function initChartTypeSelector() {
     const chartTypeBtns = document.querySelectorAll('.chart-type-btn');
@@ -861,15 +1067,11 @@ function updateChartControlsVisibility() {
     const chartPeriod = Performance.getElement('#chartPeriod');
     
     if (currentChartType === 'line') {
-        // Show store selector for line chart
         if (storeSelectorContainer) storeSelectorContainer.style.display = 'block';
-        
-        // Show date range picker if specificDateRange is selected
         if (dateRangePickerContainer && chartPeriod) {
             dateRangePickerContainer.style.display = chartPeriod.value === 'specificDateRange' ? 'block' : 'none';
         }
     } else {
-        // Hide store selector for bar and pie charts
         if (storeSelectorContainer) storeSelectorContainer.style.display = 'none';
         if (dateRangePickerContainer) dateRangePickerContainer.style.display = 'none';
     }
@@ -890,14 +1092,12 @@ async function loadAllReportsForChart() {
                 id: doc.id, 
                 ...data,
                 disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                              data.disposalType ? [data.disposalType] : ['unknown']
+                            data.disposalType ? [data.disposalType] : ['unknown']
             });
         });
         
         analyzeStorePerformance();
         createChartBasedOnType();
-        
-        // Update statistics with all reports data
         updateStatisticsFromAllReports();
         
     } catch (error) {
@@ -914,14 +1114,13 @@ function analyzeStorePerformance() {
         dailyReports: {},
         monthlyCosts: {},
         dailyCosts: {},
-        timeSeriesData: {} // For line chart time series
+        timeSeriesData: {}
     };
     
     const now = new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    // Initialize ALL stores with zero values
     ALL_STORES.forEach(store => {
         chartAnalysis.stores[store] = {
             totalCost: 0,
@@ -932,18 +1131,17 @@ function analyzeStorePerformance() {
             reportDates: new Set(),
             monthlyCosts: {},
             dailyCosts: {},
-            dailyTotalCosts: {}, // NEW: Track total costs (including pending/rejected)
+            dailyTotalCosts: {},
             currentMetric: 0,
             periodReportCount: 0,
             periodItemCount: 0,
             periodCost: 0,
             periodApprovedCost: 0,
             periodApprovedItemCount: 0,
-            periodTotalCost: 0 // NEW: Track period total cost (all items)
+            periodTotalCost: 0
         };
     });
     
-    // Process reports
     allReportsData.forEach(report => {
         const store = report.store;
         if (!store) return;
@@ -976,7 +1174,6 @@ function analyzeStorePerformance() {
         
         const storeData = chartAnalysis.stores[store];
         
-        // No waste report
         if (report.disposalTypes?.includes('noWaste')) {
             storeData.reportCount++;
             storeData.reportDates.add(report.reportDate);
@@ -996,7 +1193,6 @@ function analyzeStorePerformance() {
             return;
         }
         
-        // Calculate cost - BOTH approved and total
         let reportCost = 0;
         let approvedReportCost = 0;
         let approvedItemCount = 0;
@@ -1008,17 +1204,14 @@ function analyzeStorePerformance() {
                 const quantity = item.quantity || 0;
                 const itemTotalCost = itemCost * quantity;
                 
-                // Count all items
                 totalItemCount++;
                 storeData.itemCount++;
                 
-                // Only count approved items for approved cost calculation
                 if (item.approvalStatus === 'approved') {
                     approvedItemCount++;
                     approvedReportCost += itemTotalCost;
                 }
                 
-                // Count all items for total cost (including pending/rejected)
                 reportCost += itemTotalCost;
             });
         }
@@ -1029,29 +1222,24 @@ function analyzeStorePerformance() {
                 const quantity = item.quantity || 0;
                 const itemTotalCost = itemCost * quantity;
                 
-                // Count all items
                 totalItemCount++;
                 storeData.itemCount++;
                 
-                // Only count approved items for approved cost calculation
                 if (item.approvalStatus === 'approved') {
                     approvedItemCount++;
                     approvedReportCost += itemTotalCost;
                 }
                 
-                // Count all items for total cost (including pending/rejected)
                 reportCost += itemTotalCost;
             });
         }
         
-        // Update store data
-        storeData.totalCost += reportCost; // Total cost (all items)
-        storeData.approvedCost += approvedReportCost; // Approved cost only
+        storeData.totalCost += reportCost;
+        storeData.approvedCost += approvedReportCost;
         storeData.approvedItemCount += approvedItemCount;
         storeData.reportCount++;
         storeData.reportDates.add(report.reportDate);
         
-        // Track monthly costs - BOTH approved and total
         if (!storeData.monthlyCosts[monthKey]) {
             storeData.monthlyCosts[monthKey] = {
                 approved: 0,
@@ -1061,7 +1249,6 @@ function analyzeStorePerformance() {
         storeData.monthlyCosts[monthKey].approved += approvedReportCost;
         storeData.monthlyCosts[monthKey].total += reportCost;
         
-        // Track daily costs - BOTH approved and total
         if (!storeData.dailyCosts[dayKey]) {
             storeData.dailyCosts[dayKey] = {
                 approved: 0,
@@ -1071,19 +1258,16 @@ function analyzeStorePerformance() {
         storeData.dailyCosts[dayKey].approved += approvedReportCost;
         storeData.dailyCosts[dayKey].total += reportCost;
         
-        // Track daily total costs separately for time series
         if (!storeData.dailyTotalCosts[dayKey]) {
             storeData.dailyTotalCosts[dayKey] = 0;
         }
         storeData.dailyTotalCosts[dayKey] += reportCost;
         
-        // Track daily reports
         if (!chartAnalysis.dailyReports[dayKey]) {
             chartAnalysis.dailyReports[dayKey] = new Set();
         }
         chartAnalysis.dailyReports[dayKey].add(store);
         
-        // Track costs by exact date
         if (!chartAnalysis.dailyCosts[dateKey]) {
             chartAnalysis.dailyCosts[dateKey] = {};
         }
@@ -1096,7 +1280,6 @@ function analyzeStorePerformance() {
         chartAnalysis.dailyCosts[dateKey][store].approved += approvedReportCost;
         chartAnalysis.dailyCosts[dateKey][store].total += reportCost;
         
-        // Build time series data for line chart
         if (!chartAnalysis.timeSeriesData[dayKey]) {
             chartAnalysis.timeSeriesData[dayKey] = {};
         }
@@ -1151,7 +1334,6 @@ function createBarOrPieChart(period, metric, sortOrder) {
             periodTotalCost: 0
         };
         
-        // Initialize period metrics
         data.periodReportCount = 0;
         data.periodItemCount = 0;
         data.periodCost = 0;
@@ -1162,10 +1344,8 @@ function createBarOrPieChart(period, metric, sortOrder) {
         return [store, data];
     });
     
-    // Calculate period-specific metrics
     calculatePeriodMetrics(storeEntries, period);
     
-    // Calculate metric values for sorting
     const storeEntriesWithValues = storeEntries.map(([store, data]) => {
         let metricValue;
         switch(metric) {
@@ -1187,7 +1367,7 @@ function createBarOrPieChart(period, metric, sortOrder) {
             case 'totalCost':
                 metricValue = data.periodTotalCost;
                 break;
-            default: // cost (approved only)
+            default:
                 metricValue = data.periodApprovedCost;
         }
         return {
@@ -1197,14 +1377,12 @@ function createBarOrPieChart(period, metric, sortOrder) {
         };
     });
     
-    // Sort based on selected metric
     storeEntriesWithValues.sort((a, b) => {
         return sortOrder === 'desc' ? b.metricValue - a.metricValue : a.metricValue - b.metricValue;
     });
     
     const sortedStoreEntries = storeEntriesWithValues.map(item => [item.store, item.data]);
     
-    // Prepare chart data
     const labels = sortedStoreEntries.map(([store]) => STORE_DISPLAY_NAMES[store] || STORE_ABBREVIATIONS[store] || store);
     const dataValues = sortedStoreEntries.map(([store, data]) => {
         switch(metric) {
@@ -1220,7 +1398,7 @@ function createBarOrPieChart(period, metric, sortOrder) {
                 return data.periodReportCount > 0 ? data.periodTotalCost / data.periodReportCount : 0;
             case 'totalCost':
                 return data.periodTotalCost;
-            default: // cost (approved only)
+            default:
                 return data.periodApprovedCost;
         }
     });
@@ -1280,18 +1458,16 @@ function calculatePeriodMetrics(storeEntries, period) {
                 startDate = new Date(dateFrom);
                 endDate = new Date(dateTo);
             } else {
-                // Default to last 30 days if no dates selected
                 startDate = new Date(now);
                 startDate.setDate(startDate.getDate() - 30);
                 endDate = new Date(now);
             }
             break;
-        default: // all
-            startDate = new Date(0); // Beginning of time
-            endDate = new Date(8640000000000000); // Far future
+        default:
+            startDate = new Date(0);
+            endDate = new Date(8640000000000000);
     }
     
-    // Adjust dates to include whole days
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(23, 59, 59, 999);
     
@@ -1302,33 +1478,22 @@ function calculatePeriodMetrics(storeEntries, period) {
         let periodItemCount = 0;
         let periodApprovedItemCount = 0;
         
-        // Iterate through all dates in the period
         const currentDate = new Date(startDate);
         while (currentDate <= endDate) {
             const dateKey = currentDate.toISOString().split('T')[0];
-            const monthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
             
-            // Check if store has reports on this date
             if (data.reportDates.has(dateKey)) {
                 periodReportCount++;
             }
             
-            // Add daily costs
             if (data.dailyCosts[dateKey]) {
                 periodApprovedCost += data.dailyCosts[dateKey].approved || 0;
                 periodTotalCost += data.dailyCosts[dateKey].total || 0;
             }
             
-            // Add daily total costs
-            if (data.dailyTotalCosts[dateKey]) {
-                // Already included in periodTotalCost above
-            }
-            
-            // Count items for this date
             periodItemCount += calculateItemsForDate(store, dateKey);
             periodApprovedItemCount += calculateApprovedItemsForDate(store, dateKey);
             
-            // Move to next day
             currentDate.setDate(currentDate.getDate() + 1);
         }
         
@@ -1337,7 +1502,7 @@ function calculatePeriodMetrics(storeEntries, period) {
         data.periodTotalCost = periodTotalCost;
         data.periodItemCount = periodItemCount;
         data.periodApprovedItemCount = periodApprovedItemCount;
-        data.periodCost = periodApprovedCost; // For backward compatibility
+        data.periodCost = periodApprovedCost;
     });
 }
 
@@ -1349,7 +1514,6 @@ function createLineChart(period, metric, selectedStore) {
         storeChart.destroy();
     }
     
-    // Get date range based on period
     const now = new Date();
     let startDate, endDate;
     let dateFormat = 'MMM dd';
@@ -1404,18 +1568,15 @@ function createLineChart(period, metric, selectedStore) {
             if (dateFrom && dateTo) {
                 startDate = new Date(dateFrom);
                 endDate = new Date(dateTo);
-                // Adjust format based on date range length
                 const dayDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
                 dateFormat = dayDiff > 90 ? 'MMM' : 'MMM dd';
             } else {
-                // Default to last 30 days
                 startDate = new Date(now);
                 startDate.setDate(startDate.getDate() - 30);
                 endDate = new Date(now);
             }
             break;
-        default: // all
-            // Find earliest and latest dates from data
+        default:
             const allDates = Object.keys(chartAnalysis.timeSeriesData).sort();
             if (allDates.length > 0) {
                 startDate = new Date(allDates[0]);
@@ -1429,11 +1590,9 @@ function createLineChart(period, metric, selectedStore) {
             }
     }
     
-    // Adjust dates to include whole days
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(23, 59, 59, 999);
     
-    // Generate date labels
     const labels = [];
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
@@ -1447,7 +1606,7 @@ function createLineChart(period, metric, selectedStore) {
             case 'MMM yyyy':
                 label = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
                 break;
-            default: // 'MMM dd'
+            default:
                 label = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
         
@@ -1455,7 +1614,6 @@ function createLineChart(period, metric, selectedStore) {
         currentDate.setDate(currentDate.getDate() + 1);
     }
     
-    // Prepare datasets based on selected stores
     const datasets = [];
     const colors = [
         '#2a5934', '#3a7d5a', '#4aa180', '#5abfa6', '#6addcc',
@@ -1465,15 +1623,12 @@ function createLineChart(period, metric, selectedStore) {
     
     let storesToShow = [];
     if (selectedStore === 'all') {
-        // Show all stores
         storesToShow = ALL_STORES;
     } else {
-        // Show only selected store
         storesToShow = [selectedStore];
     }
     
     storesToShow.forEach((store, index) => {
-        // Generate data for this store
         const data = [];
         const currentDate = new Date(startDate);
         let dataIndex = 0;
@@ -1504,7 +1659,7 @@ function createLineChart(period, metric, selectedStore) {
                     case 'totalCost':
                         value = storeData.total || 0;
                         break;
-                    default: // cost (approved only)
+                    default:
                         value = storeData.approved || 0;
                 }
             }
@@ -1514,7 +1669,6 @@ function createLineChart(period, metric, selectedStore) {
             dataIndex++;
         }
         
-        // Only add dataset if there's any data
         if (data.some(v => v > 0) || storesToShow.length === 1) {
             const colorIndex = index % colors.length;
             datasets.push({
@@ -1529,7 +1683,6 @@ function createLineChart(period, metric, selectedStore) {
         }
     });
     
-    // Create the chart
     const chartData = {
         labels: labels,
         datasets: datasets
@@ -1608,7 +1761,6 @@ function createLineChart(period, metric, selectedStore) {
         options: chartOptions
     });
     
-    // Update statistics for line chart
     updateLineChartStatistics(period, metric, selectedStore);
 }
 
@@ -1905,14 +2057,13 @@ function buildChartTooltip(context, storeEntries, metric, period) {
                 maximumFractionDigits: 2
             })} (all items)`;
             break;
-        default: // cost (approved only)
+        default:
             label += `₱${value.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
             })} (approved only)`;
     }
     
-    // Add comparison with total if applicable
     if (metric === 'cost' && storeData.periodTotalCost > 0) {
         const totalCost = storeData.periodTotalCost;
         const approvalRate = totalCost > 0 ? Math.round((value / totalCost) * 100) : 0;
@@ -1964,56 +2115,53 @@ function updateChartStatistics(storeEntries, metric, period) {
     
     const now = new Date();
     
-    // Top performing store
     const topStore = storeEntries[0];
     const topStoreName = Performance.getElement('#topStoreName');
     const topStoreValue = Performance.getElement('#topStoreValue');
     
     if (topStoreName && topStoreValue) {
         const value = metric === 'reports' ? topStore[1].periodReportCount :
-                     metric === 'items' ? topStore[1].periodApprovedItemCount :
-                     metric === 'totalItems' ? topStore[1].periodItemCount :
-                     metric === 'average' ? (topStore[1].periodReportCount > 0 ? topStore[1].periodApprovedCost / topStore[1].periodReportCount : 0) :
-                     metric === 'averageTotal' ? (topStore[1].periodReportCount > 0 ? topStore[1].periodTotalCost / topStore[1].periodReportCount : 0) :
-                     metric === 'totalCost' ? topStore[1].periodTotalCost :
-                     topStore[1].periodApprovedCost;
+                    metric === 'items' ? topStore[1].periodApprovedItemCount :
+                    metric === 'totalItems' ? topStore[1].periodItemCount :
+                    metric === 'average' ? (topStore[1].periodReportCount > 0 ? topStore[1].periodApprovedCost / topStore[1].periodReportCount : 0) :
+                    metric === 'averageTotal' ? (topStore[1].periodReportCount > 0 ? topStore[1].periodTotalCost / topStore[1].periodReportCount : 0) :
+                    metric === 'totalCost' ? topStore[1].periodTotalCost :
+                    topStore[1].periodApprovedCost;
         
         topStoreName.textContent = STORE_DISPLAY_NAMES[topStore[0]] || STORE_ABBREVIATIONS[topStore[0]] || topStore[0];
         topStoreValue.textContent = metric === 'reports' ? `${value} reports` :
-                                   metric === 'items' ? `${value} approved items` :
-                                   metric === 'totalItems' ? `${value} items` :
-                                   metric === 'average' ? `₱${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
-                                   metric === 'averageTotal' ? `₱${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
-                                   `₱${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                                metric === 'items' ? `${value} approved items` :
+                                metric === 'totalItems' ? `${value} items` :
+                                metric === 'average' ? `₱${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
+                                metric === 'averageTotal' ? `₱${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
+                                `₱${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     }
     
-    // Total cost/reports
     const totalCostEl = Performance.getElement('#totalCost');
     const reportCountEl = Performance.getElement('#reportCount');
     
     if (totalCostEl && reportCountEl) {
         const totalValue = storeEntries.reduce((sum, [store, data]) => {
             return sum + (metric === 'reports' ? data.periodReportCount :
-                         metric === 'items' ? data.periodApprovedItemCount :
-                         metric === 'totalItems' ? data.periodItemCount :
-                         metric === 'average' ? (data.periodReportCount > 0 ? data.periodApprovedCost / data.periodReportCount : 0) :
-                         metric === 'averageTotal' ? (data.periodReportCount > 0 ? data.periodTotalCost / data.periodReportCount : 0) :
-                         metric === 'totalCost' ? data.periodTotalCost :
-                         data.periodApprovedCost);
+                        metric === 'items' ? data.periodApprovedItemCount :
+                        metric === 'totalItems' ? data.periodItemCount :
+                        metric === 'average' ? (data.periodReportCount > 0 ? data.periodApprovedCost / data.periodReportCount : 0) :
+                        metric === 'averageTotal' ? (data.periodReportCount > 0 ? data.periodTotalCost / data.periodReportCount : 0) :
+                        metric === 'totalCost' ? data.periodTotalCost :
+                        data.periodApprovedCost);
         }, 0);
         
         const totalReports = storeEntries.reduce((sum, [store, data]) => sum + data.periodReportCount, 0);
         
         totalCostEl.textContent = metric === 'reports' ? `${totalValue}` :
-                                 metric === 'items' ? `${totalValue}` :
-                                 metric === 'totalItems' ? `${totalValue}` :
-                                 metric === 'average' ? `₱${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
-                                 metric === 'averageTotal' ? `₱${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
-                                 `₱${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                                metric === 'items' ? `${totalValue}` :
+                                metric === 'totalItems' ? `${totalValue}` :
+                                metric === 'average' ? `₱${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
+                                metric === 'averageTotal' ? `₱${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` :
+                                `₱${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
         reportCountEl.textContent = `${totalReports} report${totalReports !== 1 ? 's' : ''}`;
     }
     
-    // Most consistent store
     const consistentStoreEl = Performance.getElement('#consistentStore');
     const consistencyRateEl = Performance.getElement('#consistencyRate');
     
@@ -2033,7 +2181,6 @@ function updateChartStatistics(storeEntries, metric, period) {
         consistencyRateEl.textContent = `${highestRate}% reporting rate`;
     }
     
-    // Store needing attention
     const attentionStoreEl = Performance.getElement('#attentionStore');
     const attentionReasonEl = Performance.getElement('#attentionReason');
     
@@ -2068,7 +2215,6 @@ function updateChartStatistics(storeEntries, metric, period) {
         attentionReasonEl.textContent = reason;
     }
     
-    // Daily reporting rate
     const dailyRateEl = Performance.getElement('#dailyRate');
     if (dailyRateEl) {
         const totalStores = storeEntries.length;
@@ -2080,13 +2226,11 @@ function updateChartStatistics(storeEntries, metric, period) {
         dailyRateEl.textContent = `${dailyRate}%`;
     }
     
-    // Last updated
     const lastUpdatedEl = Performance.getElement('#lastUpdated');
     if (lastUpdatedEl) {
         lastUpdatedEl.textContent = `Updated: ${now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'})}`;
     }
     
-    // Update period info
     const periodInfoEl = Performance.getElement('#periodInfo');
     if (periodInfoEl) {
         periodInfoEl.textContent = getPeriodText(period);
@@ -2101,13 +2245,11 @@ function updateLineChartStatistics(period, metric, selectedStore) {
         periodInfoEl.textContent = getPeriodText(period) + (selectedStore !== 'all' ? ` - ${selectedStore}` : '');
     }
     
-    // Update last updated
     const lastUpdatedEl = Performance.getElement('#lastUpdated');
     if (lastUpdatedEl) {
         lastUpdatedEl.textContent = `Updated: ${now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'})}`;
     }
     
-    // Hide or update other stats as needed for line chart
     const statCards = document.querySelectorAll('.chart-stat-card');
     statCards.forEach(card => {
         card.style.opacity = '0.6';
@@ -2146,7 +2288,6 @@ function updateChartControls() {
     if (periodSelect && dateRangePickerContainer) {
         if (periodSelect.value === 'specificDateRange') {
             dateRangePickerContainer.style.display = 'block';
-            // Set default dates if not set
             const dateFrom = Performance.getElement('#chartDateFrom');
             const dateTo = Performance.getElement('#chartDateTo');
             const today = new Date().toISOString().split('T')[0];
@@ -2164,7 +2305,7 @@ function updateChartControls() {
 }
 
 // ================================
-// UTILITY FUNCTIONS - OPTIMIZED
+// UTILITY FUNCTIONS
 // ================================
 function calculateReportCost(report) {
     if (!report) return 0;
@@ -2300,7 +2441,6 @@ function getDisposalTypeText(disposalTypes) {
     }
 }
 
-// UPDATED: getReportApprovalStatus to properly handle partial status
 function getReportApprovalStatus(report) {
     if (!report) return 'pending';
     
@@ -2329,11 +2469,9 @@ function getReportApprovalStatus(report) {
     if (approvedCount === totalItems) return 'complete';
     if (rejectedCount === totalItems) return 'rejected';
     
-    // Partial status for mixed approvals
     return 'partial';
 }
 
-// NEW: Check if report has pending items (for filter)
 function hasPendingItems(report) {
     if (!report || report.disposalTypes?.includes('noWaste')) {
         return false;
@@ -2351,7 +2489,6 @@ function hasPendingItems(report) {
     return false;
 }
 
-// NEW: Check if report has rejected items (for filter)
 function hasRejectedItems(report) {
     if (!report || report.disposalTypes?.includes('noWaste')) {
         return false;
@@ -2369,10 +2506,9 @@ function hasRejectedItems(report) {
     return false;
 }
 
-// NEW: Check if report has approved items (for filter)
 function hasApprovedItems(report) {
     if (!report || report.disposalTypes?.includes('noWaste')) {
-        return true; // No waste reports are considered fully approved
+        return true;
     }
     
     const expiredItems = report.expiredItems || [];
@@ -2431,11 +2567,11 @@ function getApprovedItemCount(report) {
 }
 
 // ================================
-// REPORT DETAILS - OPTIMIZED
+// REPORT DETAILS
 // ================================
 async function viewReportDetails(reportId) {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to view report details', 'error');
+        showNotification('Please login to view report details', 'error');
         return;
     }
     
@@ -2456,7 +2592,7 @@ async function viewReportDetails(reportId) {
             id: doc.id, 
             ...data,
             disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                          data.disposalType ? [data.disposalType] : ['unknown']
+                        data.disposalType ? [data.disposalType] : ['unknown']
         };
         
         await buildModalContent(report);
@@ -2481,10 +2617,14 @@ async function buildModalContent(report) {
     const content = await buildReportContent(report);
     modalContent.innerHTML = content;
     
-    // Add delete button handler
     const deleteReportButton = Performance.getElement('#deleteReportButton');
     if (deleteReportButton) {
-        deleteReportButton.onclick = () => openDeleteModal(report);
+        if (isAdmin()) {
+            deleteReportButton.style.display = 'inline-block';
+            deleteReportButton.onclick = () => openDeleteModal(report);
+        } else {
+            deleteReportButton.style.display = 'none';
+        }
     }
 }
 
@@ -2581,8 +2721,7 @@ async function buildReportContent(report) {
             </div>
     `;
     
-    // Add bulk actions if there are pending items
-    if (pendingCount > 0 && !disposalTypes.includes('noWaste')) {
+    if (pendingCount > 0 && !disposalTypes.includes('noWaste') && isAdmin()) {
         let bulkActions = '';
         
         if (expiredItems.length > 0) {
@@ -2629,7 +2768,6 @@ async function buildReportContent(report) {
         }
     }
     
-    // Add items sections with images
     if (expiredItems.length > 0) {
         content += await buildItemsSection(report, 'expired');
     }
@@ -2669,7 +2807,7 @@ function buildItemContent(item, index, type, reportId) {
     const approvalStatus = item.approvalStatus || 'pending';
     const statusClass = `status-${approvalStatus}`;
     const statusIcon = approvalStatus === 'approved' ? 'fa-check-circle' : 
-                     approvalStatus === 'rejected' ? 'fa-times-circle' : 'fa-clock';
+                    approvalStatus === 'rejected' ? 'fa-times-circle' : 'fa-clock';
     const itemCost = item.itemCost || 0;
     const totalCost = itemCost * (item.quantity || 0);
     
@@ -2706,7 +2844,6 @@ function buildItemContent(item, index, type, reportId) {
     
     content += `<div>Unit Cost: ₱${(item.itemCost || 0).toFixed(2)}</div></div>`;
     
-    // Add approval/rejection info
     if (approvalStatus === 'approved' && item.approvedAt) {
         content += `
             <div style="font-size: 10px; color: #155724; margin-bottom: 8px;">
@@ -2726,10 +2863,8 @@ function buildItemContent(item, index, type, reportId) {
         `;
     }
     
-    // Add images using optimized ImageManager
     content += ImageManager.displayImagesInItem(item, index, type);
     
-    // Add notes if exists
     if (item.notes) {
         content += `
             <div style="margin-top: 8px; padding: 8px; background: var(--color-offwhite); border-radius: var(--border-radius); font-size: 11px;">
@@ -2738,8 +2873,7 @@ function buildItemContent(item, index, type, reportId) {
         `;
     }
     
-    // Add approval buttons if pending
-    if (approvalStatus === 'pending') {
+    if (approvalStatus === 'pending' && isAdmin()) {
         content += `
             <div class="approval-actions">
                 <button class="approve-btn" onclick="approveItem('${reportId}', ${index}, '${type}')">
@@ -2780,13 +2914,12 @@ function closeDetailsModal() {
 }
 
 // ================================
-// DELETE FUNCTIONALITY
+// DELETE FUNCTIONALITY (ADMIN ONLY)
 // ================================
 async function deleteAllImagesFromReport(report) {
     try {
         const imagesToDelete = [];
         
-        // Collect all images from expired items
         if (report.expiredItems) {
             report.expiredItems.forEach(item => {
                 if (item.documentation && Array.isArray(item.documentation)) {
@@ -2799,7 +2932,6 @@ async function deleteAllImagesFromReport(report) {
             });
         }
         
-        // Collect all images from waste items
         if (report.wasteItems) {
             report.wasteItems.forEach(item => {
                 if (item.documentation && Array.isArray(item.documentation)) {
@@ -2812,14 +2944,12 @@ async function deleteAllImagesFromReport(report) {
             });
         }
         
-        // Delete all images
         for (const image of imagesToDelete) {
             try {
                 await ImageManager.deleteImageFromStorage(image);
                 console.log(`Deleted image: ${image.path}`);
             } catch (error) {
                 console.warn(`Failed to delete image ${image.path}:`, error);
-                // Continue deleting other images even if one fails
             }
         }
         
@@ -2834,14 +2964,18 @@ async function deleteAllImagesFromReport(report) {
 
 async function deleteReport(reportId) {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to delete reports', 'error');
+        showNotification('Please login to delete reports', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can delete reports', 'error');
         return;
     }
     
     showLoading(true, 'Deleting report and images...');
     
     try {
-        // Get the report data first to find and delete images
         const reportDoc = await db.collection('wasteReports').doc(reportId).get();
         if (!reportDoc.exists) {
             showNotification('Report not found', 'error');
@@ -2850,28 +2984,22 @@ async function deleteReport(reportId) {
         
         const report = { id: reportDoc.id, ...reportDoc.data() };
         
-        // Delete all images from storage
         const imagesDeleted = await deleteAllImagesFromReport(report);
         
-        // Delete the report document from Firestore
         await db.collection('wasteReports').doc(reportId).delete();
         
-        // Update UI
         const index = reportsData.findIndex(r => r.id === reportId);
         if (index !== -1) {
             reportsData.splice(index, 1);
         }
         
-        // Reload reports
         await loadReports();
         
-        // Close modals
         closeDeleteModal();
         closeDetailsModal();
         
         showNotification(`Report deleted successfully. ${imagesDeleted} images removed from storage.`, 'success');
         
-        // Refresh chart data and statistics
         setTimeout(() => {
             loadAllReportsForChart();
         }, 500);
@@ -2886,7 +3014,12 @@ async function deleteReport(reportId) {
 
 async function deleteAllReports(applyFilters = false) {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to delete reports', 'error');
+        showNotification('Please login to delete reports', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can delete reports', 'error');
         return;
     }
     
@@ -2895,7 +3028,6 @@ async function deleteAllReports(applyFilters = false) {
     try {
         let query = db.collection('wasteReports');
         
-        // Apply filters if requested
         if (applyFilters) {
             const storeFilter = Performance.getElement('#filterStore');
             const dateFromFilter = Performance.getElement('#filterDateFrom');
@@ -2919,7 +3051,6 @@ async function deleteAllReports(applyFilters = false) {
         let deletedReports = 0;
         let deletedImages = 0;
         
-        // Process reports in batches to avoid overwhelming the system
         const batchSize = 5;
         const reports = [];
         
@@ -2930,48 +3061,38 @@ async function deleteAllReports(applyFilters = false) {
         for (let i = 0; i < reports.length; i += batchSize) {
             const batch = reports.slice(i, i + batchSize);
             
-            // Delete images and reports in parallel for this batch
             const deletePromises = batch.map(async (report) => {
                 try {
-                    // Delete images first
                     const imagesCount = await deleteAllImagesFromReport(report);
                     deletedImages += imagesCount;
                     
-                    // Then delete the report document
                     await db.collection('wasteReports').doc(report.id).delete();
                     deletedReports++;
                     
-                    // Update progress
                     if (deletedReports % 10 === 0 || deletedReports === totalReports) {
                         showLoading(true, `Deleting ${deletedReports}/${totalReports} reports...`);
                     }
                     
                 } catch (error) {
                     console.error(`Error deleting report ${report.id}:`, error);
-                    // Continue with other reports even if one fails
                 }
             });
             
             await Promise.all(deletePromises);
             
-            // Small delay between batches to prevent overwhelming Firebase
             if (i + batchSize < reports.length) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
         
-        // Clear local data
         reportsData = [];
         
-        // Reload reports
         await loadReports();
         
-        // Close modal
         closeDeleteAllModal();
         
         showNotification(`Deleted ${deletedReports} reports and ${deletedImages} images from storage.`, 'success');
         
-        // Refresh chart data and statistics
         setTimeout(() => {
             loadAllReportsForChart();
         }, 1000);
@@ -2986,14 +3107,18 @@ async function deleteAllReports(applyFilters = false) {
 
 async function deleteSingleImage(reportId, itemIndex, itemType, imageIndex) {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to delete images', 'error');
+        showNotification('Please login to delete images', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can delete images', 'error');
         return;
     }
     
     showLoading(true, 'Deleting image...');
     
     try {
-        // Get the report
         const reportDoc = await db.collection('wasteReports').doc(reportId).get();
         if (!reportDoc.exists) {
             showNotification('Report not found', 'error');
@@ -3016,13 +3141,10 @@ async function deleteSingleImage(reportId, itemIndex, itemType, imageIndex) {
         
         const imageToDelete = item.documentation[imageIndex];
         
-        // Delete image from storage
         await ImageManager.deleteImageFromStorage(imageToDelete);
         
-        // Remove image from documentation array
         item.documentation.splice(imageIndex, 1);
         
-        // Update the item in Firestore
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await db.collection('wasteReports').doc(reportId).update({
             [field]: items
@@ -3030,15 +3152,12 @@ async function deleteSingleImage(reportId, itemIndex, itemType, imageIndex) {
         
         showNotification('Image deleted successfully', 'success');
         
-        // Refresh the details modal
         if (currentReportDetailsId === reportId) {
             await viewReportDetails(reportId);
         }
         
-        // Refresh reports list
         loadReports();
         
-        // Close modals
         ImageManager.closeDeleteImageModal();
         ImageManager.closeModal();
         
@@ -3051,6 +3170,11 @@ async function deleteSingleImage(reportId, itemIndex, itemType, imageIndex) {
 }
 
 function openDeleteModal(report) {
+    if (!isAdmin()) {
+        showNotification('Only administrators can delete reports', 'error');
+        return;
+    }
+    
     currentReportToDelete = report;
     
     const deleteReportInfo = Performance.getElement('#deleteReportInfo');
@@ -3109,7 +3233,12 @@ function closeDeleteModal() {
 
 function openDeleteAllModal() {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to delete reports', 'error');
+        showNotification('Please login to delete reports', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can delete reports', 'error');
         return;
     }
     
@@ -3119,7 +3248,6 @@ function openDeleteAllModal() {
     const applyFiltersCheckbox = Performance.getElement('#applyFiltersToDeleteAll');
     
     if (deleteAllCount) {
-        // Count all reports (or filtered reports)
         const count = applyFiltersCheckbox?.checked ? reportsData.length : allReportsData.length;
         deleteAllCount.textContent = count;
     }
@@ -3163,13 +3291,13 @@ function confirmDeleteAll() {
 }
 
 // ================================
-// REPORTS LOADING - OPTIMIZED WITH FIXED PAGINATION AND UPDATED FILTER LOGIC
+// REPORTS LOADING
 // ================================
 async function loadReports() {
     if (isDataLoading) return;
     
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to view reports', 'error');
+        showNotification('Please login to view reports', 'error');
         return;
     }
     
@@ -3183,7 +3311,6 @@ async function loadReports() {
         
         tableBody.innerHTML = '';
         
-        // Get filter values
         const storeFilter = Performance.getElement('#filterStore');
         const dateFromFilter = Performance.getElement('#filterDateFrom');
         const dateToFilter = Performance.getElement('#filterDateTo');
@@ -3193,7 +3320,6 @@ async function loadReports() {
         
         let query = db.collection('wasteReports');
         
-        // Apply server-side filters
         if (storeFilter?.value) {
             query = query.where('store', '==', storeFilter.value);
         }
@@ -3202,7 +3328,6 @@ async function loadReports() {
         
         const snapshot = await query.get();
         
-        // Process all reports
         filteredReportsData = [];
         const allReports = [];
         
@@ -3212,42 +3337,34 @@ async function loadReports() {
                 id: doc.id, 
                 ...data,
                 disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                              data.disposalType ? [data.disposalType] : ['unknown']
+                            data.disposalType ? [data.disposalType] : ['unknown']
             };
             allReports.push(report);
             
-            // Apply client-side filters
             const searchMatch = !searchInput?.value || 
-                              (report.reportId && report.reportId.toLowerCase().includes(searchInput.value.toLowerCase())) ||
-                              (report.email && report.email.toLowerCase().includes(searchInput.value.toLowerCase())) ||
-                              (report.personnel && report.personnel.toLowerCase().includes(searchInput.value.toLowerCase())) ||
-                              (report.store && report.store.toLowerCase().includes(searchInput.value.toLowerCase()));
+                            (report.reportId && report.reportId.toLowerCase().includes(searchInput.value.toLowerCase())) ||
+                            (report.email && report.email.toLowerCase().includes(searchInput.value.toLowerCase())) ||
+                            (report.personnel && report.personnel.toLowerCase().includes(searchInput.value.toLowerCase())) ||
+                            (report.store && report.store.toLowerCase().includes(searchInput.value.toLowerCase()));
             
             const typeMatch = !typeFilter?.value || 
-                             report.disposalTypes.includes(typeFilter.value);
+                            report.disposalTypes.includes(typeFilter.value);
             
-            // UPDATED: Status filter logic to handle partial reports correctly
             let statusMatch = true;
             if (filterStatus?.value) {
                 const approvalStatus = getReportApprovalStatus(report);
                 
-                // Check if the report should be shown in the selected filter
                 if (filterStatus.value === 'pending') {
-                    // Show reports with pending items OR partial status
                     statusMatch = hasPendingItems(report);
                 } else if (filterStatus.value === 'rejected') {
-                    // Show reports with rejected items
                     statusMatch = hasRejectedItems(report);
                 } else if (filterStatus.value === 'complete') {
-                    // Show fully approved reports
                     statusMatch = approvalStatus === 'complete';
                 } else if (filterStatus.value === 'partial') {
-                    // Show partially approved reports (mixed statuses)
                     statusMatch = approvalStatus === 'partial';
                 }
             }
             
-            // Date range filtering
             let dateMatch = true;
             if (dateFromFilter?.value || dateToFilter?.value) {
                 const reportDate = new Date(report.reportDate);
@@ -3274,21 +3391,15 @@ async function loadReports() {
             }
         });
         
-        // Store for chart analysis
         allReportsData = allReports;
-        
-        // Update total filtered count
         totalFilteredCount = filteredReportsData.length;
         
-        // Calculate pagination
         const totalPages = Math.ceil(totalFilteredCount / pageSize);
         const startIndex = (currentPage - 1) * pageSize;
         const endIndex = Math.min(startIndex + pageSize, totalFilteredCount);
         
-        // Get reports for current page
         const pageReports = filteredReportsData.slice(startIndex, endIndex);
         
-        // Build HTML with DocumentFragment for better performance
         const fragment = document.createDocumentFragment();
         
         pageReports.forEach(report => {
@@ -3297,7 +3408,6 @@ async function loadReports() {
             fragment.appendChild(row);
         });
         
-        // Append all rows at once
         if (fragment.childNodes.length > 0) {
             tableBody.appendChild(fragment);
         } else {
@@ -3312,20 +3422,17 @@ async function loadReports() {
             `;
         }
         
-        // Update statistics from all reports
         updateStatisticsFromAllReports();
         
         updatePageInfo();
         updatePaginationButtons();
         
-        // Load chart data if this is the first page
         if (currentPage === 1) {
             setTimeout(() => {
                 loadAllReportsForChart();
             }, 100);
         }
         
-        // Cache the data
         reportsCache.data = reportsData;
         reportsCache.timestamp = Date.now();
         
@@ -3342,11 +3449,10 @@ function createTableRow(report) {
     const row = document.createElement('tr');
     const itemCount = getItemCount(report);
     const approvedItemCount = getApprovedItemCount(report);
-    const totalCost = calculateReportCost(report); // Total cost of ALL items (including pending/rejected)
-    const approvedCost = calculateApprovedReportCost(report); // Cost of approved items only
+    const totalCost = calculateReportCost(report);
+    const approvedCost = calculateApprovedReportCost(report);
     const costCellClass = getCostCellClass(totalCost);
     
-    // Count images
     let imageCount = 0;
     const countImages = (items) => {
         if (!items) return;
@@ -3358,6 +3464,32 @@ function createTableRow(report) {
     };
     countImages(report.expiredItems);
     countImages(report.wasteItems);
+    
+    let actionsColumn = '';
+    if (isAdmin()) {
+        actionsColumn = `
+            <td>
+                <div style="display: flex; gap: 4px;">
+                    <button class="view-details-btn" onclick="viewReportDetails('${report.id}')" title="${imageCount > 0 ? `View (${imageCount} images)` : 'View'}">
+                        <i class="fas fa-eye"></i> View
+                    </button>
+                    <button class="delete-btn-small" onclick="openDeleteModal(${JSON.stringify(report).replace(/"/g, '&quot;')})" title="Delete report and images">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+    } else {
+        actionsColumn = `
+            <td>
+                <div style="display: flex; gap: 4px;">
+                    <button class="view-details-btn" onclick="viewReportDetails('${report.id}')" title="${imageCount > 0 ? `View (${imageCount} images)` : 'View'}">
+                        <i class="fas fa-eye"></i> View
+                    </button>
+                </div>
+            </td>
+        `;
+    }
     
     row.innerHTML = `
         <td>
@@ -3397,16 +3529,7 @@ function createTableRow(report) {
             ${approvedCost < totalCost ? `<div style="font-size: 10px; color: #666;">(₱${approvedCost.toFixed(2)} approved)</div>` : ''}
         </td>
         <td>${getApprovalStatusBadge(report)}</td>
-        <td>
-            <div style="display: flex; gap: 4px;">
-                <button class="view-details-btn" onclick="viewReportDetails('${report.id}')" title="${imageCount > 0 ? `View (${imageCount} images)` : 'View'}">
-                    <i class="fas fa-eye"></i> View
-                </button>
-                <button class="delete-btn-small" onclick="openDeleteModal(${JSON.stringify(report).replace(/"/g, '&quot;')})" title="Delete report and images">
-                    <i class="fas fa-trash-alt"></i>
-                </button>
-            </div>
-        </td>
+        ${actionsColumn}
     `;
     
     return row;
@@ -3455,7 +3578,7 @@ function changePage(direction) {
 }
 
 // ================================
-// FILTERS - OPTIMIZED
+// FILTERS
 // ================================
 function debounceApplyFilters() {
     Performance.debounce(() => {
@@ -3480,11 +3603,16 @@ function clearFilters() {
 }
 
 // ================================
-// APPROVAL & REJECTION FUNCTIONS - OPTIMIZED
+// APPROVAL & REJECTION FUNCTIONS
 // ================================
 async function approveItem(reportId, itemIndex, itemType) {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to approve items', 'error');
+        showNotification('Please login to approve items', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can approve items', 'error');
         return;
     }
     
@@ -3511,7 +3639,7 @@ async function approveItem(reportId, itemIndex, itemType) {
             ...items[itemIndex],
             approvalStatus: 'approved',
             approvedAt: new Date().toISOString(),
-            approvedBy: 'Administrator',
+            approvedBy: currentUser?.email || 'Administrator',
             rejectionReason: null
         };
         
@@ -3520,7 +3648,6 @@ async function approveItem(reportId, itemIndex, itemType) {
         
         showNotification('Item approved successfully', 'success');
         
-        // Update UI without full reload
         updateReportAfterApproval(reportId);
         
     } catch (error) {
@@ -3533,7 +3660,12 @@ async function approveItem(reportId, itemIndex, itemType) {
 
 async function rejectItem(reportId, itemIndex, itemType, reason) {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to reject items', 'error');
+        showNotification('Please login to reject items', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can reject items', 'error');
         return;
     }
     
@@ -3561,17 +3693,15 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
             return;
         }
         
-        // Generate unique item ID for resubmission
         const uniqueItemId = `${reportId}_${itemType}_${itemIndex}_${Date.now()}`;
         
-        // Update the item with rejection info
         items[itemIndex] = {
             ...items[itemIndex],
             approvalStatus: 'rejected',
             rejectedAt: new Date().toISOString(),
-            rejectedBy: 'Administrator',
+            rejectedBy: currentUser?.email || 'Administrator',
             rejectionReason: reason.trim(),
-            itemId: uniqueItemId, // THIS LINE IS CRITICAL
+            itemId: uniqueItemId,
             canResubmit: true
         };
         
@@ -3580,10 +3710,8 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
         
         showNotification('Item rejected successfully', 'success');
         
-        // Update UI without full reload
         updateReportAfterApproval(reportId);
         
-        // Send email notification with edit link AND ITEM ID
         await sendRejectionEmailViaGAS(
             report.email, 
             report.reportId || reportId, 
@@ -3591,7 +3719,7 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
             itemType, 
             reason.trim(), 
             report, 
-            uniqueItemId // PASS THE ITEM ID
+            uniqueItemId
         );
         
     } catch (error) {
@@ -3604,7 +3732,12 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
 
 async function bulkApproveItems(reportId, itemType) {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to approve items', 'error');
+        showNotification('Please login to approve items', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can approve items', 'error');
         return;
     }
     
@@ -3633,7 +3766,7 @@ async function bulkApproveItems(reportId, itemType) {
                     ...item,
                     approvalStatus: 'approved',
                     approvedAt: new Date().toISOString(),
-                    approvedBy: 'Administrator',
+                    approvedBy: currentUser?.email || 'Administrator',
                     rejectionReason: null
                 };
             }
@@ -3645,7 +3778,6 @@ async function bulkApproveItems(reportId, itemType) {
         
         showNotification('All pending items approved successfully', 'success');
         
-        // Update UI without full reload
         updateReportAfterApproval(reportId);
         
     } catch (error) {
@@ -3658,7 +3790,12 @@ async function bulkApproveItems(reportId, itemType) {
 
 async function bulkRejectItems(reportId, itemType, reason) {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to reject items', 'error');
+        showNotification('Please login to reject items', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can reject items', 'error');
         return;
     }
     
@@ -3689,10 +3826,8 @@ async function bulkRejectItems(reportId, itemType, reason) {
         const rejectedItems = [];
         const updatedItems = items.map((item, index) => {
             if (!item.approvalStatus || item.approvalStatus === 'pending') {
-                // Generate unique item ID for each rejected item
                 const uniqueItemId = `${reportId}_${itemType}_${index}_${Date.now()}`;
                 
-                // Store for individual emails (you might want to send separate emails for each)
                 rejectedItems.push({
                     item: item,
                     index: index,
@@ -3703,7 +3838,7 @@ async function bulkRejectItems(reportId, itemType, reason) {
                     ...item,
                     approvalStatus: 'rejected',
                     rejectedAt: new Date().toISOString(),
-                    rejectedBy: 'Administrator',
+                    rejectedBy: currentUser?.email || 'Administrator',
                     rejectionReason: reason.trim(),
                     itemId: uniqueItemId,
                     canResubmit: true
@@ -3717,10 +3852,8 @@ async function bulkRejectItems(reportId, itemType, reason) {
         
         showNotification('All pending items rejected successfully', 'success');
         
-        // Update UI without full reload
         updateReportAfterApproval(reportId);
         
-        // Send bulk rejection email
         await sendBulkRejectionEmailViaGAS(
             report.email, 
             report.reportId || reportId, 
@@ -3747,10 +3880,9 @@ async function updateReportAfterApproval(reportId) {
             id: doc.id, 
             ...data,
             disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                          data.disposalType ? [data.disposalType] : ['unknown']
+                        data.disposalType ? [data.disposalType] : ['unknown']
         };
         
-        // Update the table row if the report is in the current view
         const rowIndex = reportsData.findIndex(r => r.id === reportId);
         if (rowIndex !== -1) {
             reportsData[rowIndex] = updatedReport;
@@ -3758,24 +3890,21 @@ async function updateReportAfterApproval(reportId) {
             const tableBody = Performance.getElement('#reportsTableBody');
             if (tableBody && tableBody.children[rowIndex]) {
                 const row = tableBody.children[rowIndex];
-                const approvalCell = row.cells[9]; // Updated to 9 since we removed Status column
+                const approvalCell = row.cells[9];
                 if (approvalCell) {
                     approvalCell.innerHTML = getApprovalStatusBadge(updatedReport);
                 }
             }
         }
         
-        // If details modal is open for this report, refresh it
         if (currentReportDetailsId === reportId) {
             await viewReportDetails(reportId);
         }
         
-        // Refresh statistics from all reports
         if (allReportsData.length > 0) {
             updateStatisticsFromAllReports();
         }
         
-        // Refresh chart data
         setTimeout(() => {
             loadAllReportsForChart();
         }, 500);
@@ -3790,6 +3919,11 @@ async function updateReportAfterApproval(reportId) {
 // REJECTION MODAL FUNCTIONS
 // ================================
 function openRejectionModal(itemInfo, reportId, itemIndex, itemType) {
+    if (!isAdmin()) {
+        showNotification('Only administrators can reject items', 'error');
+        return;
+    }
+    
     currentRejectionData = { reportId, itemIndex, itemType };
     
     const rejectionItemInfo = Performance.getElement('#rejectionItemInfo');
@@ -3825,6 +3959,11 @@ function closeRejectionModal() {
 }
 
 function openBulkRejectionModal(reportId, itemCount, itemType) {
+    if (!isAdmin()) {
+        showNotification('Only administrators can reject items', 'error');
+        return;
+    }
+    
     currentBulkRejectionData = { reportId, itemType };
     
     const bulkItemsCount = Performance.getElement('#bulkItemsCount');
@@ -3889,17 +4028,15 @@ function handleBulkItemRejection() {
 }
 
 // ================================
-// EMAIL SENDING FUNCTIONS - UPDATED WITH EDIT LINK
+// EMAIL SENDING FUNCTIONS
 // ================================
 async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, reason, reportData, itemId) {
     try {
         const itemsArray = itemType === 'expired' ? reportData.expiredItems : reportData.wasteItems;
         const rejectedItem = itemsArray[itemIndex];
         
-        // Create edit link with item ID
         const editLink = `https://waste-disposal-six.vercel.app/submit_waste_report.html`;
         
-        // Get item details for email
         const itemName = rejectedItem?.item || 'N/A';
         const itemQuantity = rejectedItem?.quantity || 0;
         const itemUnit = rejectedItem?.unit || 'units';
@@ -3916,7 +4053,7 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, 
             reportDate: formatDate(reportData.reportDate) || 'N/A',
             disposalType: getDisposalTypeText(reportData.disposalTypes),
             reportId: reportId,
-            itemId: itemId, // THIS IS CRITICAL - MUST BE INCLUDED
+            itemId: itemId,
             itemName: itemName,
             itemQuantity: itemQuantity,
             itemUnit: itemUnit,
@@ -3932,7 +4069,6 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, 
                 hour: '2-digit', 
                 minute: '2-digit' 
             }),
-            // Add clear instructions about the Item ID
             specialInstructions: `ITEM ID FOR RESUBMISSION: ${itemId}`
         };
 
@@ -4056,11 +4192,11 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
 }
 
 // ================================
-// EXPORT FUNCTIONS - FIXED
+// EXPORT FUNCTIONS
 // ================================
 async function exportReports(type = 'current') {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to export reports', 'error');
+        showNotification('Please login to export reports', 'error');
         return;
     }
     
@@ -4100,11 +4236,10 @@ async function exportReports(type = 'current') {
                 id: doc.id, 
                 ...data,
                 disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                              data.disposalType ? [data.disposalType] : ['unknown']
+                            data.disposalType ? [data.disposalType] : ['unknown']
             });
         });
         
-        // Apply ALL client-side filters for "Export Filtered Reports"
         if (type === 'current') {
             const storeFilter = Performance.getElement('#filterStore');
             const dateFromFilter = Performance.getElement('#filterDateFrom');
@@ -4116,12 +4251,10 @@ async function exportReports(type = 'current') {
             reports = reports.filter(report => {
                 let isValid = true;
                 
-                // Apply store filter
                 if (storeFilter?.value && report.store !== storeFilter.value) {
                     isValid = false;
                 }
                 
-                // Apply date range filter
                 if (dateFromFilter?.value || dateToFilter?.value) {
                     const reportDate = new Date(report.reportDate);
                     
@@ -4142,7 +4275,6 @@ async function exportReports(type = 'current') {
                     }
                 }
                 
-                // Apply type filter
                 if (typeFilter?.value) {
                     const disposalTypes = report.disposalTypes;
                     if (!disposalTypes.includes(typeFilter.value)) {
@@ -4150,7 +4282,6 @@ async function exportReports(type = 'current') {
                     }
                 }
                 
-                // Apply approval status filter - UPDATED WITH NEW LOGIC
                 if (filterStatus?.value) {
                     const approvalStatus = getReportApprovalStatus(report);
                     
@@ -4165,7 +4296,6 @@ async function exportReports(type = 'current') {
                     }
                 }
                 
-                // Apply search filter
                 if (searchInput?.value) {
                     const searchTerm = searchInput.value.toLowerCase();
                     const searchMatch = 
@@ -4200,7 +4330,7 @@ async function exportReports(type = 'current') {
 
 async function exportReportsByDate() {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to export reports', 'error');
+        showNotification('Please login to export reports', 'error');
         return;
     }
     
@@ -4232,7 +4362,7 @@ async function exportReportsByDate() {
                 id: doc.id, 
                 ...data,
                 disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                              data.disposalType ? [data.disposalType] : ['unknown']
+                            data.disposalType ? [data.disposalType] : ['unknown']
             });
         });
         
@@ -4252,7 +4382,6 @@ async function exportToExcel(reports, fileName) {
     try {
         const data = [];
         
-        // Add headers - expanded to include item details
         data.push([
             'Report ID', 'Store', 'Personnel', 'Date', 'Type', 'Email', 
             'Submitted At', 'Total Items', 'At-Cost (₱)', 'Approval Status',
@@ -4261,7 +4390,6 @@ async function exportToExcel(reports, fileName) {
             'Manufactured Date', 'Delivered Date', 'Notes'
         ]);
         
-        // Add rows for each item in each report
         reports.forEach(report => {
             const disposalTypes = Array.isArray(report.disposalTypes) ? report.disposalTypes.join(', ') : report.disposalType;
             const totalItems = (report.expiredItems?.length || 0) + (report.wasteItems?.length || 0);
@@ -4280,7 +4408,6 @@ async function exportToExcel(reports, fileName) {
                 approvalStatus
             ];
             
-            // Process expired items
             if (report.expiredItems && report.expiredItems.length > 0) {
                 report.expiredItems.forEach((item, index) => {
                     const itemCost = item.itemCost || 0;
@@ -4305,7 +4432,6 @@ async function exportToExcel(reports, fileName) {
                 });
             }
             
-            // Process waste items
             if (report.wasteItems && report.wasteItems.length > 0) {
                 report.wasteItems.forEach((item, index) => {
                     const itemCost = item.itemCost || 0;
@@ -4322,15 +4448,14 @@ async function exportToExcel(reports, fileName) {
                         itemTotalCost.toFixed(2),
                         item.approvalStatus || 'pending',
                         item.reason || 'N/A',
-                        'N/A', // Manufactured date not applicable for waste
-                        'N/A', // Delivered date not applicable for waste
+                        'N/A',
+                        'N/A',
                         item.notes || ''
                     ];
                     data.push(row);
                 });
             }
             
-            // For "no waste" reports, add a single row
             if (report.disposalTypes?.includes('noWaste') || 
                 (totalItems === 0 && !report.expiredItems?.length && !report.wasteItems?.length)) {
                 const row = [
@@ -4351,43 +4476,22 @@ async function exportToExcel(reports, fileName) {
             }
         });
         
-        // Create worksheet
         const ws = XLSX.utils.aoa_to_sheet(data);
         
-        // Set column widths for better readability
         const colWidths = [
-            { wch: 20 }, // Report ID
-            { wch: 25 }, // Store
-            { wch: 20 }, // Personnel
-            { wch: 15 }, // Date
-            { wch: 15 }, // Type
-            { wch: 25 }, // Email
-            { wch: 20 }, // Submitted At
-            { wch: 12 }, // Total Items
-            { wch: 15 }, // At-Cost
-            { wch: 15 }, // Approval Status
-            { wch: 12 }, // Item Type
-            { wch: 30 }, // Item Name
-            { wch: 15 }, // Item Cost
-            { wch: 10 }, // Quantity
-            { wch: 10 }, // Unit
-            { wch: 15 }, // Total Item Cost
-            { wch: 15 }, // Approval Status
-            { wch: 20 }, // Reason/Expiration
-            { wch: 15 }, // Manufactured Date
-            { wch: 15 }, // Delivered Date
-            { wch: 30 }  // Notes
+            { wch: 20 }, { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 15 },
+            { wch: 25 }, { wch: 20 }, { wch: 12 }, { wch: 15 }, { wch: 15 },
+            { wch: 12 }, { wch: 30 }, { wch: 15 }, { wch: 10 }, { wch: 10 },
+            { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 15 },
+            { wch: 30 }
         ];
         ws['!cols'] = colWidths;
         
-        // Create workbook
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Reports');
         
-        // Generate Excel file
         const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         
-        // Save file
         const blob = new Blob([wbout], { type: 'application/octet-stream' });
         saveAs(blob, `${fileName}_${new Date().toISOString().split('T')[0]}.xlsx`);
         
@@ -4423,14 +4527,26 @@ function hideExportDate() {
 // ================================
 function openItemsManagement() {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to manage items', 'error');
+        showNotification('Please login to manage items', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can manage items', 'error');
         return;
     }
     
     const itemsModal = Performance.getElement('#itemsManagementModal');
     if (itemsModal) {
         itemsModal.style.display = 'flex';
+        // Reset to regular items view
+        const typeSelect = Performance.getElement('#itemTypeSelect');
+        if (typeSelect) typeSelect.value = 'regular';
+        currentItemType = 'regular';
+        itemsCurrentPage = 1;
+        itemsLastVisibleDoc = null;
         loadItems();
+        updateItemCounts();
     }
 }
 
@@ -4438,6 +4554,35 @@ function closeItemsManagement() {
     const itemsModal = Performance.getElement('#itemsManagementModal');
     if (itemsModal) {
         itemsModal.style.display = 'none';
+        // Reset search when closing
+        const searchInput = Performance.getElement('#searchItems');
+        if (searchInput) searchInput.value = '';
+    }
+}
+
+async function updateItemCounts() {
+    try {
+        // Get regular items count
+        const regularSnapshot = await db.collection('items')
+            .where('category', '==', 'regular')
+            .get();
+        regularItemsCount = regularSnapshot.size;
+        
+        // Get kitchen items count
+        const kitchenSnapshot = await db.collection('items')
+            .where('category', '==', 'kitchen')
+            .get();
+        kitchenItemsCount = kitchenSnapshot.size;
+        
+        // Update UI
+        const totalEl = Performance.getElement('#totalItemsCount');
+        const kitchenEl = Performance.getElement('#kitchenItemsCount');
+        
+        if (totalEl) totalEl.textContent = regularItemsCount;
+        if (kitchenEl) kitchenEl.textContent = kitchenItemsCount;
+        
+    } catch (error) {
+        console.error('Error updating item counts:', error);
     }
 }
 
@@ -4448,8 +4593,30 @@ async function loadItems() {
     
     try {
         const searchTerm = Performance.getElement('#searchItems')?.value.toLowerCase() || '';
+        currentItemType = Performance.getElement('#itemTypeSelect')?.value || 'regular';
+        
+        // Update badge
+        const badge = Performance.getElement('#itemTypeBadge');
+        if (badge) {
+            if (currentItemType === 'regular') {
+                badge.innerHTML = '<i class="fas fa-box"></i> Regular Items';
+                badge.style.background = 'var(--color-primary)';
+            } else {
+                badge.innerHTML = '<i class="fas fa-utensils"></i> Kitchen Items';
+                badge.style.background = '#856404';
+            }
+        }
+        
+        // Update total items label
+        const totalLabel = Performance.getElement('#totalItemsLabel');
+        if (totalLabel) {
+            totalLabel.textContent = currentItemType === 'regular' ? 'Total Regular Items' : 'Total Kitchen Items';
+        }
         
         let query = db.collection('items');
+        
+        // Filter by item type
+        query = query.where('category', '==', currentItemType);
         
         if (searchTerm) {
             query = query.orderBy('nameLowerCase')
@@ -4484,6 +4651,9 @@ async function loadItems() {
             itemsData.push(item);
             
             const row = document.createElement('tr');
+            const categoryIcon = item.category === 'kitchen' ? '🍳' : '📦';
+            const categoryName = item.category === 'kitchen' ? 'Kitchen' : 'Regular';
+            
             row.innerHTML = `
                 <td><strong>${item.name}</strong></td>
                 <td>
@@ -4491,10 +4661,15 @@ async function loadItems() {
                         ₱${(item.cost || 0).toFixed(2)}
                     </div>
                 </td>
+                <td>
+                    <span style="background: ${item.category === 'kitchen' ? '#fff3cd' : '#e8f5e9'}; color: ${item.category === 'kitchen' ? '#856404' : '#2e7d32'}; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 500;">
+                        ${categoryIcon} ${categoryName}
+                    </span>
+                </td>
                 <td><small style="color: var(--color-gray);">${formatDate(item.createdAt)}</small></td>
                 <td>
                     <div class="item-actions">
-                        <button class="item-action-btn edit-item-btn" onclick="openEditItemModal('${item.id}', '${item.name.replace(/'/g, "\\'")}', ${item.cost || 0})">
+                        <button class="item-action-btn edit-item-btn" onclick="openEditItemModal('${item.id}', '${item.name.replace(/'/g, "\\'")}', ${item.cost || 0}, '${item.category || 'regular'}')">
                             <i class="fas fa-edit"></i> Edit
                         </button>
                         <button class="item-action-btn delete-item-btn" onclick="deleteItem('${item.id}', '${item.name.replace(/'/g, "\\'")}')">
@@ -4513,33 +4688,28 @@ async function loadItems() {
         if (itemsData.length === 0) {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="4" style="text-align: center; padding: 40px; color: var(--color-gray);">
-                        <i class="fas fa-box-open" style="font-size: 24px; margin-bottom: 10px;"></i>
-                        <p>No items found. Add your first item!</p>
+                    <td colspan="5" style="text-align: center; padding: 40px; color: var(--color-gray);">
+                        <i class="fas ${currentItemType === 'kitchen' ? 'fa-utensils' : 'fa-box-open'}" style="font-size: 24px; margin-bottom: 10px;"></i>
+                        <p>No ${currentItemType} items found. Add your first ${currentItemType} item!</p>
                     </td>
                 </tr>
             `;
         }
         
-        // Get total count
-        let totalCount = 0;
-        try {
-            const countQuery = db.collection('items');
-            if (searchTerm) {
-                countQuery.where('nameLowerCase', '>=', searchTerm)
-                         .where('nameLowerCase', '<=', searchTerm + '\uf8ff');
-            }
-            
-            const allItems = await countQuery.get();
-            totalCount = allItems.size;
-        } catch (error) {
-            console.log('Count method not available, using fallback:', error);
-            totalCount = itemsData.length + ((itemsCurrentPage - 1) * itemsPageSize);
-        }
+        // Get counts for both categories
+        await updateItemCounts();
         
-        updateItemsStatistics(totalCount);
+        // Update pagination info
+        updateItemsStatistics(itemsData.length);
         updateItemsPageInfo();
         updateItemsPaginationButtons();
+        
+        // Update category item count display
+        const categoryCountEl = Performance.getElement('#categoryItemCount');
+        if (categoryCountEl) {
+            const totalInCategory = currentItemType === 'regular' ? regularItemsCount : kitchenItemsCount;
+            categoryCountEl.textContent = `${totalInCategory} ${currentItemType} items total`;
+        }
         
     } catch (error) {
         console.error('Error loading items:', error);
@@ -4584,15 +4754,22 @@ function changeItemsPage(direction) {
 
 async function addItemToDatabase() {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to add items', 'error');
+        showNotification('Please login to add items', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can add items', 'error');
         return;
     }
     
     const nameInput = Performance.getElement('#newItemName');
     const costInput = Performance.getElement('#newItemCost');
+    const itemTypeSelect = Performance.getElement('#itemTypeSelect');
     
     const name = nameInput?.value.trim();
     const cost = parseFloat(costInput?.value) || 0;
+    const category = itemTypeSelect?.value || 'regular';
     
     if (!name) {
         showNotification('Please enter item name', 'error');
@@ -4614,37 +4791,38 @@ async function addItemToDatabase() {
     showLoading(true, 'Adding item...');
     
     try {
-        // Check if item exists
+        // Check if item exists in the same category
         const existingQuery = await db.collection('items')
             .where('nameLowerCase', '==', name.toLowerCase())
+            .where('category', '==', category)
             .limit(1)
             .get();
         
         if (!existingQuery.empty) {
-            showNotification('Item already exists in database', 'error');
+            showNotification(`${category === 'kitchen' ? 'Kitchen' : 'Regular'} item already exists in database`, 'error');
             return;
         }
         
-        // Add new item
         const newItem = {
             name: name,
             nameLowerCase: name.toLowerCase(),
             cost: cost,
+            category: category,
             createdAt: new Date().toISOString(),
-            createdBy: 'Administrator',
+            createdBy: currentUser?.email || 'Administrator',
             updatedAt: new Date().toISOString(),
             usageCount: 0
         };
         
         await db.collection('items').add(newItem);
         
-        showNotification('Item added successfully', 'success');
+        showNotification(`${category === 'kitchen' ? 'Kitchen' : 'Regular'} item added successfully`, 'success');
         
         if (nameInput) nameInput.value = '';
         if (costInput) costInput.value = '0';
         
-        // Refresh items list
-        loadItems();
+        await loadItems();
+        await updateItemCounts();
         
     } catch (error) {
         console.error('Error adding item:', error);
@@ -4654,17 +4832,24 @@ async function addItemToDatabase() {
     }
 }
 
-function openEditItemModal(itemId, name, cost = 0) {
+function openEditItemModal(itemId, name, cost = 0, category = 'regular') {
+    if (!isAdmin()) {
+        showNotification('Only administrators can edit items', 'error');
+        return;
+    }
+    
     currentEditItemId = itemId;
     
     const nameInput = Performance.getElement('#editItemName');
     const costInput = Performance.getElement('#editItemCost');
+    const categorySelect = Performance.getElement('#editItemCategory');
     const itemInfo = Performance.getElement('#editItemInfo');
     
     if (nameInput) nameInput.value = name;
     if (costInput) costInput.value = cost;
+    if (categorySelect) categorySelect.value = category;
     if (itemInfo) {
-        itemInfo.innerHTML = `Editing item: <strong>${name}</strong>`;
+        itemInfo.innerHTML = `Editing ${category === 'kitchen' ? 'kitchen' : 'regular'} item: <strong>${name}</strong>`;
     }
     
     const editModal = Performance.getElement('#editItemModal');
@@ -4685,11 +4870,18 @@ function closeEditItemModal() {
 async function saveItemChanges() {
     if (!currentEditItemId) return;
     
+    if (!isAdmin()) {
+        showNotification('Only administrators can edit items', 'error');
+        return;
+    }
+    
     const nameInput = Performance.getElement('#editItemName');
     const costInput = Performance.getElement('#editItemCost');
+    const categorySelect = Performance.getElement('#editItemCategory');
     
     const name = nameInput?.value.trim();
     const cost = parseFloat(costInput?.value) || 0;
+    const category = categorySelect?.value || 'regular';
     
     if (!name) {
         showNotification('Item name is required', 'error');
@@ -4711,9 +4903,10 @@ async function saveItemChanges() {
     showLoading(true, 'Saving changes...');
     
     try {
-        // Check if another item with the same name exists
+        // Check if item name exists in the same category (excluding current item)
         const existingQuery = await db.collection('items')
             .where('nameLowerCase', '==', name.toLowerCase())
+            .where('category', '==', category)
             .limit(1)
             .get();
         
@@ -4725,7 +4918,7 @@ async function saveItemChanges() {
         });
         
         if (exists) {
-            showNotification('Item name already exists in database', 'error');
+            showNotification(`Item name already exists in ${category} category`, 'error');
             return;
         }
         
@@ -4733,14 +4926,17 @@ async function saveItemChanges() {
             name: name,
             nameLowerCase: name.toLowerCase(),
             cost: cost,
-            updatedAt: new Date().toISOString()
+            category: category,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser?.email || 'Administrator'
         };
         
         await db.collection('items').doc(currentEditItemId).update(updates);
         
         showNotification('Item updated successfully', 'success');
         closeEditItemModal();
-        loadItems();
+        await loadItems();
+        await updateItemCounts();
         
     } catch (error) {
         console.error('Error updating item:', error);
@@ -4752,7 +4948,12 @@ async function saveItemChanges() {
 
 async function deleteItem(itemId, itemName) {
     if (!isAuthenticated()) {
-        showNotification('Please authenticate to delete items', 'error');
+        showNotification('Please login to delete items', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can delete items', 'error');
         return;
     }
     
@@ -4763,7 +4964,6 @@ async function deleteItem(itemId, itemName) {
     showLoading(true, 'Deleting item...');
     
     try {
-        // Check if item is used in any reports
         const reportsQuery = await db.collection('wasteReports')
             .where('disposalType', 'in', ['expired', 'waste'])
             .get();
@@ -4789,7 +4989,8 @@ async function deleteItem(itemId, itemName) {
         await db.collection('items').doc(itemId).delete();
         
         showNotification(`Item "${itemName}" deleted successfully`, 'success');
-        loadItems();
+        await loadItems();
+        await updateItemCounts();
         
     } catch (error) {
         console.error('Error deleting item:', error);
@@ -4805,30 +5006,70 @@ function applyItemsFilters() {
     loadItems();
 }
 
+// Migration function to update existing items with category
+async function migrateItemsToCategories() {
+    if (!isAdmin()) return;
+    
+    try {
+        const snapshot = await db.collection('items').get();
+        const batch = db.batch();
+        let updatedCount = 0;
+        
+        snapshot.forEach(doc => {
+            const item = doc.data();
+            if (!item.category) {
+                // Assume existing items are regular items
+                batch.update(doc.ref, { category: 'regular' });
+                updatedCount++;
+            }
+        });
+        
+        if (updatedCount > 0) {
+            await batch.commit();
+            console.log(`Migrated ${updatedCount} items to have category field`);
+        }
+    } catch (error) {
+        console.error('Error migrating items:', error);
+    }
+}
+
+// Setup item type change listener
+function setupItemTypeListener() {
+    const itemTypeSelect = Performance.getElement('#itemTypeSelect');
+    if (itemTypeSelect) {
+        itemTypeSelect.addEventListener('change', function() {
+            currentItemType = this.value;
+            itemsCurrentPage = 1;
+            itemsLastVisibleDoc = null;
+            loadItems();
+        });
+    }
+}
+
 // ================================
-// EVENT LISTENERS - OPTIMIZED
+// EVENT LISTENERS
 // ================================
 function setupEventListeners() {
-    // Password section
-    const passwordInput = Performance.getElement('#password');
-    const accessButton = Performance.getElement('#accessButton');
+    // Auth section
+    const logoutButton = Performance.getElement('#logoutButton');
+    if (logoutButton) logoutButton.addEventListener('click', handleLogout);
     
-    if (passwordInput && accessButton) {
-        passwordInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') checkPassword();
+    const loginEmail = Performance.getElement('#loginEmail');
+    const loginPassword = Performance.getElement('#loginPassword');
+    
+    if (loginEmail && loginPassword) {
+        loginPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleLogin();
         });
-        accessButton.addEventListener('click', checkPassword);
     }
     
-    const lockButton = Performance.getElement('#lockButton');
-    if (lockButton) {
-        lockButton.addEventListener('click', lockReports);
-    }
+    // Create Account Modal listeners
+    setupCreateAccountModalListeners();
     
-    // Delete All button
-    const deleteAllButton = Performance.getElement('#deleteAllButton');
-    if (deleteAllButton) {
-        deleteAllButton.addEventListener('click', openDeleteAllModal);
+    // Create Account button
+    const createAccountButton = Performance.getElement('#createAccountButton');
+    if (createAccountButton) {
+        createAccountButton.addEventListener('click', openCreateAccountModal);
     }
     
     // Initialize chart type selector
@@ -4853,19 +5094,13 @@ function setupEventListeners() {
     
     // Statistics filter
     const statsPeriodFilter = Performance.getElement('#statsPeriodFilter');
-    const refreshStatsBtn = Performance.getElement('#refreshStatsBtn');
-    
     if (statsPeriodFilter) {
         statsPeriodFilter.addEventListener('change', function() {
             changeStatsPeriod(this.value);
         });
     }
     
-    if (refreshStatsBtn) {
-        refreshStatsBtn.addEventListener('click', refreshStatistics);
-    }
-    
-    // Reports filters with debounce
+    // Reports filters
     const searchInput = Performance.getElement('#searchInput');
     const filterStore = Performance.getElement('#filterStore');
     const filterType = Performance.getElement('#filterType');
@@ -4945,6 +5180,9 @@ function setupEventListeners() {
     if (prevItemsPageBtn) prevItemsPageBtn.addEventListener('click', () => changeItemsPage(-1));
     if (nextItemsPageBtn) nextItemsPageBtn.addEventListener('click', () => changeItemsPage(1));
     
+    // Item type selector
+    setupItemTypeListener();
+    
     // Edit item modal
     const closeEditItemModalBtn = Performance.getElement('#closeEditItemModal');
     const cancelEditItemButton = Performance.getElement('#cancelEditItemButton');
@@ -4956,17 +5194,13 @@ function setupEventListeners() {
     
     // Report details modal
     const closeDetailsModalBtn = Performance.getElement('#closeDetailsModal');
-    const closeModalButton = Performance.getElement('#closeModalButton');
     
     if (closeDetailsModalBtn) closeDetailsModalBtn.addEventListener('click', closeDetailsModal);
-    if (closeModalButton) closeModalButton.addEventListener('click', closeDetailsModal);
     
     // Image modal
     const closeImageModalBtn = Performance.getElement('#closeImageModal');
-    const closeImageModalButton = Performance.getElement('#closeImageModalButton');
     
     if (closeImageModalBtn) closeImageModalBtn.addEventListener('click', ImageManager.closeModal);
-    if (closeImageModalButton) closeImageModalButton.addEventListener('click', ImageManager.closeModal);
     
     // Rejection modals
     const closeRejectionModalBtn = Performance.getElement('#closeRejectionModal');
@@ -5059,6 +5293,7 @@ function setupEventListeners() {
                 else if (modal.id === 'deleteModal') closeDeleteModal();
                 else if (modal.id === 'deleteAllModal') closeDeleteAllModal();
                 else if (modal.id === 'deleteImageModal') ImageManager.closeDeleteImageModal();
+                else if (modal.id === 'createAccountModal') closeCreateAccountModal();
             }
         });
     });
@@ -5075,19 +5310,9 @@ function setupEventListeners() {
             closeDeleteModal();
             closeDeleteAllModal();
             ImageManager.closeDeleteImageModal();
+            closeCreateAccountModal();
         }
     });
-    
-    // Session timeout check
-    setInterval(() => {
-        if (!isAuthenticated()) {
-            const reportsSection = Performance.getElement('#reportsSection');
-            if (reportsSection && reportsSection.style.display !== 'none') {
-                lockReports();
-                showNotification('Session expired. Please login again.', 'info');
-            }
-        }
-    }, 60000);
 }
 
 // ================================
@@ -5102,8 +5327,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // ================================
 // GLOBAL EXPORTS
 // ================================
-window.checkPassword = checkPassword;
-window.lockReports = lockReports;
+window.handleLogin = handleLogin;
+window.handleLogout = handleLogout;
+window.togglePassword = togglePassword;
 window.loadReports = loadReports;
 window.clearFilters = clearFilters;
 window.changePage = changePage;
@@ -5157,3 +5383,7 @@ window.confirmDeleteAll = confirmDeleteAll;
 window.deleteSingleImage = deleteSingleImage;
 window.refreshStatistics = refreshStatistics;
 window.changeStatsPeriod = changeStatsPeriod;
+window.isAdmin = isAdmin;
+window.handleAdminCreateAccount = handleAdminCreateAccount;
+window.openCreateAccountModal = openCreateAccountModal;
+window.closeCreateAccountModal = closeCreateAccountModal;
