@@ -4586,17 +4586,21 @@ async function updateItemCounts() {
     }
 }
 
+// ================================
+// UPDATED ITEMS MANAGEMENT FUNCTIONS - COMPLETE FIX
+// ================================
+
 async function loadItems() {
     if (!isAuthenticated()) return;
     
     showLoading(true, 'Loading items...');
     
     try {
-        const searchTerm = Performance.getElement('#searchItems')?.value.toLowerCase() || '';
-        currentItemType = Performance.getElement('#itemTypeSelect')?.value || 'regular';
+        const searchTerm = document.getElementById('searchItems')?.value || '';
+        currentItemType = document.getElementById('itemTypeSelect')?.value || 'regular';
         
         // Update badge
-        const badge = Performance.getElement('#itemTypeBadge');
+        const badge = document.getElementById('itemTypeBadge');
         if (badge) {
             if (currentItemType === 'regular') {
                 badge.innerHTML = '<i class="fas fa-box"></i> Regular Items';
@@ -4607,108 +4611,84 @@ async function loadItems() {
             }
         }
         
-        // Update total items label
-        const totalLabel = Performance.getElement('#totalItemsLabel');
-        if (totalLabel) {
-            totalLabel.textContent = currentItemType === 'regular' ? 'Total Regular Items' : 'Total Kitchen Items';
-        }
-        
-        let query = db.collection('items');
-        
-        // Filter by item type
-        query = query.where('category', '==', currentItemType);
-        
-        if (searchTerm) {
-            query = query.orderBy('nameLowerCase')
-                        .where('nameLowerCase', '>=', searchTerm)
-                        .where('nameLowerCase', '<=', searchTerm + '\uf8ff');
-        } else {
-            query = query.orderBy('name', 'asc');
-        }
-        
-        if (itemsCurrentPage > 1 && itemsLastVisibleDoc) {
-            query = query.startAfter(itemsLastVisibleDoc);
-        }
-        
-        query = query.limit(itemsPageSize);
+        // Get ALL items of the selected category first (without pagination)
+        let query = db.collection('items').where('category', '==', currentItemType);
         
         const snapshot = await query.get();
         
-        if (!snapshot.empty) {
-            itemsLastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
-        } else {
-            itemsLastVisibleDoc = null;
-        }
-        
-        itemsData = [];
-        const tableBody = Performance.getElement('#itemsTableBody');
-        if (!tableBody) return;
-        
-        const fragment = document.createDocumentFragment();
-        
+        // Convert to array and filter by search term (case insensitive, contains anywhere)
+        let allItems = [];
         snapshot.forEach(doc => {
             const item = { id: doc.id, ...doc.data() };
-            itemsData.push(item);
-            
-            const row = document.createElement('tr');
-            const categoryIcon = item.category === 'kitchen' ? '🍳' : '📦';
-            const categoryName = item.category === 'kitchen' ? 'Kitchen' : 'Regular';
-            
-            row.innerHTML = `
-                <td><strong>${item.name}</strong></td>
-                <td>
-                    <div style="color: #28a745; font-weight: bold; font-size: 14px;">
-                        ₱${(item.cost || 0).toFixed(2)}
-                    </div>
-                </td>
-                <td>
-                    <span style="background: ${item.category === 'kitchen' ? '#fff3cd' : '#e8f5e9'}; color: ${item.category === 'kitchen' ? '#856404' : '#2e7d32'}; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 500;">
-                        ${categoryIcon} ${categoryName}
-                    </span>
-                </td>
-                <td><small style="color: var(--color-gray);">${formatDate(item.createdAt)}</small></td>
-                <td>
-                    <div class="item-actions">
-                        <button class="item-action-btn edit-item-btn" onclick="openEditItemModal('${item.id}', '${item.name.replace(/'/g, "\\'")}', ${item.cost || 0}, '${item.category || 'regular'}')">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button class="item-action-btn delete-item-btn" onclick="deleteItem('${item.id}', '${item.name.replace(/'/g, "\\'")}')">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
-                    </div>
-                </td>
-            `;
-            
-            fragment.appendChild(row);
+            allItems.push(item);
         });
         
-        tableBody.innerHTML = '';
-        tableBody.appendChild(fragment);
-        
-        if (itemsData.length === 0) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="5" style="text-align: center; padding: 40px; color: var(--color-gray);">
-                        <i class="fas ${currentItemType === 'kitchen' ? 'fa-utensils' : 'fa-box-open'}" style="font-size: 24px; margin-bottom: 10px;"></i>
-                        <p>No ${currentItemType} items found. Add your first ${currentItemType} item!</p>
-                    </td>
-                </tr>
-            `;
+        // Apply search filter if there's a search term
+        let filteredItems = allItems;
+        if (searchTerm) {
+            const searchLower = searchTerm.toLowerCase().trim();
+            filteredItems = allItems.filter(item => {
+                // Check if item name contains the search term anywhere (case insensitive)
+                return item.name && item.name.toLowerCase().includes(searchLower);
+            });
         }
         
-        // Get counts for both categories
+        // Sort alphabetically
+        filteredItems.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        
+        // Update total counts for both categories (for the stats cards)
         await updateItemCounts();
         
-        // Update pagination info
-        updateItemsStatistics(itemsData.length);
-        updateItemsPageInfo();
-        updateItemsPaginationButtons();
+        // Apply pagination to filtered results
+        const startIndex = (itemsCurrentPage - 1) * itemsPageSize;
+        const endIndex = startIndex + itemsPageSize;
+        const pageItems = filteredItems.slice(startIndex, endIndex);
+        
+        itemsData = pageItems;
+        
+        // Store whether there are more pages
+        itemsLastVisibleDoc = endIndex < filteredItems.length;
+        
+        // Render the items
+        renderItemsTable(itemsData);
+        
+        // Update UI elements
+        const showingEl = document.getElementById('showingItemsCount');
+        if (showingEl) {
+            showingEl.textContent = itemsData.length;
+        }
+        
+        // Update page info
+        const pageInfo = document.getElementById('itemsPageInfo');
+        if (pageInfo) {
+            const totalPages = Math.ceil(filteredItems.length / itemsPageSize) || 1;
+            pageInfo.textContent = `Page ${itemsCurrentPage} of ${totalPages}`;
+        }
+        
+        // Update pagination buttons
+        const prevBtn = document.getElementById('prevItemsPageBtn');
+        const nextBtn = document.getElementById('nextItemsPageBtn');
+        
+        if (prevBtn) {
+            prevBtn.disabled = itemsCurrentPage <= 1;
+        }
+        
+        if (nextBtn) {
+            nextBtn.disabled = endIndex >= filteredItems.length;
+        }
         
         // Update category item count display
-        const categoryCountEl = Performance.getElement('#categoryItemCount');
+        const categoryCountEl = document.getElementById('categoryItemCount');
         if (categoryCountEl) {
             const totalInCategory = currentItemType === 'regular' ? regularItemsCount : kitchenItemsCount;
-            categoryCountEl.textContent = `${totalInCategory} ${currentItemType} items total`;
+            const showingCount = itemsData.length;
+            const filteredTotal = filteredItems.length;
+            
+            if (searchTerm) {
+                categoryCountEl.innerHTML = `<i class="fas fa-search"></i> Found ${filteredTotal} of ${totalInCategory} ${currentItemType} items (showing ${showingCount})`;
+            } else {
+                categoryCountEl.innerHTML = `<i class="fas fa-database"></i> Showing ${showingCount} of ${totalInCategory} ${currentItemType} items`;
+            }
         }
         
     } catch (error) {
@@ -4719,6 +4699,125 @@ async function loadItems() {
     }
 }
 
+// Helper function to render items table
+function renderItemsTable(items) {
+    const tableBody = document.getElementById('itemsTableBody');
+    if (!tableBody) return;
+    
+    const fragment = document.createDocumentFragment();
+    
+    items.forEach(item => {
+        const row = document.createElement('tr');
+        const categoryIcon = item.category === 'kitchen' ? '🍳' : '📦';
+        const categoryName = item.category === 'kitchen' ? 'Kitchen' : 'Regular';
+        
+        row.innerHTML = `
+            <td><strong>${escapeHtml(item.name)}</strong></td>
+            <td>
+                <div style="color: #28a745; font-weight: bold; font-size: 14px;">
+                    ₱${(item.cost || 0).toFixed(2)}
+                </div>
+            </td>
+            <td>
+                <span style="background: ${item.category === 'kitchen' ? '#fff3cd' : '#e8f5e9'}; color: ${item.category === 'kitchen' ? '#856404' : '#2e7d32'}; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 500;">
+                    ${categoryIcon} ${categoryName}
+                </span>
+            </td>
+            <td><small style="color: var(--color-gray);">${formatDate(item.createdAt)}</small></td>
+            <td>
+                <div class="item-actions">
+                    <button class="item-action-btn edit-item-btn" onclick="openEditItemModal('${item.id}', '${escapeHtml(item.name).replace(/'/g, "\\'")}', ${item.cost || 0}, '${item.category || 'regular'}')">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="item-action-btn delete-item-btn" onclick="deleteItem('${item.id}', '${escapeHtml(item.name).replace(/'/g, "\\'")}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            </td>
+        `;
+        
+        fragment.appendChild(row);
+    });
+    
+    tableBody.innerHTML = '';
+    tableBody.appendChild(fragment);
+    
+    if (items.length === 0) {
+        const searchTerm = document.getElementById('searchItems')?.value;
+        const searchMessage = searchTerm ? ` matching "${searchTerm}"` : '';
+        
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 40px; color: var(--color-gray);">
+                    <i class="fas ${currentItemType === 'kitchen' ? 'fa-utensils' : 'fa-box-open'}" style="font-size: 24px; margin-bottom: 10px;"></i>
+                    <p>No ${currentItemType} items${searchMessage} found.</p>
+                    <p style="font-size: 11px; margin-top: 5px;">Add your first ${currentItemType} item using the form above.</p>
+                </td>
+            </tr>
+        `;
+    }
+}
+
+// Update the item counts function to get totals for both categories
+async function updateItemCounts() {
+    try {
+        // Get regular items count (all)
+        const regularSnapshot = await db.collection('items')
+            .where('category', '==', 'regular')
+            .get();
+        regularItemsCount = regularSnapshot.size;
+        
+        // Get kitchen items count (all)
+        const kitchenSnapshot = await db.collection('items')
+            .where('category', '==', 'kitchen')
+            .get();
+        kitchenItemsCount = kitchenSnapshot.size;
+        
+        // Update UI with total counts
+        const regularTotalEl = document.getElementById('totalRegularItemsCount');
+        const kitchenTotalEl = document.getElementById('totalKitchenItemsCount');
+        
+        if (regularTotalEl) regularTotalEl.textContent = regularItemsCount;
+        if (kitchenTotalEl) kitchenTotalEl.textContent = kitchenItemsCount;
+        
+    } catch (error) {
+        console.error('Error updating item counts:', error);
+    }
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Update pagination functions
+function changeItemsPage(direction) {
+    itemsCurrentPage += direction;
+    loadItems();
+}
+
+// Update search input handler
+function setupItemTypeListener() {
+    const itemTypeSelect = document.getElementById('itemTypeSelect');
+    if (itemTypeSelect) {
+        itemTypeSelect.addEventListener('change', function() {
+            currentItemType = this.value;
+            itemsCurrentPage = 1;
+            loadItems();
+        });
+    }
+    
+    const searchItemsInput = document.getElementById('searchItems');
+    if (searchItemsInput) {
+        searchItemsInput.addEventListener('input', Performance.debounce(() => {
+            itemsCurrentPage = 1;
+            loadItems();
+        }, 300, 'itemsSearch'));
+    }
+}
 function updateItemsStatistics(totalCount) {
     const totalEl = Performance.getElement('#totalItemsCount');
     const showingEl = Performance.getElement('#showingItemsCount');
