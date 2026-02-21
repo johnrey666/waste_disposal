@@ -6,10 +6,74 @@
     <title>Submit Waste Report | FG Operations</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Add Select2 CSS for enhanced dropdown -->
+    <!-- Select2 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+
     <style>
-        /* Additional styles for better UI */
+        /* ───────────────────────────────────────────────
+           Collapsible group styling - improved
+        ─────────────────────────────────────────────── */
+        .select2-results__group {
+            cursor: pointer !important;
+            user-select: none;
+            padding: 8px 12px !important;
+            font-weight: 600;
+            position: relative;
+        }
+
+        .select2-results__group:before {
+            content: '▼';
+            margin-right: 8px;
+            font-size: 10px;
+            transition: transform 0.2s ease;
+            display: inline-block;
+        }
+
+        .select2-results__group.collapsed:before {
+            transform: rotate(-90deg);
+        }
+
+        .kitchen-main-collapsible {
+            background: #f8fff8 !important;
+            color: #1e4e2a !important;
+            border-bottom: 1px solid #d4edda;
+            font-size: 13px;
+        }
+
+        .concourse-group {
+            background: #fffaf0 !important;
+            color: #8b5e2b !important;
+            padding-left: 32px !important;
+            font-size: 12.5px;
+        }
+
+        .kitchen-option {
+            padding-left: 48px !important;
+            font-size: 12px;
+        }
+
+        .concourse-option {
+            padding-left: 72px !important;
+            font-size: 11.5px;
+            color: #444;
+        }
+
+        .kitchen-option:before,
+        .concourse-option:before {
+            content: '└─ ';
+            color: #bbb;
+            font-family: monospace;
+            margin-right: 5px;
+        }
+
+        .concourse-option:before {
+            content: '• ';
+            color: #856404;
+        }
+
+        /* ───────────────────────────────────────────────
+           Your original additional styles (unchanged)
+        ─────────────────────────────────────────────── */
         .disposal-types-display {
             margin: 10px 0;
             padding: 10px;
@@ -28,7 +92,6 @@
             color: #0056b3;
             font-weight: 500;
         }
-        /* Nested dropdown styles */
         .select2-container--default .select2-results__group {
             color: var(--color-primary);
             font-weight: 600;
@@ -39,44 +102,17 @@
             padding: 8px 12px;
             margin-top: 4px;
         }
-        
         .select2-container--default .select2-results__option--group {
             padding: 0;
         }
-        
         .select2-container--default .select2-results__option .select2-results__option {
             padding-left: 25px !important;
             font-size: 12px;
         }
-        
-        .select2-container--default .select2-results__group {
-            cursor: pointer;
-            position: relative;
-        }
-        
-        .select2-container--default .select2-results__group:hover {
-            background-color: #e0f0e3;
-        }
-        
-        .select2-container--default .select2-results__group:before {
-            content: '▼';
-            font-size: 10px;
-            margin-right: 8px;
-            display: inline-block;
-            transition: transform 0.2s;
-        }
-        
-        .select2-container--default .select2-results__group.collapsed:before {
-            transform: rotate(-90deg);
-        }
-        
-        /* Kitchen icon */
         .kitchen-icon {
             color: var(--color-primary);
             margin-right: 5px;
         }
-        
-        /* Enhanced progress bar */
         .upload-progress {
             position: absolute;
             bottom: 30px;
@@ -90,18 +126,10 @@
             text-align: center;
             animation: slideUp 0.3s ease;
         }
-        
         @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translate(-50%, 20px);
-            }
-            to {
-                opacity: 1;
-                transform: translate(-50%, 0);
-            }
+            from { opacity: 0; transform: translate(-50%, 20px); }
+            to   { opacity: 1; transform: translate(-50%, 0); }
         }
-        
         .upload-progress .progress-bar {
             width: 100%;
             height: 6px;
@@ -110,27 +138,12 @@
             overflow: hidden;
             margin: 12px 0 8px;
         }
-        
         .upload-progress .progress-fill {
             height: 100%;
             background: linear-gradient(90deg, var(--color-primary), #4aa180);
             border-radius: 3px;
             transition: width 0.3s ease;
         }
-        
-        .upload-progress .progress-text {
-            font-size: var(--font-size-sm);
-            font-weight: 600;
-            color: var(--color-primary);
-            margin-bottom: 4px;
-        }
-        
-        .upload-progress .progress-details {
-            font-size: var(--font-size-xs);
-            color: var(--color-gray);
-        }
-        
-        /* Kitchen category badges in dropdown */
         .kitchen-category-badge {
             display: inline-block;
             padding: 2px 6px;
@@ -140,26 +153,9 @@
             margin-left: 6px;
             text-transform: uppercase;
         }
-        
-        .category-meat {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .category-vegetables {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .category-seafood {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-        
-        /* Store type indicator */
+        .category-meat { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .category-vegetables { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .category-seafood { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
         .store-type-indicator {
             margin: 5px 0 10px;
             padding: 8px 12px;
@@ -170,22 +166,65 @@
             align-items: center;
             gap: 8px;
         }
-        
         .store-type-indicator.kitchen {
             background: #fff3cd;
             border-left: 4px solid #856404;
             color: #856404;
         }
-        
         .store-type-indicator.regular {
             background: #e8f5e9;
             border-left: 4px solid #2e7d32;
             color: #2e7d32;
         }
+        .required-note {
+            color: #dc3545;
+            font-size: 11px;
+            margin-top: 2px;
+            display: block;
+        }
+        .select2-container--default .select2-results__group.concourse-group {
+            padding-left: 25px !important;
+            font-size: 11px !important;
+            color: #856404 !important;
+            background-color: #fff8e7 !important;
+            font-weight: 500 !important;
+            cursor: pointer;
+        }
+        .select2-container--default .select2-results__group.concourse-group:before {
+            content: '▼';
+            font-size: 8px;
+            margin-right: 5px;
+            color: #856404;
+        }
+        .select2-container--default .select2-results__group.concourse-group.collapsed:before {
+            transform: rotate(-90deg);
+        }
+        .concourse-option {
+            padding-left: 45px !important;
+            font-size: 11px !important;
+            color: #333 !important;
+        }
+        .concourse-option:before {
+            content: '•';
+            color: #856404;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+        .kitchen-option {
+            padding-left: 25px !important;
+            font-size: 11px !important;
+        }
+        .kitchen-option:before {
+            content: '└─';
+            color: #256334;
+            font-size: 10px;
+            margin-right: 5px;
+        }
     </style>
 </head>
 <body>
-    <!-- Enhanced Loading Overlay -->
+
+    <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="modern-loader">
             <div class="pulse-loader">
@@ -202,12 +241,10 @@
             <div class="progress-details" id="progressDetails"></div>
         </div>
     </div>
-    
-    <!-- Notification Container -->
+
     <div id="notification" class="notification"></div>
-    
+
     <div class="container">
-        <!-- Navigation -->
         <nav class="navbar">
             <div class="nav-brand">
                 <img src="logo.jpg" alt="FG Operations Logo" class="nav-logo">
@@ -225,12 +262,10 @@
             </div>
         </nav>
 
-        <!-- Report Form Section -->
         <section class="report-form-section">
             <div class="form-header">
                 <h1><i class="fas fa-file-alt"></i> Submit Waste/Disposal Report</h1>
                 <p>Daily Report Form - Confirmation email will be sent to your email</p>
-                <!-- Disposal Types Preview -->
                 <div id="disposalTypesPreview" class="disposal-types-display" style="display: none;">
                     <strong>Selected Disposal Types:</strong>
                     <div id="disposalTypesTags"></div>
@@ -238,19 +273,18 @@
             </div>
 
             <form id="wasteReportForm" class="report-form">
-                <!-- Item ID Field (Optional - for resubmitting rejected items) -->
+
                 <div class="form-group">
                     <label for="itemId">
                         <i class="fas fa-id-card"></i> Item ID (Optional)
                     </label>
                     <input type="text" id="itemId" name="itemId" placeholder="Enter Item ID from rejection email">
                     <span class="note">Only enter if resubmitting a rejected item. Leave blank for new reports.</span>
-                    <button type="button" class="btn btn-secondary" id="loadItemButton" onclick="loadRejectedItem()" style="margin-top: 5px; padding: 5px 10px; font-size: 12px;">
+                    <button type="button" class="btn btn-secondary" id="loadItemButton" onclick="loadRejectedItem()" style="margin-top:5px; padding:5px 10px; font-size:12px;">
                         <i class="fas fa-search"></i> Load Rejected Item
                     </button>
                 </div>
 
-                <!-- Email -->
                 <div class="form-group">
                     <label for="email">
                         <i class="fas fa-envelope"></i> Email <span class="required">*</span>
@@ -259,15 +293,13 @@
                     <span class="note">Confirmation email will be sent to this address</span>
                 </div>
 
-                <!-- Store with collapsible Kitchen dropdown -->
                 <div class="form-group">
                     <label for="store">
                         <i class="fas fa-store"></i> Name of Store <span class="required">*</span>
                     </label>
                     <select id="store" name="store" required onchange="handleStoreChange(this)">
                         <option value="" disabled selected>Select store location</option>
-                        
-                        <!-- FG Express Stores -->
+
                         <option value="FG Express IROSIN">FG Express IROSIN</option>
                         <option value="FG Express LIGAO">FG Express LIGAO</option>
                         <option value="FG Express POLANGUI">FG Express POLANGUI</option>
@@ -276,33 +308,35 @@
                         <option value="FG Express BAAO">FG Express BAAO</option>
                         <option value="FG Express PIODURAN">FG Express PIODURAN</option>
                         <option value="FG Express RIZAL">FG Express RIZAL</option>
-                        
-                        <!-- FG to go Stores -->
+
                         <option value="FG to go TABACO">FG to go TABACO</option>
                         <option value="FG to go LEGAZPI">FG to go LEGAZPI</option>
-                        
-                        <!-- FG Stores -->
+
                         <option value="FG LEGAZPI">FG LEGAZPI</option>
                         <option value="FG NAGA">FG NAGA</option>
-                        
-                        <!-- Kitchen Group with nested options -->
-                        <optgroup label="🍽️ KITCHEN">
-                            <option value="CTK">&nbsp;&nbsp;&nbsp;└─ CTK</option>
-                            <option value="Concourse">&nbsp;&nbsp;&nbsp;└─ Concourse</option>
-                            <option value="FG Kitchen LC">&nbsp;&nbsp;&nbsp;└─ FG Kitchen LC</option>
-                            <option value="FG Kitchen Naga">&nbsp;&nbsp;&nbsp;└─ FG Kitchen Naga</option>
+
+                        <!-- KITCHEN group -->
+                        <optgroup label="🍽️ KITCHEN" class="kitchen-main-group">
+                            <option value="CTK" class="kitchen-option">└─ CTK</option>
+
+                            <optgroup label="└─ Concourse" class="concourse-group">
+                                <option value="Tabaco CN 2" class="concourse-option">└─ Tabaco CN 2</option>
+                                <option value="Concourse Hall" class="concourse-option">└─ Concourse Hall</option>
+                                <option value="Concourse Convention" class="concourse-option">└─ Concourse Convention</option>
+                            </optgroup>
+
+                            <option value="FG Kitchen LC" class="kitchen-option">└─ FG Kitchen LC</option>
+                            <option value="FG Kitchen Naga" class="kitchen-option">└─ FG Kitchen Naga</option>
                         </optgroup>
                     </select>
-                    <span class="note">Click on "KITCHEN" to expand/collapse kitchen locations</span>
-                    
-                    <!-- Store type indicator (updated dynamically) -->
+                    <span class="note">Click on "KITCHEN" or "Concourse" to expand/collapse</span>
+
                     <div id="storeTypeIndicator" class="store-type-indicator" style="display: none;">
                         <i class="fas fa-info-circle"></i>
                         <span id="storeTypeText"></span>
                     </div>
                 </div>
 
-                <!-- Personnel -->
                 <div class="form-group">
                     <label for="personnel">
                         <i class="fas fa-user"></i> Name of Personnel <span class="required">*</span>
@@ -311,7 +345,6 @@
                     <span class="note">Please indicate your complete name</span>
                 </div>
 
-                <!-- Report Date -->
                 <div class="form-group">
                     <label for="reportDate">
                         <i class="fas fa-calendar"></i> Disposal Report Date <span class="required">*</span>
@@ -319,43 +352,33 @@
                     <input type="date" id="reportDate" name="reportDate" required>
                     <span id="reportDateNote" class="note">Date of disposal report</span>
                 </div>
-                
-                <!-- Disposal Type Selection (Now checkboxes for multiple selection) -->
+
                 <div class="form-group">
                     <label>
                         <i class="fas fa-trash"></i> Type of Food Disposal <span class="required">*</span>
                     </label>
                     <span class="note">Select all that apply to your report</span>
-                    
                     <div class="disposal-options multiple">
                         <div class="disposal-option">
                             <input type="checkbox" id="expired" name="disposalType" value="expired" onchange="toggleDisposalType('expired')">
                             <label for="expired" class="disposal-label">
-                                <div class="disposal-icon">
-                                    <i class="fas fa-calendar-times"></i>
-                                </div>
+                                <div class="disposal-icon"><i class="fas fa-calendar-times"></i></div>
                                 <div class="disposal-name">Expired Items</div>
                                 <div class="disposal-desc">Food products past expiration date</div>
                             </label>
                         </div>
-                        
                         <div class="disposal-option">
                             <input type="checkbox" id="waste" name="disposalType" value="waste" onchange="toggleDisposalType('waste')">
                             <label for="waste" class="disposal-label">
-                                <div class="disposal-icon">
-                                    <i class="fas fa-trash-alt"></i>
-                                </div>
+                                <div class="disposal-icon"><i class="fas fa-trash-alt"></i></div>
                                 <div class="disposal-name">Waste</div>
                                 <div class="disposal-desc">Food spoilage or preparation waste</div>
                             </label>
                         </div>
-                        
                         <div class="disposal-option">
                             <input type="checkbox" id="noWaste" name="disposalType" value="noWaste" onchange="toggleDisposalType('noWaste')">
                             <label for="noWaste" class="disposal-label">
-                                <div class="disposal-icon">
-                                    <i class="fas fa-check-circle"></i>
-                                </div>
+                                <div class="disposal-icon"><i class="fas fa-check-circle"></i></div>
                                 <div class="disposal-name">No Waste</div>
                                 <div class="disposal-desc">No disposal required this period</div>
                             </label>
@@ -364,35 +387,24 @@
                     <div class="form-hint" id="disposalTypeHint">Select at least one disposal type</div>
                 </div>
 
-                <!-- Expired Items Container -->
                 <div id="expiredContainer" class="dynamic-container">
                     <h3><i class="fas fa-boxes"></i> Expired Items Details</h3>
                     <div class="note">Add each expired item individually. Documentation is required per item.</div>
-                    
-                    <div id="expiredFields" class="dynamic-fields">
-                        <!-- Expired items will be added here dynamically -->
-                    </div>
-                    
+                    <div id="expiredFields" class="dynamic-fields"></div>
                     <button type="button" class="btn btn-secondary" onclick="addExpiredItem()">
                         <i class="fas fa-plus"></i> Add Expired Item
                     </button>
                 </div>
 
-                <!-- Waste Container -->
                 <div id="wasteContainer" class="dynamic-container">
                     <h3><i class="fas fa-trash"></i> Waste Details</h3>
                     <div class="note">Add each waste item individually. Documentation is required per item.</div>
-                    
-                    <div id="wasteFields" class="dynamic-fields">
-                        <!-- Waste items will be added here dynamically -->
-                    </div>
-                    
+                    <div id="wasteFields" class="dynamic-fields"></div>
                     <button type="button" class="btn btn-secondary" onclick="addWasteItem()">
                         <i class="fas fa-plus"></i> Add Waste Item
                     </button>
                 </div>
 
-                <!-- Submit Button -->
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="window.location.href='index.html'">
                         <i class="fas fa-times"></i> Cancel
@@ -404,7 +416,6 @@
             </form>
         </section>
 
-        <!-- Footer -->
         <footer class="footer">
             <div class="footer-content">
                 <div class="footer-brand">
@@ -421,98 +432,16 @@
         </footer>
     </div>
 
-    <!-- Report Details Modal -->
-    <div id="detailsModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-file-alt"></i> Report Details</h3>
-                <span class="close-modal" onclick="closeDetailsModal()">&times;</span>
-            </div>
-            <div class="modal-body" id="modalContent">
-                <!-- Report details will be loaded here -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Add jQuery and Select2 for enhanced dropdown -->
+    <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    
-    <!-- Add Axios for SendGrid API -->
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    
-    <!-- Firebase Scripts -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
-    
-    <!-- Main JavaScript -->
+
+    <!-- Your JavaScript file -->
     <script src="submit_waste_report.js"></script>
-    
-    <script>
-        // Initialize Select2 with custom template for collapsible groups
-        $(document).ready(function() {
-            $('#store').select2({
-                placeholder: "Select store location",
-                allowClear: false,
-                width: '100%',
-                templateResult: formatState,
-                templateSelection: formatState
-            });
-            
-            // Add click handler for group headers
-            $(document).on('click', '.select2-results__group', function() {
-                $(this).toggleClass('collapsed');
-                $(this).nextUntil('.select2-results__group').toggle();
-            });
-        });
 
-        function formatState(state) {
-            if (!state.id) {
-                return state.text;
-            }
-            
-            // Add icon to kitchen options
-            if (state.text.includes('KITCHEN')) {
-                return $('<span><i class="fas fa-utensils kitchen-icon"></i> ' + state.text + '</span>');
-            }
-            
-            // Add small icon to kitchen sub-options
-            if (state.text.includes('CTK') || state.text.includes('Concourse') || 
-                state.text.includes('FG Kitchen')) {
-                return $('<span><i class="fas fa-chevron-right" style="font-size: 10px; margin-right: 5px; color: #256334;"></i> ' + state.text.replace(/[└─\s]/g, '') + '</span>');
-            }
-            
-            return state.text;
-        }
-
-        // Custom function to make the Kitchen group collapsible
-        function makeKitchenCollapsible() {
-            setTimeout(function() {
-                $('.select2-results__group:contains("KITCHEN")').each(function() {
-                    if (!$(this).hasClass('initialized')) {
-                        $(this).addClass('initialized collapsed');
-                        $(this).nextUntil('.select2-results__group').hide();
-                        
-                        $(this).off('click').on('click', function(e) {
-                            e.stopPropagation();
-                            $(this).toggleClass('collapsed');
-                            $(this).nextUntil('.select2-results__group').slideToggle(200);
-                        });
-                    }
-                });
-            }, 500);
-        }
-
-        // Call after dropdown opens
-        $('#store').on('select2:open', function() {
-            makeKitchenCollapsible();
-        });
-
-        // Also call after any select2 render
-        $('#store').on('select2:select', function() {
-            setTimeout(makeKitchenCollapsible, 100);
-        });
-    </script>
 </body>
 </html>
