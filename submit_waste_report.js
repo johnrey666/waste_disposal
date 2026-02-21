@@ -1714,7 +1714,7 @@ document.addEventListener('DOMContentLoaded', async () => {
    
     document.querySelectorAll('input[name="disposalType"]').forEach(cb => {
         cb.addEventListener('change', () => toggleDisposalType(cb.id));
-    });     
+    }); 
    
     updateDisposalTypeHint();
     updateDisposalTypesPreview();
