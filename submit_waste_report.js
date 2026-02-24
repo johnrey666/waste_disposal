@@ -1,4 +1,4 @@
-// submit_waste_report.js - COMPLETE FIXED VERSION with URL parameter handling and error fixes
+// submit_waste_report.js - COMPLETE FIXED VERSION with proper resubmission handling
 
 // ================================
 // ENHANCED LOADER FUNCTIONS
@@ -102,7 +102,7 @@ let KITCHEN_ITEMS_LIST = [];
 let KITCHEN_ITEMS_BY_CATEGORY = { meat: [], vegetables: [], seafood: [] };
 let itemsLoaded = false;
 let isResubmitting = false;
-let originalItemData = null;
+let resubmissionData = null; // Store the resubmission data
 let currentStoreType = null;
 let currentStoreValue = '';
 
@@ -551,7 +551,7 @@ function initializeAllSelect2Dropdowns() {
 }
 
 // ================================
-// LOAD REJECTED ITEM - FIXED VERSION
+// LOAD REJECTED ITEM - FIXED VERSION (UPDATES EXISTING REPORT)
 // ================================
 async function loadRejectedItem(itemIdFromUrl = null) {
     const itemIdInput = document.getElementById('itemId');
@@ -571,30 +571,13 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         const parts = itemId.split('_');
         if (parts.length < 4) {
             console.warn('Item ID format may be invalid:', itemId);
-            // Try to proceed anyway, but warn
         }
         
         const reportId = parts[0];
         const itemType = parts[1] || 'expired';
         const itemIndex = parseInt(parts[2]) || 0;
         
-        // First, check if this item has already been resubmitted
-        try {
-            const trackingDoc = await db.collection('rejectedItems').doc(itemId).get();
-            
-            if (trackingDoc.exists) {
-                const trackingData = trackingDoc.data();
-                if (trackingData.resubmitted) {
-                    showNotification('This item has already been resubmitted. Please check the new report: ' + trackingData.resubmittedReportId, 'warning');
-                    Loader.hide();
-                    return;
-                }
-            }
-        } catch (trackingError) {
-            console.warn('Error checking tracking collection:', trackingError);
-            // Continue anyway - tracking collection might not exist yet
-        }
-        
+        // Get the original report
         const reportDoc = await db.collection('wasteReports').doc(reportId).get();
         if (!reportDoc.exists) throw new Error('Report not found');
         
@@ -610,13 +593,15 @@ async function loadRejectedItem(itemIdFromUrl = null) {
             return;
         }
         
-        originalItemData = {
-            reportId,
-            itemType,
-            itemIndex,
+        // Store resubmission data
+        resubmissionData = {
+            reportId: reportId,
+            itemType: itemType,
+            itemIndex: itemIndex,
             originalItem: rejectedItem,
             originalReportDate: report.reportDate,
-            itemId: itemId  // Store the original item ID
+            itemId: itemId,
+            reportData: report // Store full report data to update existing report
         };
         
         isResubmitting = true;
@@ -625,17 +610,16 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         const storeSelect = document.getElementById('store');
         if (storeSelect) {
             $(storeSelect).val(report.store || '').trigger('change');
-            // Call handleStoreChange directly with the select element
             handleStoreChange(storeSelect);
         }
         
+        // Keep the original report date, don't change it
         const reportDateInput = document.getElementById('reportDate');
         const reportDateNote = document.getElementById('reportDateNote');
         if (reportDateInput) {
-            // Set to today's date for resubmission
-            reportDateInput.value = new Date().toISOString().split('T')[0];
+            reportDateInput.value = report.reportDate || new Date().toISOString().split('T')[0];
             if (reportDateNote) {
-                reportDateNote.innerHTML = `<i class="fas fa-info-circle"></i> Original report date was ${formatDate(report.reportDate)}. Using today's date for resubmission.`;
+                reportDateNote.innerHTML = `<i class="fas fa-info-circle"></i> Using original report date: ${formatDate(report.reportDate)}`;
             }
             reportDateInput.disabled = false;
         }
@@ -654,20 +638,27 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         if (itemType === 'expired') {
             document.getElementById('expired').checked = true;
             toggleDisposalType('expired');
-            addExpiredItemWithData(rejectedItem, itemId); // Pass itemId to preserve it
+            addExpiredItemWithData(rejectedItem, itemId, reportId, itemIndex);
         } else if (itemType === 'waste') {
             document.getElementById('waste').checked = true;
             toggleDisposalType('waste');
-            addWasteItemWithData(rejectedItem, itemId); // Pass itemId to preserve it
+            addWasteItemWithData(rejectedItem, itemId, reportId, itemIndex);
         }
         
         // Update the item ID field to show it's loaded
         if (itemIdInput) {
             itemIdInput.value = itemId;
             itemIdInput.style.borderColor = '#28a745';
+            itemIdInput.disabled = true; // Disable editing of item ID during resubmission
         }
         
-        showNotification('Rejected item loaded. You can edit and resubmit.', 'success');
+        // Add a resubmission indicator
+        const formHeader = document.querySelector('.form-header h1');
+        if (formHeader) {
+            formHeader.innerHTML = '<i class="fas fa-sync-alt"></i> Resubmit Rejected Item <span style="font-size:14px;color:#28a745;margin-left:10px;">(Updating existing report)</span>';
+        }
+        
+        showNotification('Rejected item loaded. Edit the details and resubmit to update the existing report.', 'success');
         
         // Scroll to the item section
         if (itemType === 'expired') {
@@ -685,9 +676,9 @@ async function loadRejectedItem(itemIdFromUrl = null) {
 }
 
 // ================================
-// ADD ITEM WITH PRE-FILLED DATA (for resubmission) - FIXED VERSIONS with proper data loading
+// ADD ITEM WITH PRE-FILLED DATA (for resubmission) - UPDATES EXISTING REPORT
 // ================================
-function addExpiredItemWithData(itemData, preservedItemId = null) {
+function addExpiredItemWithData(itemData, preservedItemId = null, originalReportId = null, originalItemIndex = null) {
     const expiredFields = document.getElementById('expiredFields');
     if (!expiredFields) return;
     
@@ -709,10 +700,12 @@ function addExpiredItemWithData(itemData, preservedItemId = null) {
         notes: itemData?.notes || '',
         documentation: itemData?.documentation || [],
         rejectionReason: itemData?.rejectionReason || '',
-        itemId: itemData?.itemId || preservedItemId || ''
+        itemId: itemData?.itemId || preservedItemId || '',
+        originalItemId: itemData?.originalItemId || preservedItemId || '',
+        itemCost: itemData?.itemCost || 0
     };
     
-    console.log('Adding expired item with data:', safeItemData); // Debug log
+    console.log('Adding expired item with data:', safeItemData);
     
     fieldGroup.innerHTML = `
         <div class="field-header">
@@ -724,7 +717,6 @@ function addExpiredItemWithData(itemData, preservedItemId = null) {
                 <label for="expiredItem-${itemId}">Item Name <span class="required">*</span></label>
                 <select class="item-dropdown" id="expiredItem-${itemId}" name="expiredItems[${itemId}][item]" required>
                     <option value="" disabled>Select or type to search...</option>
-                    <option value="${safeItemData.item}" selected>${safeItemData.item}</option>
                 </select>
                 <span class="note">Type to search or select from dropdown</span>
             </div>
@@ -759,13 +751,16 @@ function addExpiredItemWithData(itemData, preservedItemId = null) {
                 <input type="file" id="documentation-${itemId}" name="expiredItems[${itemId}][documentation]" required accept="image/*,.pdf" multiple onchange="createFilePreview(this, 'documentation-${itemId}-preview')">
                 <div id="documentation-${itemId}-preview" class="file-preview"></div>
                 <span class="note">Upload photos or PDFs (Max 10MB per file, 3 files max)</span>
-                ${safeItemData.documentation && safeItemData.documentation.length > 0 ? `<div style="margin-top:5px;font-size:12px;color:#666;"><i class="fas fa-info-circle"></i> Previous documentation: ${safeItemData.documentation.length} file(s)</div>` : ''}
+                ${safeItemData.documentation && safeItemData.documentation.length > 0 ? `<div style="margin-top:5px;font-size:12px;color:#666;"><i class="fas fa-info-circle"></i> Previous documentation: ${safeItemData.documentation.length} file(s) - New uploads will replace old ones</div>` : ''}
             </div>
             <div class="form-group">
                 <label for="notes-${itemId}">Additional Notes</label>
                 <textarea id="notes-${itemId}" name="expiredItems[${itemId}][notes]" rows="2" placeholder="Any additional information">${safeItemData.notes || ''}</textarea>
             </div>
             <input type="hidden" id="originalItemId-${itemId}" name="expiredItems[${itemId}][originalItemId]" value="${preservedItemId || safeItemData.itemId || ''}">
+            <input type="hidden" id="originalReportId-${itemId}" name="expiredItems[${itemId}][originalReportId]" value="${originalReportId || ''}">
+            <input type="hidden" id="itemIndex-${itemId}" name="expiredItems[${itemId}][itemIndex]" value="${originalItemIndex !== null ? originalItemIndex : (resubmissionData?.itemIndex || 0)}">
+            <input type="hidden" id="originalItemCost-${itemId}" name="expiredItems[${itemId}][originalItemCost]" value="${safeItemData.itemCost}">
             ${safeItemData.rejectionReason ? `
             <div class="form-group" style="grid-column: 1 / -1;">
                 <label>Previous Rejection Reason</label>
@@ -785,26 +780,17 @@ function addExpiredItemWithData(itemData, preservedItemId = null) {
     setTimeout(() => {
         initSelect2Dropdown(`expiredItem-${itemId}`);
         
-        // Set the value directly on the select element first
-        const selectElement = document.getElementById(`expiredItem-${itemId}`);
-        if (selectElement && safeItemData.item) {
-            // Set the value directly on the select
-            selectElement.value = safeItemData.item;
-            
-            // Then trigger change for Select2
-            setTimeout(() => {
-                try {
-                    $(`#expiredItem-${itemId}`).val(safeItemData.item).trigger('change');
-                    console.log(`Set expired item value to: ${safeItemData.item}`);
-                } catch (e) {
-                    console.warn('Error setting select2 value:', e);
-                }
-            }, 300);
-        }
+        // Set the value after Select2 is initialized
+        setTimeout(() => {
+            if (safeItemData.item) {
+                $(`#expiredItem-${itemId}`).val(safeItemData.item).trigger('change');
+                console.log(`Set expired item value to: ${safeItemData.item}`);
+            }
+        }, 300);
     }, 100);
 }
 
-function addWasteItemWithData(itemData, preservedItemId = null) {
+function addWasteItemWithData(itemData, preservedItemId = null, originalReportId = null, originalItemIndex = null) {
     const wasteFields = document.getElementById('wasteFields');
     if (!wasteFields) return;
     
@@ -824,127 +810,12 @@ function addWasteItemWithData(itemData, preservedItemId = null) {
         notes: itemData?.notes || '',
         documentation: itemData?.documentation || [],
         rejectionReason: itemData?.rejectionReason || '',
-        itemId: itemData?.itemId || preservedItemId || ''
+        itemId: itemData?.itemId || preservedItemId || '',
+        originalItemId: itemData?.originalItemId || preservedItemId || '',
+        itemCost: itemData?.itemCost || 0
     };
     
-    console.log('Adding waste item with data:', safeItemData); // Debug log
-    
-    fieldGroup.innerHTML = `
-        <div class="field-header">
-            <div class="field-title">Waste Item (Resubmitting)</div>
-            <button type="button" class="remove-btn" onclick="removeField('waste-${itemId}')">×</button>
-        </div>
-        <div class="form-grid">
-            <div class="form-group">
-                <label for="wasteItem-${itemId}">Item/Description <span class="required">*</span></label>
-                <select class="item-dropdown" id="wasteItem-${itemId}" name="wasteItems[${itemId}][item]" required>
-                    <option value="" disabled>Select or type to search...</option>
-                    <option value="${safeItemData.item}" selected>${safeItemData.item}</option>
-                </select>
-                <span class="note">Type to search or select from dropdown</span>
-            </div>
-            <div class="form-group">
-                <label for="reason-${itemId}">Reason for Waste <span class="required">*</span></label>
-                <select id="reason-${itemId}" name="wasteItems[${itemId}][reason]" required onchange="toggleAdditionalNotesRequirement('${itemId}')">
-                    <option value="" disabled>Select reason</option>
-                    <option value="spoilage" ${safeItemData.reason === 'spoilage' ? 'selected' : ''}>Spoilage</option>
-                    <option value="damaged" ${safeItemData.reason === 'damaged' ? 'selected' : ''}>Damaged Packaging</option>
-                    <option value="human_error" ${safeItemData.reason === 'human_error' ? 'selected' : ''}>Human Error</option>
-                    <option value="customer_return" ${safeItemData.reason === 'customer_return' ? 'selected' : ''}>Customer Return</option>
-                    <option value="quality_issue" ${safeItemData.reason === 'quality_issue' ? 'selected' : ''}>Quality Issue</option>
-                    <option value="other" ${safeItemData.reason === 'other' ? 'selected' : ''}>Other</option>
-                </select>
-                <div id="reason-note-${itemId}" class="note" style="margin-top:5px;font-size:12px;color:#666;"></div>
-            </div>
-            <div class="form-group">
-                <label for="wasteQuantity-${itemId}">Quantity <span class="required">*</span></label>
-                <input type="number" id="wasteQuantity-${itemId}" name="wasteItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00" value="${safeItemData.quantity}">
-            </div>
-            <div class="form-group">
-                <label for="wasteUnit-${itemId}">Unit of Measure <span class="required">*</span></label>
-                <select id="wasteUnit-${itemId}" name="wasteItems[${itemId}][unit]" required>
-                    <option value="" disabled>Select unit</option>
-                    <option value="pieces" ${safeItemData.unit === 'pieces' ? 'selected' : ''}>Pieces</option>
-                    <option value="packs" ${safeItemData.unit === 'packs' ? 'selected' : ''}>Packs</option>
-                    <option value="kilogram" ${safeItemData.unit === 'kilogram' ? 'selected' : ''}>Kilogram</option>
-                    <option value="servings" ${safeItemData.unit === 'servings' ? 'selected' : ''}>Servings</option>
-                </select>
-            </div>
-            <div class="form-group file-upload-container">
-                <label for="wasteDocumentation-${itemId}">Documentation <span class="required">*</span></label>
-                <input type="file" id="wasteDocumentation-${itemId}" name="wasteItems[${itemId}][documentation]" required accept="image/*,.pdf" multiple onchange="createFilePreview(this, 'wasteDocumentation-${itemId}-preview')">
-                <div id="wasteDocumentation-${itemId}-preview" class="file-preview"></div>
-                <span class="note">Upload photos or PDFs (Max 10MB per file, 3 files max)</span>
-                ${safeItemData.documentation && safeItemData.documentation.length > 0 ? `<div style="margin-top:5px;font-size:12px;color:#666;"><i class="fas fa-info-circle"></i> Previous documentation: ${safeItemData.documentation.length} file(s)</div>` : ''}
-            </div>
-            <div class="form-group">
-                <label for="wasteNotes-${itemId}">Additional Notes <span id="notes-required-${itemId}" class="required" style="${(safeItemData.reason === 'human_error' || safeItemData.reason === 'customer_return' || safeItemData.reason === 'quality_issue' || safeItemData.reason === 'other' || safeItemData.reason === 'spoilage') ? '' : 'display:none;'}">*</span></label>
-                <textarea id="wasteNotes-${itemId}" name="wasteItems[${itemId}][notes]" rows="2" placeholder="${getNotesPlaceholder(safeItemData.reason)}">${safeItemData.notes || ''}</textarea>
-                <span id="notes-note-${itemId}" class="note" style="margin-top:5px;font-size:12px;color:#666;">${getNotesNote(safeItemData.reason)}</span>
-            </div>
-            <input type="hidden" id="originalItemId-${itemId}" name="wasteItems[${itemId}][originalItemId]" value="${preservedItemId || safeItemData.itemId || ''}">
-            ${safeItemData.rejectionReason ? `
-            <div class="form-group" style="grid-column: 1 / -1;">
-                <label>Previous Rejection Reason</label>
-                <div style="background:#fff3cd;padding:10px;border-radius:4px;border-left:4px solid #ffc107;">
-                    <strong><i class="fas fa-exclamation-triangle"></i> ${safeItemData.rejectionReason}</strong>
-                    <div style="font-size:11px;color:#856404;margin-top:5px;">
-                        <i class="fas fa-info-circle"></i> Please correct the issue and resubmit
-                    </div>
-                </div>
-            </div>` : ''}
-        </div>
-    `;
-    
-    wasteFields.appendChild(fieldGroup);
-    
-    // Initialize Select2 and ensure the value is set
-    setTimeout(() => {
-        initSelect2Dropdown(`wasteItem-${itemId}`);
-        
-        // Set the value directly on the select element first
-        const selectElement = document.getElementById(`wasteItem-${itemId}`);
-        if (selectElement && safeItemData.item) {
-            // Set the value directly on the select
-            selectElement.value = safeItemData.item;
-            
-            // Then trigger change for Select2
-            setTimeout(() => {
-                try {
-                    $(`#wasteItem-${itemId}`).val(safeItemData.item).trigger('change');
-                    console.log(`Set waste item value to: ${safeItemData.item}`);
-                } catch (e) {
-                    console.warn('Error setting select2 value:', e);
-                }
-                
-                // Toggle notes requirement based on reason
-                toggleAdditionalNotesRequirement(itemId);
-            }, 300);
-        }
-    }, 100);
-}
-function addWasteItemWithData(itemData, preservedItemId = null) {
-    const wasteFields = document.getElementById('wasteFields');
-    if (!wasteFields) return;
-    
-    // Use the preserved item ID if provided, otherwise generate a new one
-    const itemId = preservedItemId || (Date.now() + Math.random().toString(36).substr(2, 9));
-    
-    const fieldGroup = document.createElement('div');
-    fieldGroup.className = 'field-group';
-    fieldGroup.id = `waste-${itemId}`;
-    
-    // Ensure itemData has all required fields with defaults
-    const safeItemData = {
-        item: itemData?.item || '',
-        reason: itemData?.reason || '',
-        quantity: itemData?.quantity || 0,
-        unit: itemData?.unit || 'pieces',
-        notes: itemData?.notes || '',
-        documentation: itemData?.documentation || [],
-        rejectionReason: itemData?.rejectionReason || '',
-        itemId: itemData?.itemId || preservedItemId || ''
-    };
+    console.log('Adding waste item with data:', safeItemData);
     
     fieldGroup.innerHTML = `
         <div class="field-header">
@@ -991,7 +862,7 @@ function addWasteItemWithData(itemData, preservedItemId = null) {
                 <input type="file" id="wasteDocumentation-${itemId}" name="wasteItems[${itemId}][documentation]" required accept="image/*,.pdf" multiple onchange="createFilePreview(this, 'wasteDocumentation-${itemId}-preview')">
                 <div id="wasteDocumentation-${itemId}-preview" class="file-preview"></div>
                 <span class="note">Upload photos or PDFs (Max 10MB per file, 3 files max)</span>
-                ${safeItemData.documentation && safeItemData.documentation.length > 0 ? `<div style="margin-top:5px;font-size:12px;color:#666;"><i class="fas fa-info-circle"></i> Previous documentation: ${safeItemData.documentation.length} file(s)</div>` : ''}
+                ${safeItemData.documentation && safeItemData.documentation.length > 0 ? `<div style="margin-top:5px;font-size:12px;color:#666;"><i class="fas fa-info-circle"></i> Previous documentation: ${safeItemData.documentation.length} file(s) - New uploads will replace old ones</div>` : ''}
             </div>
             <div class="form-group">
                 <label for="wasteNotes-${itemId}">Additional Notes <span id="notes-required-${itemId}" class="required" style="${(safeItemData.reason === 'human_error' || safeItemData.reason === 'customer_return' || safeItemData.reason === 'quality_issue' || safeItemData.reason === 'other' || safeItemData.reason === 'spoilage') ? '' : 'display:none;'}">*</span></label>
@@ -999,6 +870,9 @@ function addWasteItemWithData(itemData, preservedItemId = null) {
                 <span id="notes-note-${itemId}" class="note" style="margin-top:5px;font-size:12px;color:#666;">${getNotesNote(safeItemData.reason)}</span>
             </div>
             <input type="hidden" id="originalItemId-${itemId}" name="wasteItems[${itemId}][originalItemId]" value="${preservedItemId || safeItemData.itemId || ''}">
+            <input type="hidden" id="originalReportId-${itemId}" name="wasteItems[${itemId}][originalReportId]" value="${originalReportId || ''}">
+            <input type="hidden" id="itemIndex-${itemId}" name="wasteItems[${itemId}][itemIndex]" value="${originalItemIndex !== null ? originalItemIndex : (resubmissionData?.itemIndex || 0)}">
+            <input type="hidden" id="originalItemCost-${itemId}" name="wasteItems[${itemId}][originalItemCost]" value="${safeItemData.itemCost}">
             ${safeItemData.rejectionReason ? `
             <div class="form-group" style="grid-column: 1 / -1;">
                 <label>Previous Rejection Reason</label>
@@ -1019,9 +893,9 @@ function addWasteItemWithData(itemData, preservedItemId = null) {
         initSelect2Dropdown(`wasteItem-${itemId}`);
         // Set the value after Select2 is initialized
         setTimeout(() => {
-            const select = $(`#wasteItem-${itemId}`);
-            if (select.length && safeItemData.item) {
-                select.val(safeItemData.item).trigger('change');
+            if (safeItemData.item) {
+                $(`#wasteItem-${itemId}`).val(safeItemData.item).trigger('change');
+                console.log(`Set waste item value to: ${safeItemData.item}`);
             }
             toggleAdditionalNotesRequirement(itemId);
         }, 300);
@@ -1632,7 +1506,7 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
             }
         }
        
-        const isActuallyResubmission = isResubmissionUpdate || false;
+        const isActuallyResubmission = isResubmissionUpdate || isResubmitting;
        
         const emailData = {
             to: reportData.email,
@@ -1684,7 +1558,7 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
 }
 
 // ================================
-// FORM SUBMISSION - FIXED VERSION with safe element access
+// FORM SUBMISSION - FIXED VERSION (UPDATES EXISTING REPORT FOR RESUBMISSION)
 // ================================
 async function handleSubmit(event) {
     if (event) {
@@ -1745,13 +1619,45 @@ async function handleSubmit(event) {
     document.querySelectorAll('input[name="disposalType"]:checked').forEach(cb => disposalTypes.push(cb.value));
    
     const currentReportDate = document.getElementById('reportDate').value;
-    const mainReportId = 'REPORT-' + Date.now().toString();
+    
+    // Determine if this is a resubmission and get the original report ID
+    const originalReportIdInputs = document.querySelectorAll('input[id^="originalReportId-"]');
+    let originalReportId = null;
+    let originalItemIndex = null;
+    let originalItemType = null;
+    let originalItemCost = null;
+    
+    if (originalReportIdInputs.length > 0) {
+        originalReportId = originalReportIdInputs[0].value;
+    }
+    
+    // Get item index for resubmission
+    const itemIndexInputs = document.querySelectorAll('input[id^="itemIndex-"]');
+    if (itemIndexInputs.length > 0) {
+        originalItemIndex = parseInt(itemIndexInputs[0].value);
+    }
+    
+    // Get item type from disposal type
+    if (disposalTypes.includes('expired')) {
+        originalItemType = 'expired';
+    } else if (disposalTypes.includes('waste')) {
+        originalItemType = 'waste';
+    }
+    
+    // Get original item cost
+    const originalItemCostInputs = document.querySelectorAll('input[id^="originalItemCost-"]');
+    if (originalItemCostInputs.length > 0) {
+        originalItemCost = parseFloat(originalItemCostInputs[0].value) || 0;
+    }
+    
+    // For resubmission, we update the existing report. For new reports, create new ID
+    const mainReportId = isResubmitting && originalReportId ? originalReportId : 'REPORT-' + Date.now().toString();
    
     let expiredItemsArray = [];
     let wasteItemsArray = [];
     let allItems = [];
    
-    // Check if this is a resubmission and collect original item IDs
+    // Collect original item IDs for resubmission
     const originalItemIdInputs = document.querySelectorAll('input[id^="originalItemId-"]');
     let resubmittedItemIds = [];
 
@@ -1786,6 +1692,14 @@ async function handleSubmit(event) {
             const originalItemIdInput = document.getElementById(`originalItemId-${itemId}`);
             const originalItemId = originalItemIdInput ? originalItemIdInput.value : null;
             
+            // Get item index for resubmission
+            const itemIndexInput = document.getElementById(`itemIndex-${itemId}`);
+            const itemIndex = itemIndexInput ? parseInt(itemIndexInput.value) : null;
+            
+            // Get original item cost
+            const originalItemCostInput = document.getElementById(`originalItemCost-${itemId}`);
+            const originalItemCost = originalItemCostInput ? parseFloat(originalItemCostInput.value) : 0;
+            
             // Safely get form values with fallbacks
             const deliveredDate = document.getElementById(`deliveredDate-${itemId}`);
             const manufacturedDate = document.getElementById(`manufacturedDate-${itemId}`);
@@ -1804,11 +1718,14 @@ async function handleSubmit(event) {
                 unit: unit ? unit.value : '',
                 notes: notes ? (notes.value.trim() || '') : '',
                 itemId,
-                itemCost,
+                itemCost: itemCost || originalItemCost, // Use new cost or fallback to original
                 documentation: [],
-                approvalStatus: 'pending',
+                approvalStatus: 'pending', // Reset to pending for resubmission
                 submittedAt: new Date().toISOString(),
-                originalItemId: originalItemId
+                originalItemId: originalItemId,
+                itemIndex: itemIndex,
+                resubmittedAt: new Date().toISOString(),
+                previousRejectionReason: resubmissionData?.originalItem?.rejectionReason || null
             };
            
             const fileInput = document.getElementById(`documentation-${itemId}`);
@@ -1847,6 +1764,14 @@ async function handleSubmit(event) {
             const originalItemIdInput = document.getElementById(`originalItemId-${itemId}`);
             const originalItemId = originalItemIdInput ? originalItemIdInput.value : null;
             
+            // Get item index for resubmission
+            const itemIndexInput = document.getElementById(`itemIndex-${itemId}`);
+            const itemIndex = itemIndexInput ? parseInt(itemIndexInput.value) : null;
+            
+            // Get original item cost
+            const originalItemCostInput = document.getElementById(`originalItemCost-${itemId}`);
+            const originalItemCost = originalItemCostInput ? parseFloat(originalItemCostInput.value) : 0;
+            
             // Safely get form values with fallbacks
             const reason = document.getElementById(`reason-${itemId}`);
             const quantity = document.getElementById(`wasteQuantity-${itemId}`);
@@ -1861,11 +1786,14 @@ async function handleSubmit(event) {
                 unit: unit ? unit.value : '',
                 notes: notes ? (notes.value.trim() || '') : '',
                 itemId,
-                itemCost,
+                itemCost: itemCost || originalItemCost, // Use new cost or fallback to original
                 documentation: [],
-                approvalStatus: 'pending',
+                approvalStatus: 'pending', // Reset to pending for resubmission
                 submittedAt: new Date().toISOString(),
-                originalItemId: originalItemId
+                originalItemId: originalItemId,
+                itemIndex: itemIndex,
+                resubmittedAt: new Date().toISOString(),
+                previousRejectionReason: resubmissionData?.originalItem?.rejectionReason || null
             };
            
             const fileInput = document.getElementById(`wasteDocumentation-${itemId}`);
@@ -1881,28 +1809,100 @@ async function handleSubmit(event) {
    
     const totalFiles = allItems.reduce((sum, item) => sum + (item.fileCount || 0), 0);
    
-    const baseReportData = {
-        email: document.getElementById('email').value.trim(),
-        store: document.getElementById('store').value,
-        personnel: document.getElementById('personnel').value.trim(),
-        reportDate: currentReportDate,
-        disposalTypes,
-        reportId: mainReportId,
-        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        status: 'submitted',
-        createdAt: new Date().toISOString(),
-        emailSent: false,
-        emailStatus: 'pending',
-        isResubmission: resubmittedItemIds.length > 0,
-        originalItemIds: resubmittedItemIds,
-        expiredItems: expiredItemsArray,
-        wasteItems: wasteItemsArray,
-        totalExpiredItems: expiredItemsArray.length,
-        totalWasteItems: wasteItemsArray.length,
-        hasImages: totalFiles > 0,
-        imageCount: totalFiles,
-        fileUploadComplete: false
-    };
+    // Prepare the report data - for resubmission, we update the existing report
+    let baseReportData;
+    
+    if (isResubmitting && originalReportId && resubmissionData) {
+        // This is a resubmission - update the existing report
+        console.log(`🔄 Updating existing report: ${originalReportId}`);
+        
+        // Get the original report data
+        const originalReport = resubmissionData.reportData;
+        
+        // Create updated items arrays
+        let updatedExpiredItems = originalReport.expiredItems ? [...originalReport.expiredItems] : [];
+        let updatedWasteItems = originalReport.wasteItems ? [...originalReport.wasteItems] : [];
+        
+        // Update the specific item that was resubmitted
+        const itemIndex = originalItemIndex !== null ? originalItemIndex : resubmissionData.itemIndex;
+        const itemType = originalItemType || resubmissionData.itemType;
+        
+        if (itemType === 'expired' && expiredItemsArray.length > 0) {
+            const resubmittedItem = expiredItemsArray[0];
+            updatedExpiredItems[itemIndex] = {
+                ...resubmittedItem,
+                resubmissionHistory: [
+                    ...(updatedExpiredItems[itemIndex]?.resubmissionHistory || []),
+                    {
+                        resubmittedAt: new Date().toISOString(),
+                        previousData: {
+                            ...updatedExpiredItems[itemIndex],
+                            approvalStatus: updatedExpiredItems[itemIndex].approvalStatus,
+                            rejectionReason: updatedExpiredItems[itemIndex].rejectionReason
+                        },
+                        resubmittedBy: currentUser?.email || 'System'
+                    }
+                ]
+            };
+        } else if (itemType === 'waste' && wasteItemsArray.length > 0) {
+            const resubmittedItem = wasteItemsArray[0];
+            updatedWasteItems[itemIndex] = {
+                ...resubmittedItem,
+                resubmissionHistory: [
+                    ...(updatedWasteItems[itemIndex]?.resubmissionHistory || []),
+                    {
+                        resubmittedAt: new Date().toISOString(),
+                        previousData: {
+                            ...updatedWasteItems[itemIndex],
+                            approvalStatus: updatedWasteItems[itemIndex].approvalStatus,
+                            rejectionReason: updatedWasteItems[itemIndex].rejectionReason
+                        },
+                        resubmittedBy: currentUser?.email || 'System'
+                    }
+                ]
+            };
+        }
+        
+        baseReportData = {
+            ...originalReport,
+            expiredItems: updatedExpiredItems,
+            wasteItems: updatedWasteItems,
+            resubmissionUpdatedAt: new Date().toISOString(),
+            resubmissionHistory: [
+                ...(originalReport.resubmissionHistory || []),
+                {
+                    updatedAt: new Date().toISOString(),
+                    itemType: itemType,
+                    itemIndex: itemIndex,
+                    resubmittedBy: currentUser?.email || 'System'
+                }
+            ]
+        };
+    } else {
+        // This is a new report
+        baseReportData = {
+            email: document.getElementById('email').value.trim(),
+            store: document.getElementById('store').value,
+            personnel: document.getElementById('personnel').value.trim(),
+            reportDate: currentReportDate,
+            disposalTypes,
+            reportId: mainReportId,
+            submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'submitted',
+            createdAt: new Date().toISOString(),
+            emailSent: false,
+            emailStatus: 'pending',
+            isResubmission: resubmittedItemIds.length > 0,
+            originalItemIds: resubmittedItemIds,
+            expiredItems: expiredItemsArray,
+            wasteItems: wasteItemsArray,
+            totalExpiredItems: expiredItemsArray.length,
+            totalWasteItems: wasteItemsArray.length,
+            hasImages: totalFiles > 0,
+            imageCount: totalFiles,
+            fileUploadComplete: false
+        };
+    }
    
     if (disposalTypes.includes('noWaste')) {
         baseReportData.noWaste = true;
@@ -1910,19 +1910,32 @@ async function handleSubmit(event) {
     }
    
     try {
+        // Save/Update the report in Firestore
         const docRef = db.collection('wasteReports').doc(mainReportId);
-        await docRef.set(baseReportData);
+        await docRef.set(baseReportData, { merge: true });
+        
+        console.log(`✅ Report ${isResubmitting ? 'updated' : 'created'}: ${mainReportId}`);
        
-        const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems, resubmittedItemIds.length > 0);
+        // Send email confirmation
+        const emailResult = await sendEmailConfirmation(baseReportData, mainReportId, allItems, isResubmitting);
        
         if (emailResult.success) {
-            await docRef.update({ emailSent: true, emailSentAt: new Date().toISOString(), emailStatus: 'sent' });
+            await docRef.update({ 
+                emailSent: true, 
+                emailSentAt: new Date().toISOString(), 
+                emailStatus: 'sent' 
+            });
             showNotification('Email confirmation sent!', 'success');
         } else {
-            await docRef.update({ emailSent: false, emailError: emailResult.error, emailStatus: 'failed' });
+            await docRef.update({ 
+                emailSent: false, 
+                emailError: emailResult.error, 
+                emailStatus: 'failed' 
+            });
             showNotification('Report saved, but email failed.', 'warning');
         }
        
+        // Handle file uploads if any
         if (totalFiles > 0) {
             Loader.updateMessage('Uploading files...');
             Loader.showUpload(0, totalFiles);
@@ -1981,19 +1994,30 @@ async function handleSubmit(event) {
         document.getElementById('wasteContainer').classList.remove('show');
         updateDisposalTypeHint();
         updateDisposalTypesPreview();
-        document.getElementById('itemId').value = '';
-        document.getElementById('itemId').style.borderColor = '';
         
-        // Reset resubmission flags
+        // Reset item ID field
+        const itemIdInput = document.getElementById('itemId');
+        if (itemIdInput) {
+            itemIdInput.value = '';
+            itemIdInput.style.borderColor = '';
+            itemIdInput.disabled = false;
+        }
+        
+        // Reset resubmission flags and form header
         isResubmitting = false;
-        originalItemData = null;
+        resubmissionData = null;
+        
+        const formHeader = document.querySelector('.form-header h1');
+        if (formHeader) {
+            formHeader.innerHTML = '<i class="fas fa-file-alt"></i> Submit Waste/Disposal Report';
+        }
        
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
         Loader.hide();
        
         setTimeout(() => {
-            if (confirm(`Report ${mainReportId} submitted successfully!\n\nWould you like to view all reports?`)) {
+            if (confirm(`Report ${mainReportId} ${isResubmitting ? 'updated' : 'submitted'} successfully!\n\nWould you like to view all reports?`)) {
                 window.location.href = 'waste_report_table.html';
             }
         }, 1500);
