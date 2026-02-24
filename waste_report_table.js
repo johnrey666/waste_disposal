@@ -6026,4 +6026,4 @@ window.handleAdminCreateAccount = handleAdminCreateAccount;
 window.openCreateAccountModal = openCreateAccountModal;
 window.closeCreateAccountModal = closeCreateAccountModal;
 window.sendApprovalEmailViaGAS = sendApprovalEmailViaGAS;
-window.sendBulkApprovalEmailViaGAS = sendBulkApprovalEmailViaGAS;
+window.sendBulkApprovalEmailViaGAS = sendBulkApprovalEmailViaGAS; 
