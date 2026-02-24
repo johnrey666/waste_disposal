@@ -102,25 +102,47 @@ let KITCHEN_ITEMS_LIST = [];
 let KITCHEN_ITEMS_BY_CATEGORY = { meat: [], vegetables: [], seafood: [] };
 let itemsLoaded = false;
 let isResubmitting = false;
-let resubmissionData = null; // Store the resubmission data
+let resubmissionData = null;
 let currentStoreType = null;
 let currentStoreValue = '';
+let currentUser = null;
 
 const KITCHEN_STORES = ['CTK', 'Tabaco CN 2', 'Concourse Hall', 'Concourse Convention', 'FG Kitchen LC', 'FG Kitchen Naga'];
 const CONCOURSE_VARIANTS = ['Tabaco CN 2', 'Concourse Hall', 'Concourse Convention'];
 
 // Initialize Firebase
-let db, storage;
-try {
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
+let db, storage, auth;
+
+function initializeFirebase() {
+    try {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+            console.log('✅ Firebase app initialized');
+        }
+        
+        db = firebase.firestore();
+        storage = firebase.storage();
+        auth = firebase.auth();
+        
+        console.log('✅ Firebase services initialized successfully');
+        return true;
+    } catch (error) {
+        console.error('❌ Firebase initialization error:', error);
+        showNotification('Firebase connection failed. Please check console.', 'error');
+        return false;
     }
-    db = firebase.firestore();
-    storage = firebase.storage();
-    console.log('✅ Firebase initialized successfully');
-} catch (error) {
-    console.error('❌ Firebase initialization error:', error);
-    showNotification('Firebase connection failed. Please check console.', 'error');
+}
+
+initializeFirebase();
+
+// ================================
+// AUTH STATE OBSERVER
+// ================================
+if (auth) {
+    auth.onAuthStateChanged((user) => {
+        currentUser = user;
+        console.log('Auth state changed:', user ? `User: ${user.email}` : 'No user');
+    });
 }
 
 // ================================
@@ -249,7 +271,6 @@ async function uploadFilesForItemParallel(files, reportId, itemId, itemType, ite
             }
            
             const timestamp = Date.now() + i;
-            const randomString = Math.random().toString(36).substring(7);
             const fileExtension = file.name.split('.').pop();
             const fileName = `reports/${reportId}/${cleanItemType}_${cleanItemId}_${i}_${timestamp}.${fileExtension}`;
            
@@ -551,12 +572,11 @@ function initializeAllSelect2Dropdowns() {
 }
 
 // ================================
-// LOAD REJECTED ITEM - FIXED VERSION (UPDATES EXISTING REPORT)
+// LOAD REJECTED ITEM - FIXED VERSION
 // ================================
 async function loadRejectedItem(itemIdFromUrl = null) {
     const itemIdInput = document.getElementById('itemId');
     
-    // Use provided itemId or get from input
     let itemId = itemIdFromUrl || (itemIdInput ? itemIdInput.value.trim() : '');
     
     if (!itemId) {
@@ -567,30 +587,45 @@ async function loadRejectedItem(itemIdFromUrl = null) {
     Loader.show('Searching for rejected item...');
     
     try {
-        // Parse the item ID format: reportId_itemType_itemIndex_timestamp
+        // Parse the item ID format: REPORTID_TYPE_INDEX
+        // Example: 1734567890123_expired_0
         const parts = itemId.split('_');
-        if (parts.length < 4) {
+        if (parts.length < 3) {
             console.warn('Item ID format may be invalid:', itemId);
+            showNotification('Invalid Item ID format. Expected format: REPORTID_TYPE_INDEX', 'error');
+            Loader.hide();
+            return;
         }
         
         const reportId = parts[0];
         const itemType = parts[1] || 'expired';
         const itemIndex = parseInt(parts[2]) || 0;
         
-        // Get the original report
+        console.log(`Loading item: Report=${reportId}, Type=${itemType}, Index=${itemIndex}`);
+        
         const reportDoc = await db.collection('wasteReports').doc(reportId).get();
-        if (!reportDoc.exists) throw new Error('Report not found');
+        if (!reportDoc.exists) {
+            throw new Error(`Report not found with ID: ${reportId}`);
+        }
         
         const report = reportDoc.data();
+        console.log('Report loaded:', report);
+        
         const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
-        if (!items || itemIndex >= items.length) throw new Error('Item not found in report');
+        if (!items || items.length === 0) {
+            throw new Error(`No ${itemType} items found in report`);
+        }
+        
+        if (itemIndex >= items.length) {
+            throw new Error(`Item index ${itemIndex} out of range. Report has ${items.length} items.`);
+        }
         
         const rejectedItem = items[itemIndex];
+        console.log('Rejected item loaded:', rejectedItem);
         
-        // Verify this is actually a rejected item
-        if (rejectedItem.approvalStatus !== 'rejected') {
-            showNotification('This item is not marked as rejected', 'warning');
-            return;
+        // Check if the item is actually rejected (or allow resubmission anyway)
+        if (rejectedItem.approvalStatus !== 'rejected' && rejectedItem.approvalStatus !== 'pending') {
+            showNotification(`This item is not marked as rejected (status: ${rejectedItem.approvalStatus || 'unknown'}). You can still resubmit but it may require review.`, 'warning');
         }
         
         // Store resubmission data
@@ -601,19 +636,20 @@ async function loadRejectedItem(itemIdFromUrl = null) {
             originalItem: rejectedItem,
             originalReportDate: report.reportDate,
             itemId: itemId,
-            reportData: report // Store full report data to update existing report
+            reportData: report
         };
         
         isResubmitting = true;
         
-        // Fill the form with the rejected item data
+        // Set the store first (triggers handleStoreChange)
         const storeSelect = document.getElementById('store');
-        if (storeSelect) {
-            $(storeSelect).val(report.store || '').trigger('change');
+        if (storeSelect && report.store) {
+            console.log('Setting store to:', report.store);
+            storeSelect.value = report.store;
             handleStoreChange(storeSelect);
         }
         
-        // Keep the original report date, don't change it
+        // Set other fields
         const reportDateInput = document.getElementById('reportDate');
         const reportDateNote = document.getElementById('reportDateNote');
         if (reportDateInput) {
@@ -631,10 +667,10 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         document.getElementById('expiredFields').innerHTML = '';
         document.getElementById('wasteFields').innerHTML = '';
         
-        // Uncheck all disposal types
+        // Reset checkboxes
         document.querySelectorAll('input[name="disposalType"]').forEach(cb => cb.checked = false);
         
-        // Set the correct disposal type
+        // Set the correct disposal type and add the item
         if (itemType === 'expired') {
             document.getElementById('expired').checked = true;
             toggleDisposalType('expired');
@@ -645,14 +681,14 @@ async function loadRejectedItem(itemIdFromUrl = null) {
             addWasteItemWithData(rejectedItem, itemId, reportId, itemIndex);
         }
         
-        // Update the item ID field to show it's loaded
+        // Update the item ID input
         if (itemIdInput) {
             itemIdInput.value = itemId;
             itemIdInput.style.borderColor = '#28a745';
-            itemIdInput.disabled = true; // Disable editing of item ID during resubmission
+            itemIdInput.disabled = true;
         }
         
-        // Add a resubmission indicator
+        // Update form header
         const formHeader = document.querySelector('.form-header h1');
         if (formHeader) {
             formHeader.innerHTML = '<i class="fas fa-sync-alt"></i> Resubmit Rejected Item <span style="font-size:14px;color:#28a745;margin-left:10px;">(Updating existing report)</span>';
@@ -660,7 +696,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         
         showNotification('Rejected item loaded. Edit the details and resubmit to update the existing report.', 'success');
         
-        // Scroll to the item section
+        // Scroll to the appropriate section
         if (itemType === 'expired') {
             document.getElementById('expiredContainer').scrollIntoView({ behavior: 'smooth' });
         } else {
@@ -676,20 +712,19 @@ async function loadRejectedItem(itemIdFromUrl = null) {
 }
 
 // ================================
-// ADD ITEM WITH PRE-FILLED DATA (for resubmission) - UPDATES EXISTING REPORT
+// ADD ITEM WITH PRE-FILLED DATA - FIXED VERSION
 // ================================
 function addExpiredItemWithData(itemData, preservedItemId = null, originalReportId = null, originalItemIndex = null) {
     const expiredFields = document.getElementById('expiredFields');
     if (!expiredFields) return;
     
-    // Use the preserved item ID if provided, otherwise generate a new one
     const itemId = preservedItemId || (Date.now() + Math.random().toString(36).substr(2, 9));
     
     const fieldGroup = document.createElement('div');
     fieldGroup.className = 'field-group';
     fieldGroup.id = `expired-${itemId}`;
     
-    // Ensure itemData has all required fields with defaults
+    // Ensure all fields have valid values (fix for N/A, 0 issue)
     const safeItemData = {
         item: itemData?.item || '',
         deliveredDate: itemData?.deliveredDate || '',
@@ -699,7 +734,7 @@ function addExpiredItemWithData(itemData, preservedItemId = null, originalReport
         unit: itemData?.unit || 'pieces',
         notes: itemData?.notes || '',
         documentation: itemData?.documentation || [],
-        rejectionReason: itemData?.rejectionReason || '',
+        rejectionReason: itemData?.rejectionReason || itemData?.rejectionReason || '',
         itemId: itemData?.itemId || preservedItemId || '',
         originalItemId: itemData?.originalItemId || preservedItemId || '',
         itemCost: itemData?.itemCost || 0
@@ -722,19 +757,19 @@ function addExpiredItemWithData(itemData, preservedItemId = null, originalReport
             </div>
             <div class="form-group">
                 <label for="deliveredDate-${itemId}">Delivered Date <span class="required">*</span></label>
-                <input type="date" id="deliveredDate-${itemId}" name="expiredItems[${itemId}][deliveredDate]" required value="${safeItemData.deliveredDate}">
+                <input type="date" id="deliveredDate-${itemId}" name="expiredItems[${itemId}][deliveredDate]" required value="${safeItemData.deliveredDate || ''}">
             </div>
             <div class="form-group">
                 <label for="manufacturedDate-${itemId}">Manufactured Date <span class="required">*</span></label>
-                <input type="date" id="manufacturedDate-${itemId}" name="expiredItems[${itemId}][manufacturedDate]" required value="${safeItemData.manufacturedDate}">
+                <input type="date" id="manufacturedDate-${itemId}" name="expiredItems[${itemId}][manufacturedDate]" required value="${safeItemData.manufacturedDate || ''}">
             </div>
             <div class="form-group">
                 <label for="expirationDate-${itemId}">Expiration Date <span class="required">*</span></label>
-                <input type="date" id="expirationDate-${itemId}" name="expiredItems[${itemId}][expirationDate]" required value="${safeItemData.expirationDate}">
+                <input type="date" id="expirationDate-${itemId}" name="expiredItems[${itemId}][expirationDate]" required value="${safeItemData.expirationDate || ''}">
             </div>
             <div class="form-group">
                 <label for="quantity-${itemId}">Quantity <span class="required">*</span></label>
-                <input type="number" id="quantity-${itemId}" name="expiredItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00" value="${safeItemData.quantity}">
+                <input type="number" id="quantity-${itemId}" name="expiredItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00" value="${safeItemData.quantity || 0}">
             </div>
             <div class="form-group">
                 <label for="unit-${itemId}">Unit of Measure <span class="required">*</span></label>
@@ -760,7 +795,7 @@ function addExpiredItemWithData(itemData, preservedItemId = null, originalReport
             <input type="hidden" id="originalItemId-${itemId}" name="expiredItems[${itemId}][originalItemId]" value="${preservedItemId || safeItemData.itemId || ''}">
             <input type="hidden" id="originalReportId-${itemId}" name="expiredItems[${itemId}][originalReportId]" value="${originalReportId || ''}">
             <input type="hidden" id="itemIndex-${itemId}" name="expiredItems[${itemId}][itemIndex]" value="${originalItemIndex !== null ? originalItemIndex : (resubmissionData?.itemIndex || 0)}">
-            <input type="hidden" id="originalItemCost-${itemId}" name="expiredItems[${itemId}][originalItemCost]" value="${safeItemData.itemCost}">
+            <input type="hidden" id="originalItemCost-${itemId}" name="expiredItems[${itemId}][originalItemCost]" value="${safeItemData.itemCost || 0}">
             ${safeItemData.rejectionReason ? `
             <div class="form-group" style="grid-column: 1 / -1;">
                 <label>Previous Rejection Reason</label>
@@ -776,17 +811,15 @@ function addExpiredItemWithData(itemData, preservedItemId = null, originalReport
     
     expiredFields.appendChild(fieldGroup);
     
-    // Initialize Select2 and ensure the value is set
+    // Initialize select2 and set the value after a delay to ensure it's ready
     setTimeout(() => {
         initSelect2Dropdown(`expiredItem-${itemId}`);
-        
-        // Set the value after Select2 is initialized
         setTimeout(() => {
             if (safeItemData.item) {
+                console.log(`Setting expired item value to: ${safeItemData.item}`);
                 $(`#expiredItem-${itemId}`).val(safeItemData.item).trigger('change');
-                console.log(`Set expired item value to: ${safeItemData.item}`);
             }
-        }, 300);
+        }, 500);
     }, 100);
 }
 
@@ -794,14 +827,13 @@ function addWasteItemWithData(itemData, preservedItemId = null, originalReportId
     const wasteFields = document.getElementById('wasteFields');
     if (!wasteFields) return;
     
-    // Use the preserved item ID if provided, otherwise generate a new one
     const itemId = preservedItemId || (Date.now() + Math.random().toString(36).substr(2, 9));
     
     const fieldGroup = document.createElement('div');
     fieldGroup.className = 'field-group';
     fieldGroup.id = `waste-${itemId}`;
     
-    // Ensure itemData has all required fields with defaults
+    // Ensure all fields have valid values (fix for N/A, 0 issue)
     const safeItemData = {
         item: itemData?.item || '',
         reason: itemData?.reason || '',
@@ -809,7 +841,7 @@ function addWasteItemWithData(itemData, preservedItemId = null, originalReportId
         unit: itemData?.unit || 'pieces',
         notes: itemData?.notes || '',
         documentation: itemData?.documentation || [],
-        rejectionReason: itemData?.rejectionReason || '',
+        rejectionReason: itemData?.rejectionReason || itemData?.rejectionReason || '',
         itemId: itemData?.itemId || preservedItemId || '',
         originalItemId: itemData?.originalItemId || preservedItemId || '',
         itemCost: itemData?.itemCost || 0
@@ -845,7 +877,7 @@ function addWasteItemWithData(itemData, preservedItemId = null, originalReportId
             </div>
             <div class="form-group">
                 <label for="wasteQuantity-${itemId}">Quantity <span class="required">*</span></label>
-                <input type="number" id="wasteQuantity-${itemId}" name="wasteItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00" value="${safeItemData.quantity}">
+                <input type="number" id="wasteQuantity-${itemId}" name="wasteItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00" value="${safeItemData.quantity || 0}">
             </div>
             <div class="form-group">
                 <label for="wasteUnit-${itemId}">Unit of Measure <span class="required">*</span></label>
@@ -872,7 +904,7 @@ function addWasteItemWithData(itemData, preservedItemId = null, originalReportId
             <input type="hidden" id="originalItemId-${itemId}" name="wasteItems[${itemId}][originalItemId]" value="${preservedItemId || safeItemData.itemId || ''}">
             <input type="hidden" id="originalReportId-${itemId}" name="wasteItems[${itemId}][originalReportId]" value="${originalReportId || ''}">
             <input type="hidden" id="itemIndex-${itemId}" name="wasteItems[${itemId}][itemIndex]" value="${originalItemIndex !== null ? originalItemIndex : (resubmissionData?.itemIndex || 0)}">
-            <input type="hidden" id="originalItemCost-${itemId}" name="wasteItems[${itemId}][originalItemCost]" value="${safeItemData.itemCost}">
+            <input type="hidden" id="originalItemCost-${itemId}" name="wasteItems[${itemId}][originalItemCost]" value="${safeItemData.itemCost || 0}">
             ${safeItemData.rejectionReason ? `
             <div class="form-group" style="grid-column: 1 / -1;">
                 <label>Previous Rejection Reason</label>
@@ -888,17 +920,16 @@ function addWasteItemWithData(itemData, preservedItemId = null, originalReportId
     
     wasteFields.appendChild(fieldGroup);
     
-    // Initialize Select2 and set value after a delay
+    // Initialize select2 and set the value after a delay
     setTimeout(() => {
         initSelect2Dropdown(`wasteItem-${itemId}`);
-        // Set the value after Select2 is initialized
         setTimeout(() => {
             if (safeItemData.item) {
+                console.log(`Setting waste item value to: ${safeItemData.item}`);
                 $(`#wasteItem-${itemId}`).val(safeItemData.item).trigger('change');
-                console.log(`Set waste item value to: ${safeItemData.item}`);
             }
             toggleAdditionalNotesRequirement(itemId);
-        }, 300);
+        }, 500);
     }, 100);
 }
 
