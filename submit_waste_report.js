@@ -1702,7 +1702,7 @@ async function handleSubmit(event) {
         Loader.hide();
     }
 }
-
+  
 // ================================
 // INITIALIZATION
 // ================================

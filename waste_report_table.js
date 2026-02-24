@@ -3656,6 +3656,160 @@ function clearFilters() {
 // ================================
 // APPROVAL & REJECTION FUNCTIONS
 // ================================
+
+// ================================
+// APPROVAL EMAIL FUNCTIONS
+// ================================
+async function sendApprovalEmailViaGAS(toEmail, reportId, itemIndex, itemType, reportData, item) {
+    try {
+        const itemName = item?.item || 'N/A';
+        const itemQuantity = item?.quantity || 0;
+        const itemUnit = item?.unit || 'units';
+        const itemCost = `₱${((item?.itemCost || 0) * (item?.quantity || 0)).toFixed(2)}`;
+        const expirationDate = itemType === 'expired' ? formatDate(item?.expirationDate) : 'N/A';
+        const wasteReason = itemType === 'waste' ? item?.reason || 'N/A' : 'N/A';
+        
+        const emailData = {
+            emailType: 'approval',
+            to: toEmail,
+            subject: `✅ Item Approved - ${itemName}`,
+            store: reportData.store || 'N/A',
+            personnel: reportData.personnel || 'Team Member',
+            reportDate: formatDate(reportData.reportDate) || 'N/A',
+            disposalType: getDisposalTypeText(reportData.disposalTypes),
+            reportId: reportId,
+            itemName: itemName,
+            itemQuantity: itemQuantity,
+            itemUnit: itemUnit,
+            itemCost: itemCost,
+            itemReason: wasteReason,
+            expirationDate: expirationDate,
+            approvedAt: new Date().toLocaleString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            }),
+            approvedBy: currentUser?.email || 'Administrator'
+        };
+
+        const formData = new FormData();
+        Object.keys(emailData).forEach(key => {
+            formData.append(key, emailData[key]);
+        });
+
+        let success = false;
+        
+        try {
+            await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData,
+                mode: 'no-cors'
+            });
+            success = true;
+        } catch (error) {
+            console.warn('Form data approach failed:', error);
+            
+            try {
+                const params = new URLSearchParams();
+                Object.keys(emailData).forEach(key => {
+                    params.append(key, emailData[key]);
+                });
+                
+                await fetch(GAS_CONFIG.ENDPOINT + '?' + params.toString(), {
+                    method: 'GET',
+                    mode: 'no-cors'
+                });
+                success = true;
+            } catch (error2) {
+                console.error('URL params approach also failed:', error2);
+            }
+        }
+
+        if (success) {
+            console.log('✅ Approval email sent successfully');
+            return { success: true };
+        } else {
+            console.warn('⚠️ Approval email sending failed');
+            return { success: false, error: 'Email sending failed' };
+        }
+
+    } catch (error) {
+        console.error('❌ Approval email function error:', error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
+
+async function sendBulkApprovalEmailViaGAS(toEmail, reportId, approvedCount, reportData) {
+    try {
+        const emailData = {
+            emailType: 'bulk_approval',
+            to: toEmail,
+            subject: `✅ Multiple Items Approved - ${reportId}`,
+            store: reportData.store || 'N/A',
+            personnel: reportData.personnel || 'Team Member',
+            reportDate: formatDate(reportData.reportDate) || 'N/A',
+            disposalType: getDisposalTypeText(reportData.disposalTypes),
+            reportId: reportId,
+            approvedCount: approvedCount,
+            approvedAt: new Date().toLocaleString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            }),
+            approvedBy: currentUser?.email || 'Administrator'
+        };
+
+        const formData = new FormData();
+        Object.keys(emailData).forEach(key => {
+            formData.append(key, emailData[key]);
+        });
+
+        let success = false;
+        
+        try {
+            await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData,
+                mode: 'no-cors'
+            });
+            success = true;
+        } catch (error) {
+            console.warn('Form data approach failed:', error);
+            
+            try {
+                const params = new URLSearchParams();
+                Object.keys(emailData).forEach(key => {
+                    params.append(key, emailData[key]);
+                });
+                
+                await fetch(GAS_CONFIG.ENDPOINT + '?' + params.toString(), {
+                    method: 'GET',
+                    mode: 'no-cors'
+                });
+                success = true;
+            } catch (error2) {
+                console.error('URL params approach also failed:', error2);
+            }
+        }
+
+        if (success) {
+            console.log('✅ Bulk approval email sent successfully');
+            return { success: true };
+        } else {
+            console.warn('⚠️ Bulk approval email sending failed');
+            return { success: false, error: 'Email sending failed' };
+        }
+
+    } catch (error) {
+        console.error('❌ Bulk approval email function error:', error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
+
 async function approveItem(reportId, itemIndex, itemType) {
     if (!isAuthenticated()) {
         showNotification('Please login to approve items', 'error');
@@ -3686,7 +3840,7 @@ async function approveItem(reportId, itemIndex, itemType) {
             return;
         }
         
-        items[itemIndex] = {
+        const approvedItem = {
             ...items[itemIndex],
             approvalStatus: 'approved',
             approvedAt: new Date().toISOString(),
@@ -3694,8 +3848,22 @@ async function approveItem(reportId, itemIndex, itemType) {
             rejectionReason: null
         };
         
+        items[itemIndex] = approvedItem;
+        
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: items });
+        
+        // Send approval email
+        if (report.email) {
+            await sendApprovalEmailViaGAS(
+                report.email,
+                report.reportId || reportId,
+                itemIndex,
+                itemType,
+                report,
+                approvedItem
+            );
+        }
         
         showNotification('Item approved successfully', 'success');
         
@@ -3811,8 +3979,10 @@ async function bulkApproveItems(reportId, itemType) {
             return;
         }
         
+        let approvedCount = 0;
         const updatedItems = items.map(item => {
             if (!item.approvalStatus || item.approvalStatus === 'pending') {
+                approvedCount++;
                 return {
                     ...item,
                     approvalStatus: 'approved',
@@ -3827,7 +3997,17 @@ async function bulkApproveItems(reportId, itemType) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: updatedItems });
         
-        showNotification('All pending items approved successfully', 'success');
+        // Send bulk approval email if any items were approved
+        if (approvedCount > 0 && report.email) {
+            await sendBulkApprovalEmailViaGAS(
+                report.email,
+                report.reportId || reportId,
+                approvedCount,
+                report
+            );
+        }
+        
+        showNotification(`All pending items approved successfully (${approvedCount} items)`, 'success');
         
         updateReportAfterApproval(reportId);
         
@@ -5845,3 +6025,5 @@ window.isAdmin = isAdmin;
 window.handleAdminCreateAccount = handleAdminCreateAccount;
 window.openCreateAccountModal = openCreateAccountModal;
 window.closeCreateAccountModal = closeCreateAccountModal;
+window.sendApprovalEmailViaGAS = sendApprovalEmailViaGAS;
+window.sendBulkApprovalEmailViaGAS = sendBulkApprovalEmailViaGAS;
