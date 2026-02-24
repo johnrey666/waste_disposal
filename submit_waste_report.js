@@ -685,7 +685,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
 }
 
 // ================================
-// ADD ITEM WITH PRE-FILLED DATA (for resubmission) - FIXED VERSIONS
+// ADD ITEM WITH PRE-FILLED DATA (for resubmission) - FIXED VERSIONS with proper data loading
 // ================================
 function addExpiredItemWithData(itemData, preservedItemId = null) {
     const expiredFields = document.getElementById('expiredFields');
@@ -712,6 +712,8 @@ function addExpiredItemWithData(itemData, preservedItemId = null) {
         itemId: itemData?.itemId || preservedItemId || ''
     };
     
+    console.log('Adding expired item with data:', safeItemData); // Debug log
+    
     fieldGroup.innerHTML = `
         <div class="field-header">
             <div class="field-title">Expired Item (Resubmitting)</div>
@@ -722,6 +724,7 @@ function addExpiredItemWithData(itemData, preservedItemId = null) {
                 <label for="expiredItem-${itemId}">Item Name <span class="required">*</span></label>
                 <select class="item-dropdown" id="expiredItem-${itemId}" name="expiredItems[${itemId}][item]" required>
                     <option value="" disabled>Select or type to search...</option>
+                    <option value="${safeItemData.item}" selected>${safeItemData.item}</option>
                 </select>
                 <span class="note">Type to search or select from dropdown</span>
             </div>
@@ -778,19 +781,148 @@ function addExpiredItemWithData(itemData, preservedItemId = null) {
     
     expiredFields.appendChild(fieldGroup);
     
-    // Initialize Select2 and set value after a delay
+    // Initialize Select2 and ensure the value is set
     setTimeout(() => {
         initSelect2Dropdown(`expiredItem-${itemId}`);
-        // Set the value after Select2 is initialized
-        setTimeout(() => {
-            const select = $(`#expiredItem-${itemId}`);
-            if (select.length && safeItemData.item) {
-                select.val(safeItemData.item).trigger('change');
-            }
-        }, 300);
+        
+        // Set the value directly on the select element first
+        const selectElement = document.getElementById(`expiredItem-${itemId}`);
+        if (selectElement && safeItemData.item) {
+            // Set the value directly on the select
+            selectElement.value = safeItemData.item;
+            
+            // Then trigger change for Select2
+            setTimeout(() => {
+                try {
+                    $(`#expiredItem-${itemId}`).val(safeItemData.item).trigger('change');
+                    console.log(`Set expired item value to: ${safeItemData.item}`);
+                } catch (e) {
+                    console.warn('Error setting select2 value:', e);
+                }
+            }, 300);
+        }
     }, 100);
 }
 
+function addWasteItemWithData(itemData, preservedItemId = null) {
+    const wasteFields = document.getElementById('wasteFields');
+    if (!wasteFields) return;
+    
+    // Use the preserved item ID if provided, otherwise generate a new one
+    const itemId = preservedItemId || (Date.now() + Math.random().toString(36).substr(2, 9));
+    
+    const fieldGroup = document.createElement('div');
+    fieldGroup.className = 'field-group';
+    fieldGroup.id = `waste-${itemId}`;
+    
+    // Ensure itemData has all required fields with defaults
+    const safeItemData = {
+        item: itemData?.item || '',
+        reason: itemData?.reason || '',
+        quantity: itemData?.quantity || 0,
+        unit: itemData?.unit || 'pieces',
+        notes: itemData?.notes || '',
+        documentation: itemData?.documentation || [],
+        rejectionReason: itemData?.rejectionReason || '',
+        itemId: itemData?.itemId || preservedItemId || ''
+    };
+    
+    console.log('Adding waste item with data:', safeItemData); // Debug log
+    
+    fieldGroup.innerHTML = `
+        <div class="field-header">
+            <div class="field-title">Waste Item (Resubmitting)</div>
+            <button type="button" class="remove-btn" onclick="removeField('waste-${itemId}')">×</button>
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="wasteItem-${itemId}">Item/Description <span class="required">*</span></label>
+                <select class="item-dropdown" id="wasteItem-${itemId}" name="wasteItems[${itemId}][item]" required>
+                    <option value="" disabled>Select or type to search...</option>
+                    <option value="${safeItemData.item}" selected>${safeItemData.item}</option>
+                </select>
+                <span class="note">Type to search or select from dropdown</span>
+            </div>
+            <div class="form-group">
+                <label for="reason-${itemId}">Reason for Waste <span class="required">*</span></label>
+                <select id="reason-${itemId}" name="wasteItems[${itemId}][reason]" required onchange="toggleAdditionalNotesRequirement('${itemId}')">
+                    <option value="" disabled>Select reason</option>
+                    <option value="spoilage" ${safeItemData.reason === 'spoilage' ? 'selected' : ''}>Spoilage</option>
+                    <option value="damaged" ${safeItemData.reason === 'damaged' ? 'selected' : ''}>Damaged Packaging</option>
+                    <option value="human_error" ${safeItemData.reason === 'human_error' ? 'selected' : ''}>Human Error</option>
+                    <option value="customer_return" ${safeItemData.reason === 'customer_return' ? 'selected' : ''}>Customer Return</option>
+                    <option value="quality_issue" ${safeItemData.reason === 'quality_issue' ? 'selected' : ''}>Quality Issue</option>
+                    <option value="other" ${safeItemData.reason === 'other' ? 'selected' : ''}>Other</option>
+                </select>
+                <div id="reason-note-${itemId}" class="note" style="margin-top:5px;font-size:12px;color:#666;"></div>
+            </div>
+            <div class="form-group">
+                <label for="wasteQuantity-${itemId}">Quantity <span class="required">*</span></label>
+                <input type="number" id="wasteQuantity-${itemId}" name="wasteItems[${itemId}][quantity]" required min="0" step="0.01" placeholder="0.00" value="${safeItemData.quantity}">
+            </div>
+            <div class="form-group">
+                <label for="wasteUnit-${itemId}">Unit of Measure <span class="required">*</span></label>
+                <select id="wasteUnit-${itemId}" name="wasteItems[${itemId}][unit]" required>
+                    <option value="" disabled>Select unit</option>
+                    <option value="pieces" ${safeItemData.unit === 'pieces' ? 'selected' : ''}>Pieces</option>
+                    <option value="packs" ${safeItemData.unit === 'packs' ? 'selected' : ''}>Packs</option>
+                    <option value="kilogram" ${safeItemData.unit === 'kilogram' ? 'selected' : ''}>Kilogram</option>
+                    <option value="servings" ${safeItemData.unit === 'servings' ? 'selected' : ''}>Servings</option>
+                </select>
+            </div>
+            <div class="form-group file-upload-container">
+                <label for="wasteDocumentation-${itemId}">Documentation <span class="required">*</span></label>
+                <input type="file" id="wasteDocumentation-${itemId}" name="wasteItems[${itemId}][documentation]" required accept="image/*,.pdf" multiple onchange="createFilePreview(this, 'wasteDocumentation-${itemId}-preview')">
+                <div id="wasteDocumentation-${itemId}-preview" class="file-preview"></div>
+                <span class="note">Upload photos or PDFs (Max 10MB per file, 3 files max)</span>
+                ${safeItemData.documentation && safeItemData.documentation.length > 0 ? `<div style="margin-top:5px;font-size:12px;color:#666;"><i class="fas fa-info-circle"></i> Previous documentation: ${safeItemData.documentation.length} file(s)</div>` : ''}
+            </div>
+            <div class="form-group">
+                <label for="wasteNotes-${itemId}">Additional Notes <span id="notes-required-${itemId}" class="required" style="${(safeItemData.reason === 'human_error' || safeItemData.reason === 'customer_return' || safeItemData.reason === 'quality_issue' || safeItemData.reason === 'other' || safeItemData.reason === 'spoilage') ? '' : 'display:none;'}">*</span></label>
+                <textarea id="wasteNotes-${itemId}" name="wasteItems[${itemId}][notes]" rows="2" placeholder="${getNotesPlaceholder(safeItemData.reason)}">${safeItemData.notes || ''}</textarea>
+                <span id="notes-note-${itemId}" class="note" style="margin-top:5px;font-size:12px;color:#666;">${getNotesNote(safeItemData.reason)}</span>
+            </div>
+            <input type="hidden" id="originalItemId-${itemId}" name="wasteItems[${itemId}][originalItemId]" value="${preservedItemId || safeItemData.itemId || ''}">
+            ${safeItemData.rejectionReason ? `
+            <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Previous Rejection Reason</label>
+                <div style="background:#fff3cd;padding:10px;border-radius:4px;border-left:4px solid #ffc107;">
+                    <strong><i class="fas fa-exclamation-triangle"></i> ${safeItemData.rejectionReason}</strong>
+                    <div style="font-size:11px;color:#856404;margin-top:5px;">
+                        <i class="fas fa-info-circle"></i> Please correct the issue and resubmit
+                    </div>
+                </div>
+            </div>` : ''}
+        </div>
+    `;
+    
+    wasteFields.appendChild(fieldGroup);
+    
+    // Initialize Select2 and ensure the value is set
+    setTimeout(() => {
+        initSelect2Dropdown(`wasteItem-${itemId}`);
+        
+        // Set the value directly on the select element first
+        const selectElement = document.getElementById(`wasteItem-${itemId}`);
+        if (selectElement && safeItemData.item) {
+            // Set the value directly on the select
+            selectElement.value = safeItemData.item;
+            
+            // Then trigger change for Select2
+            setTimeout(() => {
+                try {
+                    $(`#wasteItem-${itemId}`).val(safeItemData.item).trigger('change');
+                    console.log(`Set waste item value to: ${safeItemData.item}`);
+                } catch (e) {
+                    console.warn('Error setting select2 value:', e);
+                }
+                
+                // Toggle notes requirement based on reason
+                toggleAdditionalNotesRequirement(itemId);
+            }, 300);
+        }
+    }, 100);
+}
 function addWasteItemWithData(itemData, preservedItemId = null) {
     const wasteFields = document.getElementById('wasteFields');
     if (!wasteFields) return;
