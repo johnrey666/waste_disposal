@@ -176,6 +176,11 @@
             border-left: 4px solid #2e7d32;
             color: #2e7d32;
         }
+        .store-type-indicator.hybrid {
+            background: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            color: #1976d2;
+        }
         .required-note {
             color: #dc3545;
             font-size: 11px;
@@ -219,6 +224,18 @@
             color: #256334;
             font-size: 10px;
             margin-right: 5px;
+        }
+        
+        /* Kitchen unit indicator */
+        .kitchen-unit-indicator {
+            background-color: #e8f5e9;
+            border: 1px solid #a5d6a7;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11px;
+            color: #2e7d32;
+            margin-left: 8px;
+            display: inline-block;
         }
     </style>
 </head>
@@ -315,7 +332,7 @@
                         <option value="FG LEGAZPI">FG LEGAZPI</option>
                         <option value="FG NAGA">FG NAGA</option>
 
-                        <!-- KITCHEN group -->
+                        <!-- KITCHEN group - Updated to remove FG Kitchen LC and FG Kitchen Naga as individual options -->
                         <optgroup label="🍽️ KITCHEN" class="kitchen-main-group">
                             <option value="CTK" class="kitchen-option">└─ CTK</option>
 
@@ -325,8 +342,7 @@
                                 <option value="Concourse Convention" class="concourse-option">└─ Concourse Convention</option>
                             </optgroup>
 
-                            <option value="FG Kitchen LC" class="kitchen-option">└─ FG Kitchen LC</option>
-                            <option value="FG Kitchen Naga" class="kitchen-option">└─ FG Kitchen Naga</option>
+                            <!-- Note: FG Kitchen LC and FG Kitchen Naga are now combined with FG LEGAZPI and FG NAGA -->
                         </optgroup>
                     </select>
                     <span class="note">Click on "KITCHEN" or "Concourse" to expand/collapse</span>

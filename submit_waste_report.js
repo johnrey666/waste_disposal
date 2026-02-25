@@ -1,5 +1,9 @@
-// submit_waste_report.js - COMPLETE FILE - FIXED VERSION (February 25, 2026)
-// Solves "Unknown Item - 0 ₱0.00" on resubmit by using clean DOM field IDs
+// submit_waste_report.js - COMPLETE FILE - UPDATED VERSION (February 26, 2026)
+// Changes:
+// 1. Removed FG Kitchen LC and FG Kitchen Naga as individual options
+// 2. When FG LEGAZPI is selected, all items (regular + kitchen) are visible
+// 3. When FG NAGA is selected, all items (regular + kitchen) are visible
+// 4. Kitchen items automatically use KG as fixed unit of measurement
 
 const Loader = {
     overlay: document.getElementById('loadingOverlay'),
@@ -93,7 +97,14 @@ let currentStoreType = null;
 let currentStoreValue = '';
 let currentUser = null;
 
-const KITCHEN_STORES = ['CTK', 'Tabaco CN 2', 'Concourse Hall', 'Concourse Convention', 'FG Kitchen LC', 'FG Kitchen Naga'];
+// Updated store definitions
+const KITCHEN_STORES = ['CTK', 'Tabaco CN 2', 'Concourse Hall', 'Concourse Convention'];
+const HYBRID_STORES = ['FG LEGAZPI', 'FG NAGA']; // These stores show both regular and kitchen items
+const REGULAR_STORES = [
+    'FG Express IROSIN', 'FG Express LIGAO', 'FG Express POLANGUI', 
+    'FG Express MASBATE', 'FG Express DARAGA', 'FG Express BAAO', 
+    'FG Express PIODURAN', 'FG Express RIZAL', 'FG to go TABACO', 'FG to go LEGAZPI'
+];
 const CONCOURSE_VARIANTS = ['Tabaco CN 2', 'Concourse Hall', 'Concourse Convention'];
 
 let db, storage, auth;
@@ -218,6 +229,14 @@ function handleStoreChange(selectElement) {
         currentStoreType = null;
         indicator.style.display = 'none';
         showNotification('Please select a store location first.', 'info');
+    } else if (HYBRID_STORES.includes(selectedStore)) {
+        // FG LEGAZPI or FG NAGA - show ALL items (regular + kitchen)
+        currentStoreType = 'hybrid';
+        indicator.style.display = 'flex';
+        indicator.className = 'store-type-indicator hybrid';
+        let displayText = `<strong>🏢 ${selectedStore}</strong> - ALL items (Store + Kitchen) are available.`;
+        indicatorText.innerHTML = displayText;
+        showNotification(`${selectedStore} selected. ALL items (Store + Kitchen) are now available.`, 'info');
     } else if (KITCHEN_STORES.includes(selectedStore)) {
         currentStoreType = 'kitchen';
         indicator.style.display = 'flex';
@@ -479,6 +498,10 @@ function refreshAllDropdowns() {
     });
 }
 
+function isKitchenItem(itemName) {
+    return KITCHEN_ITEMS_LIST.includes(itemName);
+}
+
 function initSelect2Dropdown(selectElementId) {
     const selectElement = document.getElementById(selectElementId);
     if (!selectElement) return;
@@ -500,7 +523,35 @@ function initSelect2Dropdown(selectElementId) {
 
     let groupedItems = [];
 
-    if (currentStoreType === 'kitchen') {
+    if (currentStoreType === 'hybrid') {
+        // Show ALL items (regular + kitchen) grouped by type
+        if (REGULAR_ITEMS_LIST.length > 0) {
+            groupedItems.push({
+                text: '📦 STORE ITEMS',
+                children: REGULAR_ITEMS_LIST.map(item => ({ id: item, text: item }))
+            });
+        }
+        
+        // Add kitchen items with their categories
+        if (KITCHEN_ITEMS_BY_CATEGORY.meat.length > 0) {
+            groupedItems.push({
+                text: '🥩 KITCHEN - MEAT',
+                children: KITCHEN_ITEMS_BY_CATEGORY.meat.map(item => ({ id: item, text: item }))
+            });
+        }
+        if (KITCHEN_ITEMS_BY_CATEGORY.vegetables.length > 0) {
+            groupedItems.push({
+                text: '🥬 KITCHEN - VEGETABLES',
+                children: KITCHEN_ITEMS_BY_CATEGORY.vegetables.map(item => ({ id: item, text: item }))
+            });
+        }
+        if (KITCHEN_ITEMS_BY_CATEGORY.seafood.length > 0) {
+            groupedItems.push({
+                text: '🦐 KITCHEN - SEAFOOD',
+                children: KITCHEN_ITEMS_BY_CATEGORY.seafood.map(item => ({ id: item, text: item }))
+            });
+        }
+    } else if (currentStoreType === 'kitchen') {
         if (KITCHEN_ITEMS_BY_CATEGORY.meat.length > 0) {
             groupedItems.push({
                 text: '🥩 MEAT',
@@ -529,26 +580,56 @@ function initSelect2Dropdown(selectElementId) {
     }
 
     if (groupedItems.length === 0) {
-        const placeholderText = currentStoreType === 'kitchen' ? 'No kitchen items available' : 'No store items available';
+        const placeholderText = 'No items available';
         groupedItems = [{ id: '', text: placeholderText, disabled: true }];
     }
 
     $(`#${selectElementId}`).select2({
         data: groupedItems,
-        placeholder: currentStoreType === 'kitchen' ? "Select a kitchen item..." : "Select a store item...",
+        placeholder: "Select an item...",
         disabled: false,
         allowClear: false,
         width: '100%',
         dropdownParent: $(`#${selectElementId}`).parent(),
         templateResult: formatItemResult,
         templateSelection: formatItemSelection
+    }).on('select2:select', function(e) {
+        // When an item is selected, check if it's a kitchen item and set unit to KG
+        const selectedItem = e.params.data.id;
+        const fieldId = selectElementId.replace('expiredItem-', '').replace('wasteItem-', '');
+        
+        if (isKitchenItem(selectedItem)) {
+            // Find the unit select element for this field
+            const isExpired = selectElementId.startsWith('expiredItem-');
+            const unitSelectId = isExpired ? `unit-${fieldId}` : `wasteUnit-${fieldId}`;
+            const unitSelect = document.getElementById(unitSelectId);
+            
+            if (unitSelect) {
+                unitSelect.value = 'kilogram';
+                unitSelect.disabled = true; // Lock it for kitchen items
+                
+                // Add visual indicator
+                const unitGroup = unitSelect.closest('.form-group');
+                if (unitGroup) {
+                    let indicator = unitGroup.querySelector('.kitchen-unit-indicator');
+                    if (!indicator) {
+                        indicator = document.createElement('span');
+                        indicator.className = 'kitchen-unit-indicator';
+                        indicator.innerHTML = '🍳 Fixed: KG';
+                        unitGroup.querySelector('label').appendChild(indicator);
+                    }
+                }
+            }
+        }
     });
 }
 
 function formatItemResult(item) {
     if (!item.id || item.disabled) return item.text;
 
-    if (currentStoreType === 'kitchen') {
+    const isKitchen = isKitchenItem(item.id);
+    
+    if (isKitchen) {
         let categoryClass = '';
         let categoryText = '';
         if (KITCHEN_ITEMS_BY_CATEGORY.meat.includes(item.id)) {
@@ -558,7 +639,7 @@ function formatItemResult(item) {
         } else if (KITCHEN_ITEMS_BY_CATEGORY.seafood.includes(item.id)) {
             categoryClass = 'category-seafood'; categoryText = 'SEA';
         }
-        return $(`<span><i class="fas fa-utensils" style="margin-right:5px;color:#856404;"></i> ${item.text} <span class="kitchen-category-badge ${categoryClass}">${categoryText}</span></span>`);
+        return $(`<span><i class="fas fa-utensils" style="margin-right:5px;color:#856404;"></i> ${item.text} <span class="kitchen-category-badge ${categoryClass}">${categoryText}</span> <span style="margin-left:5px;font-size:9px;color:#2e7d32;">[KG]</span></span>`);
     } else {
         return $(`<span><i class="fas fa-box" style="margin-right:5px;color:#2e7d32;"></i> ${item.text}</span>`);
     }
@@ -691,11 +772,11 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         Loader.hide();
     }
 }
+
 function addExpiredItemWithData(itemData, preservedItemId = null, originalReportId = null, originalItemIndex = null) {
     const expiredFields = document.getElementById('expiredFields');
     if (!expiredFields) return;
   
-    // Clean short ID without redundant prefix
     const fieldId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
   
     const fieldGroup = document.createElement('div');
@@ -717,11 +798,16 @@ function addExpiredItemWithData(itemData, preservedItemId = null, originalReport
         itemCost: itemData?.itemCost || 0
     };
   
-    console.log(`Adding expired field - DOM ID: ${fieldId}, preserved rejection ID: ${preservedItemId}`);
+    // Determine if this is a kitchen item to set unit
+    const isKitchen = isKitchenItem(safeItemData.item);
+    const unitValue = isKitchen ? 'kilogram' : (safeItemData.unit || 'pieces');
+    const unitDisabled = isKitchen ? 'disabled' : '';
+  
+    console.log(`Adding expired field - DOM ID: ${fieldId}, preserved rejection ID: ${preservedItemId}, isKitchen: ${isKitchen}`);
   
     fieldGroup.innerHTML = `
         <div class="field-header">
-            <div class="field-title">Expired Item (Resubmitting)</div>
+            <div class="field-title">Expired Item ${isKitchen ? '<span class="kitchen-unit-indicator">🍳 Fixed: KG</span>' : ''}</div>
             <button type="button" class="remove-btn" onclick="removeField('expired-${fieldId}')">×</button>
         </div>
         <div class="form-grid">
@@ -750,13 +836,14 @@ function addExpiredItemWithData(itemData, preservedItemId = null, originalReport
             </div>
             <div class="form-group">
                 <label for="unit-${fieldId}">Unit of Measure <span class="required">*</span></label>
-                <select id="unit-${fieldId}" name="expiredItems[${fieldId}][unit]" required>
+                <select id="unit-${fieldId}" name="expiredItems[${fieldId}][unit]" required ${unitDisabled}>
                     <option value="" disabled>Select unit</option>
-                    <option value="pieces" ${safeItemData.unit === 'pieces' ? 'selected' : ''}>Pieces</option>
-                    <option value="packs" ${safeItemData.unit === 'packs' ? 'selected' : ''}>Packs</option>
-                    <option value="kilogram" ${safeItemData.unit === 'kilogram' ? 'selected' : ''}>Kilogram</option>
-                    <option value="servings" ${safeItemData.unit === 'servings' ? 'selected' : ''}>Servings</option>
+                    <option value="pieces" ${unitValue === 'pieces' ? 'selected' : ''}>Pieces</option>
+                    <option value="packs" ${unitValue === 'packs' ? 'selected' : ''}>Packs</option>
+                    <option value="kilogram" ${unitValue === 'kilogram' ? 'selected' : ''}>Kilogram</option>
+                    <option value="servings" ${unitValue === 'servings' ? 'selected' : ''}>Servings</option>
                 </select>
+                ${isKitchen ? '<span class="note" style="color:#2e7d32;"><i class="fas fa-lock"></i> Kitchen items use KG only</span>' : ''}
             </div>
             <div class="form-group file-upload-container">
                 <label for="documentation-${fieldId}">Documentation <span class="required">*</span></label>
@@ -801,7 +888,6 @@ function addWasteItemWithData(itemData, preservedItemId = null, originalReportId
     const wasteFields = document.getElementById('wasteFields');
     if (!wasteFields) return;
   
-    // Clean short ID without redundant prefix
     const fieldId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
   
     const fieldGroup = document.createElement('div');
@@ -821,11 +907,16 @@ function addWasteItemWithData(itemData, preservedItemId = null, originalReportId
         itemCost: itemData?.itemCost || 0
     };
   
-    console.log(`Adding waste field - DOM ID: ${fieldId}, preserved rejection ID: ${preservedItemId}`);
+    // Determine if this is a kitchen item to set unit
+    const isKitchen = isKitchenItem(safeItemData.item);
+    const unitValue = isKitchen ? 'kilogram' : (safeItemData.unit || 'pieces');
+    const unitDisabled = isKitchen ? 'disabled' : '';
+  
+    console.log(`Adding waste field - DOM ID: ${fieldId}, preserved rejection ID: ${preservedItemId}, isKitchen: ${isKitchen}`);
   
     fieldGroup.innerHTML = `
         <div class="field-header">
-            <div class="field-title">Waste Item (Resubmitting)</div>
+            <div class="field-title">Waste Item ${isKitchen ? '<span class="kitchen-unit-indicator">🍳 Fixed: KG</span>' : ''}</div>
             <button type="button" class="remove-btn" onclick="removeField('waste-${fieldId}')">×</button>
         </div>
         <div class="form-grid">
@@ -854,13 +945,14 @@ function addWasteItemWithData(itemData, preservedItemId = null, originalReportId
             </div>
             <div class="form-group">
                 <label for="wasteUnit-${fieldId}">Unit of Measure <span class="required">*</span></label>
-                <select id="wasteUnit-${fieldId}" name="wasteItems[${fieldId}][unit]" required>
+                <select id="wasteUnit-${fieldId}" name="wasteItems[${fieldId}][unit]" required ${unitDisabled}>
                     <option value="" disabled>Select unit</option>
-                    <option value="pieces" ${safeItemData.unit === 'pieces' ? 'selected' : ''}>Pieces</option>
-                    <option value="packs" ${safeItemData.unit === 'packs' ? 'selected' : ''}>Packs</option>
-                    <option value="kilogram" ${safeItemData.unit === 'kilogram' ? 'selected' : ''}>Kilogram</option>
-                    <option value="servings" ${safeItemData.unit === 'servings' ? 'selected' : ''}>Servings</option>
+                    <option value="pieces" ${unitValue === 'pieces' ? 'selected' : ''}>Pieces</option>
+                    <option value="packs" ${unitValue === 'packs' ? 'selected' : ''}>Packs</option>
+                    <option value="kilogram" ${unitValue === 'kilogram' ? 'selected' : ''}>Kilogram</option>
+                    <option value="servings" ${unitValue === 'servings' ? 'selected' : ''}>Servings</option>
                 </select>
+                ${isKitchen ? '<span class="note" style="color:#2e7d32;"><i class="fas fa-lock"></i> Kitchen items use KG only</span>' : ''}
             </div>
             <div class="form-group file-upload-container">
                 <label for="wasteDocumentation-${fieldId}">Documentation <span class="required">*</span></label>
@@ -1187,6 +1279,7 @@ function addExpiredItem() {
                     <option value="kilogram">Kilogram</option>
                     <option value="servings">Servings</option>
                 </select>
+                <span class="note kitchen-unit-note" style="display:none; color:#2e7d32;"><i class="fas fa-lock"></i> Kitchen items will automatically use KG</span>
             </div>
             <div class="form-group file-upload-container">
                 <label for="documentation-${itemId}">Documentation <span class="required">*</span></label>
@@ -1259,6 +1352,7 @@ function addWasteItem() {
                     <option value="kilogram">Kilogram</option>
                     <option value="servings">Servings</option>
                 </select>
+                <span class="note kitchen-unit-note" style="display:none; color:#2e7d32;"><i class="fas fa-lock"></i> Kitchen items will automatically use KG</span>
             </div>
             <div class="form-group file-upload-container">
                 <label for="wasteDocumentation-${itemId}">Documentation <span class="required">*</span></label>
@@ -1588,7 +1682,6 @@ async function handleSubmit(event) {
         for (let field of expiredFields) {
             const fieldId = field.id.split('-')[1];
 
-            // Last-second force refresh
             const $sel = $(`#expiredItem-${fieldId}`);
             try {
                 $sel.trigger('change.select2').trigger('change');
@@ -1602,7 +1695,13 @@ async function handleSubmit(event) {
             const manufacturedDate = document.getElementById(`manufacturedDate-${fieldId}`)?.value || '';
             const expirationDate = document.getElementById(`expirationDate-${fieldId}`)?.value || '';
             const quantity = parseFloat(document.getElementById(`quantity-${fieldId}`)?.value) || 0;
-            const unit = document.getElementById(`unit-${fieldId}`)?.value || '';
+            
+            // Get unit value - for kitchen items, force to kilogram
+            let unit = document.getElementById(`unit-${fieldId}`)?.value || '';
+            if (isKitchenItem(selectedItem)) {
+                unit = 'kilogram';
+            }
+            
             const notes = document.getElementById(`notes-${fieldId}`)?.value?.trim() || '';
             const originalItemIdInput = document.getElementById(`originalItemId-${fieldId}`);
             const originalItemId = originalItemIdInput?.value || null;
@@ -1656,7 +1755,13 @@ async function handleSubmit(event) {
             const itemCost = await getItemCostSafe(selectedItem);
             const reason = document.getElementById(`reason-${fieldId}`)?.value || '';
             const quantity = parseFloat(document.getElementById(`wasteQuantity-${fieldId}`)?.value) || 0;
-            const unit = document.getElementById(`wasteUnit-${fieldId}`)?.value || '';
+            
+            // Get unit value - for kitchen items, force to kilogram
+            let unit = document.getElementById(`wasteUnit-${fieldId}`)?.value || '';
+            if (isKitchenItem(selectedItem)) {
+                unit = 'kilogram';
+            }
+            
             const notes = document.getElementById(`wasteNotes-${fieldId}`)?.value?.trim() || '';
             const originalItemIdInput = document.getElementById(`originalItemId-${fieldId}`);
             const originalItemId = originalItemIdInput?.value || null;
@@ -1934,3 +2039,4 @@ window.addWasteItem = addWasteItem;
 window.removeField = removeField;
 window.toggleDisposalType = toggleDisposalType;
 window.handleStoreChange = handleStoreChange;
+window.isKitchenItem = isKitchenItem;
