@@ -4019,6 +4019,10 @@ async function bulkApproveItems(reportId, itemType) {
     }
 }
 
+// ================================
+// FIXED BULK REJECTION FUNCTION
+// Sends individual rejection emails for each rejected item
+// ================================
 async function bulkRejectItems(reportId, itemType, reason) {
     if (!isAuthenticated()) {
         showNotification('Please login to reject items', 'error');
@@ -4081,17 +4085,29 @@ async function bulkRejectItems(reportId, itemType, reason) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: updatedItems });
         
-        showNotification('All pending items rejected successfully', 'success');
+        // Send INDIVIDUAL rejection emails for each rejected item
+        if (report.email && rejectedItems.length > 0) {
+            for (const rejectedItem of rejectedItems) {
+                await sendRejectionEmailViaGAS(
+                    report.email, 
+                    report.reportId || reportId, 
+                    rejectedItem.index, 
+                    itemType, 
+                    reason.trim(), 
+                    report, 
+                    rejectedItem.itemId
+                );
+                
+                // Small delay to prevent rate limiting
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            showNotification(`${rejectedItems.length} item(s) rejected. ${rejectedItems.length} email(s) sent.`, 'success');
+        } else {
+            showNotification(`${rejectedItems.length} item(s) rejected, but no email address found.`, 'warning');
+        }
         
         updateReportAfterApproval(reportId);
-        
-        await sendBulkRejectionEmailViaGAS(
-            report.email, 
-            report.reportId || reportId, 
-            rejectedItems.length, 
-            reason.trim(), 
-            report
-        );
         
     } catch (error) {
         console.error('Error bulk rejecting items:', error);
@@ -6000,7 +6016,6 @@ window.showNotification = showNotification;
 window.openItemsManagement = openItemsManagement;
 window.closeItemsManagement = closeItemsManagement;
 window.loadItems = loadItems;
-window.changeItemsPage = changeItemsPage;
 window.applyItemsFilters = applyItemsFilters;
 window.addItemToDatabase = addItemToDatabase;
 window.openEditItemModal = openEditItemModal;
@@ -6026,4 +6041,4 @@ window.handleAdminCreateAccount = handleAdminCreateAccount;
 window.openCreateAccountModal = openCreateAccountModal;
 window.closeCreateAccountModal = closeCreateAccountModal;
 window.sendApprovalEmailViaGAS = sendApprovalEmailViaGAS;
-window.sendBulkApprovalEmailViaGAS = sendBulkApprovalEmailViaGAS; 
+window.sendBulkApprovalEmailViaGAS = sendBulkApprovalEmailViaGAS;
