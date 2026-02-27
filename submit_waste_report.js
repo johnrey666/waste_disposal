@@ -1,4 +1,4 @@
-// submit_waste_report.js - COMPLETE FILE - FIXED VERSION (February 26, 2026)
+// submit_waste_report.js - COMPLETE FILE - FIXED VERSION (February 27, 2026)
 // CHANGES:
 // 1. Fixed resubmission issue - now preserves other items in the report
 // 2. When resubmitting one item, other items in the same report are kept intact
@@ -6,6 +6,7 @@
 // 4. When FG LEGAZPI is selected, all items (regular + kitchen) are visible
 // 5. When FG NAGA is selected, all items (regular + kitchen) are visible
 // 6. Kitchen items automatically use KG as fixed unit of measurement
+// 7. FIXED: Waste and expired sections now properly open when loading rejected items
 
 const Loader = {
     overlay: document.getElementById('loadingOverlay'),
@@ -751,12 +752,14 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         // Clear disposal type checkboxes
         document.querySelectorAll('input[name="disposalType"]').forEach(cb => cb.checked = false);
       
-        // FIRST: Add ALL existing items from the report (both expired and waste)
-        // This ensures other items in the same report are preserved
+        // ===== FIX: Manually check the appropriate checkboxes and show containers =====
+        const expiredContainer = document.getElementById('expiredContainer');
+        const wasteContainer = document.getElementById('wasteContainer');
         
-        // Add all expired items from the original report
+        // FIRST: Add all expired items from the original report
         if (report.expiredItems && report.expiredItems.length > 0) {
             document.getElementById('expired').checked = true;
+            if (expiredContainer) expiredContainer.classList.add('show');
             
             report.expiredItems.forEach((item, idx) => {
                 // If this is the rejected item we're resubmitting, mark it specially
@@ -769,9 +772,10 @@ async function loadRejectedItem(itemIdFromUrl = null) {
             });
         }
         
-        // Add all waste items from the original report
+        // SECOND: Add all waste items from the original report
         if (report.wasteItems && report.wasteItems.length > 0) {
             document.getElementById('waste').checked = true;
+            if (wasteContainer) wasteContainer.classList.add('show');
             
             report.wasteItems.forEach((item, idx) => {
                 // If this is the rejected item we're resubmitting, mark it specially
@@ -783,6 +787,8 @@ async function loadRejectedItem(itemIdFromUrl = null) {
                 }
             });
         }
+        
+        // ===== END OF FIX =====
       
         // Update UI to show we're in resubmission mode
         if (itemIdInput) {
@@ -810,6 +816,10 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         if (header && !document.querySelector('.resubmission-info')) {
             header.appendChild(infoDiv);
         }
+      
+        // Update disposal type hint and preview
+        updateDisposalTypeHint();
+        updateDisposalTypesPreview();
       
         showNotification('Rejected item loaded. Edit and resubmit. Other items in the report are preserved.', 'success');
       
