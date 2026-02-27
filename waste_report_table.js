@@ -137,6 +137,10 @@ let meatCount = 0;
 let vegetablesCount = 0;
 let seafoodCount = 0;
 
+// E-Signature variables
+let adminSignature = null;
+let adminSignatureData = null;
+
 // State variables
 let currentRejectionData = null;
 let currentBulkRejectionData = null;
@@ -223,6 +227,289 @@ const ADMIN_EMAILS = [
 ];
 
 // ================================
+// E-SIGNATURE FUNCTIONS
+// ================================
+
+// Open e-signature modal
+function openSignatureModal() {
+    if (!isAuthenticated()) {
+        showNotification('Please login to manage signature', 'error');
+        return;
+    }
+    
+    if (!isAdmin()) {
+        showNotification('Only administrators can manage signatures', 'error');
+        return;
+    }
+    
+    const modal = document.getElementById('signatureModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        loadSignature();
+    }
+}
+
+// Close e-signature modal
+function closeSignatureModal() {
+    const modal = document.getElementById('signatureModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Load signature from Firestore
+async function loadSignature() {
+    if (!isAdmin()) return;
+    
+    try {
+        const signatureDoc = await db.collection('adminSignatures').doc(currentUser.uid).get();
+        
+        if (signatureDoc.exists) {
+            const data = signatureDoc.data();
+            adminSignature = data.signature || null;
+            adminSignatureData = data;
+            
+            // Display existing signature
+            const preview = document.getElementById('signaturePreview');
+            const uploadSection = document.getElementById('signatureUploadSection');
+            const drawSection = document.getElementById('signatureDrawSection');
+            const canvas = document.getElementById('signatureCanvas');
+            
+            if (data.signatureType === 'upload' && data.signatureUrl) {
+                if (preview) {
+                    preview.innerHTML = `<img src="${data.signatureUrl}" alt="Signature" style="max-width: 200px; max-height: 80px; border: 1px solid #ddd; padding: 5px;">`;
+                }
+                if (uploadSection) uploadSection.style.display = 'block';
+                if (drawSection) drawSection.style.display = 'none';
+                document.getElementById('signatureTypeUpload').checked = true;
+            } else if (data.signatureType === 'draw' && data.signatureData) {
+                if (canvas) {
+                    const ctx = canvas.getContext('2d');
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0);
+                    };
+                    img.src = data.signatureData;
+                }
+                if (preview) preview.innerHTML = '';
+                if (uploadSection) uploadSection.style.display = 'none';
+                if (drawSection) drawSection.style.display = 'block';
+                document.getElementById('signatureTypeDraw').checked = true;
+            }
+        } else {
+            // No signature yet
+            document.getElementById('signaturePreview').innerHTML = '';
+            document.getElementById('signatureTypeUpload').checked = true;
+            document.getElementById('signatureUploadSection').style.display = 'block';
+            document.getElementById('signatureDrawSection').style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error loading signature:', error);
+        showNotification('Error loading signature', 'error');
+    }
+}
+
+// Handle signature type change
+function onSignatureTypeChange() {
+    const typeUpload = document.getElementById('signatureTypeUpload').checked;
+    const uploadSection = document.getElementById('signatureUploadSection');
+    const drawSection = document.getElementById('signatureDrawSection');
+    
+    if (typeUpload) {
+        uploadSection.style.display = 'block';
+        drawSection.style.display = 'none';
+    } else {
+        uploadSection.style.display = 'none';
+        drawSection.style.display = 'block';
+        initSignaturePad();
+    }
+}
+
+// Initialize signature pad
+function initSignaturePad() {
+    const canvas = document.getElementById('signatureCanvas');
+    if (!canvas) return;
+    
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#2a5934';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    let drawing = false;
+    let lastX = 0;
+    let lastY = 0;
+    
+    canvas.addEventListener('mousedown', (e) => {
+        drawing = true;
+        const rect = canvas.getBoundingClientRect();
+        lastX = e.clientX - rect.left;
+        lastY = e.clientY - rect.top;
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+        if (!drawing) return;
+        e.preventDefault();
+        
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        
+        lastX = x;
+        lastY = y;
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+        drawing = false;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+        drawing = false;
+    });
+}
+
+// Clear signature pad
+function clearSignaturePad() {
+    const canvas = document.getElementById('signatureCanvas');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+// Upload signature image
+async function uploadSignatureImage() {
+    const fileInput = document.getElementById('signatureFile');
+    const file = fileInput?.files[0];
+    
+    if (!file) {
+        showNotification('Please select an image file', 'error');
+        return;
+    }
+    
+    if (!file.type.startsWith('image/')) {
+        showNotification('Please select an image file', 'error');
+        return;
+    }
+    
+    if (file.size > 2 * 1024 * 1024) {
+        showNotification('File size must be less than 2MB', 'error');
+        return;
+    }
+    
+    showLoading(true, 'Uploading signature...');
+    
+    try {
+        const storageRef = storage.ref(`signatures/${currentUser.uid}_${Date.now()}_${file.name}`);
+        await storageRef.put(file);
+        const signatureUrl = await storageRef.getDownloadURL();
+        
+        // Save to Firestore
+        await db.collection('adminSignatures').doc(currentUser.uid).set({
+            signature: signatureUrl,
+            signatureType: 'upload',
+            signatureUrl: signatureUrl,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser.email
+        });
+        
+        adminSignature = signatureUrl;
+        
+        // Show preview
+        const preview = document.getElementById('signaturePreview');
+        if (preview) {
+            preview.innerHTML = `<img src="${signatureUrl}" alt="Signature" style="max-width: 200px; max-height: 80px; border: 1px solid #ddd; padding: 5px;">`;
+        }
+        
+        showNotification('Signature uploaded successfully', 'success');
+        
+    } catch (error) {
+        console.error('Error uploading signature:', error);
+        showNotification('Error uploading signature: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Save drawn signature
+async function saveDrawnSignature() {
+    const canvas = document.getElementById('signatureCanvas');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const hasDrawing = imageData.data.some(channel => channel !== 0);
+    
+    if (!hasDrawing) {
+        showNotification('Please draw your signature', 'error');
+        return;
+    }
+    
+    showLoading(true, 'Saving signature...');
+    
+    try {
+        const signatureData = canvas.toDataURL('image/png');
+        
+        // Save to Firestore
+        await db.collection('adminSignatures').doc(currentUser.uid).set({
+            signature: signatureData,
+            signatureType: 'draw',
+            signatureData: signatureData,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser.email
+        });
+        
+        adminSignature = signatureData;
+        
+        showNotification('Signature saved successfully', 'success');
+        
+    } catch (error) {
+        console.error('Error saving signature:', error);
+        showNotification('Error saving signature: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Get admin signature HTML for emails
+async function getAdminSignatureHTML() {
+    if (!isAdmin()) return '';
+    
+    try {
+        if (adminSignature) {
+            // Check if it's a URL or data URL
+            if (adminSignature.startsWith('data:image') || adminSignature.startsWith('http')) {
+                return `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Digitally Signed by:</div>
+                    <img src="${adminSignature}" alt="Admin Signature" style="max-width: 200px; max-height: 60px; margin-bottom: 5px;">
+                    <div style="font-size: 11px; color: #999;">${currentUser?.email || 'Administrator'}</div>
+                </div>`;
+            }
+        }
+        
+        // Fallback to text signature
+        return `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
+            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Signed by:</div>
+            <div style="font-family: 'Brush Script MT', cursive; font-size: 24px; color: #2a5934;">${currentUser?.displayName || 'Administrator'}</div>
+            <div style="font-size: 11px; color: #999;">${currentUser?.email || 'Administrator'}</div>
+        </div>`;
+        
+    } catch (error) {
+        console.error('Error getting signature HTML:', error);
+        return '';
+    }
+}
+
+// ================================
 // AUTHENTICATION FUNCTIONS
 // ================================
 
@@ -238,6 +525,12 @@ function initializeAuth() {
             showReportsSection();
             updateNavBar(user);
             loadReports();
+            
+            // Load signature for admin
+            if (isAdmin()) {
+                await loadSignature();
+            }
+            
             showNotification(`Welcome ${user.displayName || user.email}!`, 'success');
         } else {
             currentUser = null;
@@ -289,6 +582,11 @@ function updateNavBar(user) {
                 <span>${displayName}</span>
                 <span class="user-role-badge">${currentUserRole.toUpperCase()}</span>
             </div>
+            ${isAdmin() ? `
+            <button class="btn btn-secondary admin-only" id="signatureButton" style="margin-right: 10px;" onclick="openSignatureModal()">
+                <i class="fas fa-signature"></i> E-Signature
+            </button>
+            ` : ''}
             <button class="logout-btn" onclick="handleLogout()">
                 <i class="fas fa-sign-out-alt"></i> Logout
             </button>
@@ -2899,6 +3197,7 @@ function buildItemContent(item, index, type, reportId) {
         content += `
             <div style="font-size: 10px; color: #155724; margin-bottom: 8px;">
                 <i class="fas fa-check-circle"></i> Approved by ${item.approvedBy || 'Administrator'} on ${formatDate(item.approvedAt)}
+                ${item.approvedBySignature ? `<div style="margin-top: 5px;"><img src="${item.approvedBySignature}" alt="Signature" style="max-height: 30px; max-width: 100px;"></div>` : ''}
             </div>
         `;
     }
@@ -2909,6 +3208,7 @@ function buildItemContent(item, index, type, reportId) {
                 <i class="fas fa-times-circle"></i> <strong>Rejection Reason:</strong> ${item.rejectionReason}
                 <div style="font-size: 9px; margin-top: 2px;">
                     Rejected by ${item.rejectedBy || 'Administrator'} on ${formatDate(item.rejectedAt)}
+                    ${item.rejectedBySignature ? `<div style="margin-top: 5px;"><img src="${item.rejectedBySignature}" alt="Signature" style="max-height: 30px; max-width: 100px;"></div>` : ''}
                 </div>
             </div>
         `;
@@ -3669,6 +3969,9 @@ async function sendApprovalEmailViaGAS(toEmail, reportId, itemIndex, itemType, r
         const expirationDate = itemType === 'expired' ? formatDate(item?.expirationDate) : 'N/A';
         const wasteReason = itemType === 'waste' ? item?.reason || 'N/A' : 'N/A';
         
+        // Get signature HTML
+        const signatureHTML = await getAdminSignatureHTML();
+        
         const emailData = {
             emailType: 'approval',
             to: toEmail,
@@ -3691,7 +3994,9 @@ async function sendApprovalEmailViaGAS(toEmail, reportId, itemIndex, itemType, r
                 hour: '2-digit', 
                 minute: '2-digit' 
             }),
-            approvedBy: currentUser?.email || 'Administrator'
+            approvedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+            approvedBySignature: signatureHTML,
+            approvedByEmail: currentUser?.email || 'Administrator'
         };
 
         const formData = new FormData();
@@ -3743,6 +4048,9 @@ async function sendApprovalEmailViaGAS(toEmail, reportId, itemIndex, itemType, r
 
 async function sendBulkApprovalEmailViaGAS(toEmail, reportId, approvedCount, reportData) {
     try {
+        // Get signature HTML
+        const signatureHTML = await getAdminSignatureHTML();
+        
         const emailData = {
             emailType: 'bulk_approval',
             to: toEmail,
@@ -3760,7 +4068,9 @@ async function sendBulkApprovalEmailViaGAS(toEmail, reportId, approvedCount, rep
                 hour: '2-digit', 
                 minute: '2-digit' 
             }),
-            approvedBy: currentUser?.email || 'Administrator'
+            approvedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+            approvedBySignature: signatureHTML,
+            approvedByEmail: currentUser?.email || 'Administrator'
         };
 
         const formData = new FormData();
@@ -3840,11 +4150,16 @@ async function approveItem(reportId, itemIndex, itemType) {
             return;
         }
         
+        // Get signature
+        const signatureHTML = await getAdminSignatureHTML();
+        
         const approvedItem = {
             ...items[itemIndex],
             approvalStatus: 'approved',
             approvedAt: new Date().toISOString(),
-            approvedBy: currentUser?.email || 'Administrator',
+            approvedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+            approvedByEmail: currentUser?.email || 'Administrator',
+            approvedBySignature: adminSignature || null,
             rejectionReason: null
         };
         
@@ -3914,11 +4229,16 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
         
         const uniqueItemId = `${reportId}_${itemType}_${itemIndex}_${Date.now()}`;
         
+        // Get signature
+        const signatureHTML = await getAdminSignatureHTML();
+        
         items[itemIndex] = {
             ...items[itemIndex],
             approvalStatus: 'rejected',
             rejectedAt: new Date().toISOString(),
-            rejectedBy: currentUser?.email || 'Administrator',
+            rejectedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+            rejectedByEmail: currentUser?.email || 'Administrator',
+            rejectedBySignature: adminSignature || null,
             rejectionReason: reason.trim(),
             itemId: uniqueItemId,
             canResubmit: true
@@ -3938,7 +4258,8 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
             itemType, 
             reason.trim(), 
             report, 
-            uniqueItemId
+            uniqueItemId,
+            signatureHTML
         );
         
     } catch (error) {
@@ -3987,7 +4308,9 @@ async function bulkApproveItems(reportId, itemType) {
                     ...item,
                     approvalStatus: 'approved',
                     approvedAt: new Date().toISOString(),
-                    approvedBy: currentUser?.email || 'Administrator',
+                    approvedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+                    approvedByEmail: currentUser?.email || 'Administrator',
+                    approvedBySignature: adminSignature || null,
                     rejectionReason: null
                 };
             }
@@ -4073,7 +4396,9 @@ async function bulkRejectItems(reportId, itemType, reason) {
                     ...item,
                     approvalStatus: 'rejected',
                     rejectedAt: new Date().toISOString(),
-                    rejectedBy: currentUser?.email || 'Administrator',
+                    rejectedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+                    rejectedByEmail: currentUser?.email || 'Administrator',
+                    rejectedBySignature: adminSignature || null,
                     rejectionReason: reason.trim(),
                     itemId: uniqueItemId,
                     canResubmit: true
@@ -4087,6 +4412,8 @@ async function bulkRejectItems(reportId, itemType, reason) {
         
         // Send INDIVIDUAL rejection emails for each rejected item
         if (report.email && rejectedItems.length > 0) {
+            const signatureHTML = await getAdminSignatureHTML();
+            
             for (const rejectedItem of rejectedItems) {
                 await sendRejectionEmailViaGAS(
                     report.email, 
@@ -4095,7 +4422,8 @@ async function bulkRejectItems(reportId, itemType, reason) {
                     itemType, 
                     reason.trim(), 
                     report, 
-                    rejectedItem.itemId
+                    rejectedItem.itemId,
+                    signatureHTML
                 );
                 
                 // Small delay to prevent rate limiting
@@ -4277,7 +4605,7 @@ function handleBulkItemRejection() {
 // ================================
 // EMAIL SENDING FUNCTIONS
 // ================================
-async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, reason, reportData, itemId) {
+async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, reason, reportData, itemId, signatureHTML) {
     try {
         const itemsArray = itemType === 'expired' ? reportData.expiredItems : reportData.wasteItems;
         const rejectedItem = itemsArray[itemIndex];
@@ -4290,6 +4618,9 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, 
         const itemCost = `₱${((rejectedItem?.itemCost || 0) * (rejectedItem?.quantity || 0)).toFixed(2)}`;
         const expirationDate = itemType === 'expired' ? formatDate(rejectedItem?.expirationDate) : 'N/A';
         const wasteReason = itemType === 'waste' ? rejectedItem?.reason || 'N/A' : 'N/A';
+        
+        // Use provided signatureHTML or get it
+        const finalSignatureHTML = signatureHTML || await getAdminSignatureHTML();
         
         const emailData = {
             emailType: 'rejection',
@@ -4316,6 +4647,9 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, 
                 hour: '2-digit', 
                 minute: '2-digit' 
             }),
+            rejectedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+            rejectedByEmail: currentUser?.email || 'Administrator',
+            rejectedBySignature: finalSignatureHTML,
             specialInstructions: `ITEM ID FOR RESUBMISSION: ${itemId}`
         };
 
@@ -4370,6 +4704,9 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
     try {
         const editLink = 'https://waste-disposal-six.vercel.app/submit_waste_report.html';
         
+        // Get signature HTML
+        const signatureHTML = await getAdminSignatureHTML();
+        
         const emailData = {
             emailType: 'bulk_rejection',
             to: toEmail,
@@ -4388,7 +4725,10 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
                 day: 'numeric', 
                 hour: '2-digit', 
                 minute: '2-digit' 
-            })
+            }),
+            rejectedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+            rejectedByEmail: currentUser?.email || 'Administrator',
+            rejectedBySignature: signatureHTML
         };
 
         const formData = new FormData();
@@ -5740,6 +6080,23 @@ function setupEventListeners() {
         });
     }
     
+    // Signature modal listeners
+    const signatureCloseBtn = document.getElementById('closeSignatureModal');
+    const signatureCancelBtn = document.getElementById('cancelSignatureButton');
+    const signatureTypeUpload = document.getElementById('signatureTypeUpload');
+    const signatureTypeDraw = document.getElementById('signatureTypeDraw');
+    const uploadSignatureBtn = document.getElementById('uploadSignatureBtn');
+    const saveSignatureBtn = document.getElementById('saveSignatureBtn');
+    const clearSignatureBtn = document.getElementById('clearSignatureBtn');
+    
+    if (signatureCloseBtn) signatureCloseBtn.addEventListener('click', closeSignatureModal);
+    if (signatureCancelBtn) signatureCancelBtn.addEventListener('click', closeSignatureModal);
+    if (signatureTypeUpload) signatureTypeUpload.addEventListener('change', onSignatureTypeChange);
+    if (signatureTypeDraw) signatureTypeDraw.addEventListener('change', onSignatureTypeChange);
+    if (uploadSignatureBtn) uploadSignatureBtn.addEventListener('click', uploadSignatureImage);
+    if (saveSignatureBtn) saveSignatureBtn.addEventListener('click', saveDrawnSignature);
+    if (clearSignatureBtn) clearSignatureBtn.addEventListener('click', clearSignaturePad);
+    
     // Reports filters
     const searchInput = Performance.getElement('#searchInput');
     const filterStore = Performance.getElement('#filterStore');
@@ -5948,6 +6305,7 @@ function setupEventListeners() {
                 else if (modal.id === 'deleteAllModal') closeDeleteAllModal();
                 else if (modal.id === 'deleteImageModal') ImageManager.closeDeleteImageModal();
                 else if (modal.id === 'createAccountModal') closeCreateAccountModal();
+                else if (modal.id === 'signatureModal') closeSignatureModal();
             }
         });
     });
@@ -5965,8 +6323,15 @@ function setupEventListeners() {
             closeDeleteAllModal();
             ImageManager.closeDeleteImageModal();
             closeCreateAccountModal();
+            closeSignatureModal();
         }
     });
+}
+
+function changeItemsPage(direction) {
+    itemsCurrentPage += direction;
+    if (itemsCurrentPage < 1) itemsCurrentPage = 1;
+    loadItems();
 }
 
 // ================================
@@ -6042,3 +6407,11 @@ window.openCreateAccountModal = openCreateAccountModal;
 window.closeCreateAccountModal = closeCreateAccountModal;
 window.sendApprovalEmailViaGAS = sendApprovalEmailViaGAS;
 window.sendBulkApprovalEmailViaGAS = sendBulkApprovalEmailViaGAS;
+
+// Signature functions
+window.openSignatureModal = openSignatureModal;
+window.closeSignatureModal = closeSignatureModal;
+window.onSignatureTypeChange = onSignatureTypeChange;
+window.uploadSignatureImage = uploadSignatureImage;
+window.saveDrawnSignature = saveDrawnSignature;
+window.clearSignaturePad = clearSignaturePad;

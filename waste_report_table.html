@@ -1492,6 +1492,78 @@ body.user .user-only {
         </div>
     </div>
 
+        <!-- E-Signature Modal -->
+    <div id="signatureModal" class="modal">
+        <div class="modal-content" style="max-width: 550px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-signature"></i> Admin E-Signature</h3>
+                <span class="close-modal" id="closeSignatureModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 20px;">
+                    <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                        Upload or draw your e-signature. This will appear in approval/rejection emails instead of your email address.
+                    </p>
+                    
+                    <!-- Signature Type Selection -->
+                    <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" name="signatureType" id="signatureTypeUpload" value="upload" checked onchange="onSignatureTypeChange()">
+                            <span>Upload Signature</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" name="signatureType" id="signatureTypeDraw" value="draw" onchange="onSignatureTypeChange()">
+                            <span>Draw Signature</span>
+                        </label>
+                    </div>
+                    
+                    <!-- Upload Signature Section -->
+                    <div id="signatureUploadSection">
+                        <div style="border: 2px dashed #2a5934; padding: 20px; text-align: center; margin-bottom: 15px;">
+                            <i class="fas fa-cloud-upload-alt" style="font-size: 32px; color: #2a5934; margin-bottom: 10px;"></i>
+                            <p style="margin-bottom: 10px;">Upload your signature image (PNG, JPG, max 2MB)</p>
+                            <input type="file" id="signatureFile" accept="image/*" style="display: none;">
+                            <button class="btn btn-secondary" onclick="document.getElementById('signatureFile').click()">
+                                <i class="fas fa-folder-open"></i> Choose File
+                            </button>
+                            <button class="btn btn-primary" id="uploadSignatureBtn" onclick="uploadSignatureImage()">
+                                <i class="fas fa-upload"></i> Upload
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Draw Signature Section -->
+                    <div id="signatureDrawSection" style="display: none;">
+                        <div style="border: 1px solid #ddd; padding: 10px; text-align: center;">
+                            <canvas id="signatureCanvas" width="400" height="150" style="border: 1px solid #ccc; background: white; width: 100%; height: auto; cursor: crosshair;"></canvas>
+                            <div style="margin-top: 10px;">
+                                <button class="btn btn-secondary" id="clearSignatureBtn" onclick="clearSignaturePad()">
+                                    <i class="fas fa-eraser"></i> Clear
+                                </button>
+                                <button class="btn btn-primary" id="saveSignatureBtn" onclick="saveDrawnSignature()">
+                                    <i class="fas fa-save"></i> Save Signature
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Current Signature Preview -->
+                    <div id="signaturePreviewSection" style="margin-top: 20px;">
+                        <h4 style="font-size: 12px; color: #666; margin-bottom: 10px;">Current Signature:</h4>
+                        <div id="signaturePreview" style="background: #f9f9f9; padding: 10px; border: 1px solid #eee; min-height: 50px; text-align: center;">
+                            <!-- Signature preview will appear here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelSignatureButton">
+                    <i class="fas fa-times"></i> Close
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Update Firebase imports to include Storage and Auth -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
