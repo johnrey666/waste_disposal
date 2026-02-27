@@ -1,12 +1,13 @@
 // submit_waste_report.js - COMPLETE FILE - FIXED VERSION (February 27, 2026)
 // CHANGES:
-// 1. Fixed resubmission issue - now preserves other items in the report
-// 2. When resubmitting one item, other items in the same report are kept intact
+// 1. Fixed resubmission issue - now preserves other items in the report WITH their images
+// 2. When resubmitting one item, other items in the same report are kept intact with their documentation
 // 3. Removed FG Kitchen LC and FG Kitchen Naga as individual options
 // 4. When FG LEGAZPI is selected, all items (regular + kitchen) are visible
 // 5. When FG NAGA is selected, all items (regular + kitchen) are visible
 // 6. Kitchen items automatically use KG as fixed unit of measurement
 // 7. FIXED: Waste and expired sections now properly open when loading rejected items
+// 8. FIXED: Images for preserved items are now properly maintained
 
 const Loader = {
     overlay: document.getElementById('loadingOverlay'),
@@ -368,6 +369,13 @@ async function processAllItemsWithUploads(reportId, allItems, progressCallback) 
         const itemId = item.itemId;
         const itemType = item.type;
         const itemIndex = i;
+        
+        // Skip if this is a preserved item (already has documentation)
+        if (item.preservedFromOriginal) {
+            completedItems++;
+            if (progressCallback) progressCallback(completedItems, totalItems);
+            continue;
+        }
      
         const fileInput = document.getElementById(
             item.type === 'expired' ? `documentation-${itemId}` : `wasteDocumentation-${itemId}`
@@ -766,7 +774,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
                 if (idx === itemIndex && itemType === 'expired') {
                     addExpiredItemWithData(item, itemId, reportId, idx, true); // true = isResubmittingItem
                 } else {
-                    // Add other expired items as read-only (they remain unchanged)
+                    // Add other expired items as read-only WITH their documentation preserved
                     addExistingItemReadOnly(item, 'expired', idx, reportId);
                 }
             });
@@ -782,7 +790,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
                 if (idx === itemIndex && itemType === 'waste') {
                     addWasteItemWithData(item, itemId, reportId, idx, true); // true = isResubmittingItem
                 } else {
-                    // Add other waste items as read-only (they remain unchanged)
+                    // Add other waste items as read-only WITH their documentation preserved
                     addExistingItemReadOnly(item, 'waste', idx, reportId);
                 }
             });
@@ -808,7 +816,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         infoDiv.innerHTML = `
             <i class="fas fa-info-circle"></i> 
             You are resubmitting <strong>1 rejected item</strong>. 
-            The other ${(report.expiredItems?.length || 0) + (report.wasteItems?.length || 0) - 1} item(s) in this report remain unchanged.
+            The other ${(report.expiredItems?.length || 0) + (report.wasteItems?.length || 0) - 1} item(s) in this report remain unchanged with their documentation.
         `;
         
         // Add it after the form header
@@ -821,7 +829,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         updateDisposalTypeHint();
         updateDisposalTypesPreview();
       
-        showNotification('Rejected item loaded. Edit and resubmit. Other items in the report are preserved.', 'success');
+        showNotification('Rejected item loaded. Edit and resubmit. Other items in the report are preserved with their documentation.', 'success');
       
     } catch (error) {
         console.error('Error loading rejected item:', error);
@@ -831,7 +839,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
     }
 }
 
-// NEW FUNCTION: Add existing item as read-only (cannot be edited)
+// FIXED: Add existing item as read-only WITH documentation preserved
 function addExistingItemReadOnly(itemData, type, index, reportId) {
     const container = type === 'expired' ? document.getElementById('expiredFields') : document.getElementById('wasteFields');
     if (!container) return;
@@ -844,6 +852,22 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
   
     const itemCost = itemData.itemCost || 0;
     const totalCost = itemCost * (itemData.quantity || 0);
+    
+    // Create documentation display HTML if there are existing docs
+    let documentationHtml = '';
+    if (itemData.documentation && itemData.documentation.length > 0) {
+        documentationHtml = '<div class="info-row full-width"><strong>Documentation:</strong> ';
+        documentationHtml += `${itemData.documentation.length} file(s) - <span style="color:#28a745;">PRESERVED</span>`;
+        
+        // Store the documentation data in hidden inputs
+        itemData.documentation.forEach((doc, docIndex) => {
+            documentationHtml += `<input type="hidden" name="existingItems[${fieldId}][documentation][${docIndex}][url]" value="${doc.url || ''}">`;
+            documentationHtml += `<input type="hidden" name="existingItems[${fieldId}][documentation][${docIndex}][name]" value="${doc.name || ''}">`;
+            documentationHtml += `<input type="hidden" name="existingItems[${fieldId}][documentation][${docIndex}][storagePath]" value="${doc.storagePath || doc.path || ''}">`;
+        });
+        
+        documentationHtml += '</div>';
+    }
   
     let content = '';
     
@@ -863,13 +887,19 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
                 <div class="info-row"><strong>Quantity:</strong> ${itemData.quantity || 0} ${itemData.unit || 'units'}</div>
                 <div class="info-row"><strong>Total Cost:</strong> ₱${totalCost.toFixed(2)}</div>
                 ${itemData.notes ? `<div class="info-row full-width"><strong>Notes:</strong> ${itemData.notes}</div>` : ''}
+                ${documentationHtml}
             </div>
             <input type="hidden" name="existingItems[${fieldId}][type]" value="expired">
             <input type="hidden" name="existingItems[${fieldId}][item]" value="${itemData.item || ''}">
+            <input type="hidden" name="existingItems[${fieldId}][deliveredDate]" value="${itemData.deliveredDate || ''}">
+            <input type="hidden" name="existingItems[${fieldId}][manufacturedDate]" value="${itemData.manufacturedDate || ''}">
+            <input type="hidden" name="existingItems[${fieldId}][expirationDate]" value="${itemData.expirationDate || ''}">
             <input type="hidden" name="existingItems[${fieldId}][quantity]" value="${itemData.quantity || 0}">
             <input type="hidden" name="existingItems[${fieldId}][unit]" value="${itemData.unit || 'pieces'}">
             <input type="hidden" name="existingItems[${fieldId}][itemCost]" value="${itemCost}">
             <input type="hidden" name="existingItems[${fieldId}][index]" value="${index}">
+            <input type="hidden" name="existingItems[${fieldId}][preservedFromOriginal]" value="true">
+            <input type="hidden" name="existingItems[${fieldId}][hasDocumentation]" value="${itemData.documentation ? itemData.documentation.length : 0}">
         `;
     } else {
         content = `
@@ -885,13 +915,17 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
                 <div class="info-row"><strong>Quantity:</strong> ${itemData.quantity || 0} ${itemData.unit || 'units'}</div>
                 <div class="info-row"><strong>Total Cost:</strong> ₱${totalCost.toFixed(2)}</div>
                 ${itemData.notes ? `<div class="info-row full-width"><strong>Notes:</strong> ${itemData.notes}</div>` : ''}
+                ${documentationHtml}
             </div>
             <input type="hidden" name="existingItems[${fieldId}][type]" value="waste">
             <input type="hidden" name="existingItems[${fieldId}][item]" value="${itemData.item || ''}">
+            <input type="hidden" name="existingItems[${fieldId}][reason]" value="${itemData.reason || ''}">
             <input type="hidden" name="existingItems[${fieldId}][quantity]" value="${itemData.quantity || 0}">
             <input type="hidden" name="existingItems[${fieldId}][unit]" value="${itemData.unit || 'pieces'}">
             <input type="hidden" name="existingItems[${fieldId}][itemCost]" value="${itemCost}">
             <input type="hidden" name="existingItems[${fieldId}][index]" value="${index}">
+            <input type="hidden" name="existingItems[${fieldId}][preservedFromOriginal]" value="true">
+            <input type="hidden" name="existingItems[${fieldId}][hasDocumentation]" value="${itemData.documentation ? itemData.documentation.length : 0}">
         `;
     }
   
@@ -1832,7 +1866,7 @@ async function handleSubmit(event) {
     let wasteItemsArray = [];
     let allItems = [];
 
-    // ===== COLLECT EXISTING (PRESERVED) ITEMS =====
+    // ===== COLLECT EXISTING (PRESERVED) ITEMS WITH DOCUMENTATION =====
     // These are the read-only items from the original report that we're preserving
     
     // Collect preserved expired items
@@ -1840,60 +1874,66 @@ async function handleSubmit(event) {
     existingExpiredItems.forEach(item => {
         const inputs = item.querySelectorAll('input[type="hidden"]');
         const itemData = {};
+        
+        // Get all hidden inputs including documentation
         inputs.forEach(input => {
-            const name = input.name.split('][').pop().replace(']', '');
-            itemData[name] = input.value;
+            const nameParts = input.name.split('][');
+            if (nameParts.length >= 2) {
+                const mainField = nameParts[0].replace('existingItems[', '');
+                const subField = nameParts[1].replace(']', '');
+                
+                if (!itemData[mainField]) itemData[mainField] = {};
+                if (subField.includes('documentation')) {
+                    if (!itemData[mainField].documentation) itemData[mainField].documentation = [];
+                    // Handle documentation array
+                    const docIndex = nameParts[2] ? parseInt(nameParts[2].replace(']', '')) : 0;
+                    const docField = nameParts[3] ? nameParts[3].replace(']', '') : '';
+                    
+                    if (!itemData[mainField].documentation[docIndex]) {
+                        itemData[mainField].documentation[docIndex] = {};
+                    }
+                    if (docField) {
+                        itemData[mainField].documentation[docIndex][docField] = input.value;
+                    }
+                } else {
+                    itemData[mainField][subField] = input.value;
+                }
+            } else {
+                // Simple field
+                const name = input.name.split('][').pop().replace(']', '');
+                itemData[name] = input.value;
+            }
         });
         
-        if (itemData.item) {
+        // Get the main item data (first key)
+        const mainKey = Object.keys(itemData).find(key => key !== 'documentation');
+        if (mainKey && itemData[mainKey] && itemData[mainKey].item) {
             const preservedItem = {
-                type: 'expired',
-                item: itemData.item,
-                quantity: parseFloat(itemData.quantity) || 0,
-                unit: itemData.unit || 'pieces',
-                itemCost: parseFloat(itemData.itemCost) || 0,
-                documentation: [], // Keep existing docs? This needs to be handled
+                type: itemData[mainKey].type || 'expired',
+                item: itemData[mainKey].item,
+                deliveredDate: itemData[mainKey].deliveredDate || '',
+                manufacturedDate: itemData[mainKey].manufacturedDate || '',
+                expirationDate: itemData[mainKey].expirationDate || '',
+                reason: itemData[mainKey].reason || '',
+                quantity: parseFloat(itemData[mainKey].quantity) || 0,
+                unit: itemData[mainKey].unit || 'pieces',
+                itemCost: parseFloat(itemData[mainKey].itemCost) || 0,
+                notes: itemData[mainKey].notes || '',
+                documentation: itemData[mainKey].documentation || [],
                 approvalStatus: 'pending', // Reset status to pending
                 submittedAt: new Date().toISOString(),
                 preservedFromOriginal: true,
-                originalIndex: itemData.index
+                originalIndex: parseInt(itemData[mainKey].index) || 0,
+                hasImages: (itemData[mainKey].documentation && itemData[mainKey].documentation.length > 0)
             };
             
-            // TODO: Need to preserve original documentation? This is complex
-            // For now, we'll mark as needing review
-            
-            expiredItemsArray.push(preservedItem);
-            allItems.push(preservedItem);
-        }
-    });
-    
-    // Collect preserved waste items
-    const existingWasteItems = document.querySelectorAll('#wasteFields .existing-item');
-    existingWasteItems.forEach(item => {
-        const inputs = item.querySelectorAll('input[type="hidden"]');
-        const itemData = {};
-        inputs.forEach(input => {
-            const name = input.name.split('][').pop().replace(']', '');
-            itemData[name] = input.value;
-        });
-        
-        if (itemData.item) {
-            const preservedItem = {
-                type: 'waste',
-                item: itemData.item,
-                quantity: parseFloat(itemData.quantity) || 0,
-                unit: itemData.unit || 'pieces',
-                itemCost: parseFloat(itemData.itemCost) || 0,
-                reason: 'preserved', // Placeholder
-                documentation: [],
-                approvalStatus: 'pending',
-                submittedAt: new Date().toISOString(),
-                preservedFromOriginal: true,
-                originalIndex: itemData.index
-            };
-            
-            wasteItemsArray.push(preservedItem);
-            allItems.push(preservedItem);
+            if (preservedItem.type === 'expired') {
+                expiredItemsArray.push(preservedItem);
+                allItems.push(preservedItem);
+            } else {
+                wasteItemsArray.push(preservedItem);
+                allItems.push(preservedItem);
+            }
         }
     });
 
@@ -2178,7 +2218,7 @@ async function handleSubmit(event) {
                     itemType: originalItemType,
                     itemIndex: originalItemIndex,
                     resubmittedBy: currentUser?.email || 'System',
-                    note: `Resubmitted one item, preserved ${(originalReport.expiredItems?.length || 0) + (originalReport.wasteItems?.length || 0) - 1} other items`
+                    note: `Resubmitted one item, preserved ${(originalReport.expiredItems?.length || 0) + (originalReport.wasteItems?.length || 0) - 1} other items with their documentation`
                 }
             ]
         };
@@ -2200,7 +2240,7 @@ async function handleSubmit(event) {
             wasteItems: wasteItemsArray,
             totalExpiredItems: expiredItemsArray.length,
             totalWasteItems: wasteItemsArray.length,
-            hasImages: totalFiles > 0,
+            hasImages: totalFiles > 0 || expiredItemsArray.some(i => i.hasImages) || wasteItemsArray.some(i => i.hasImages),
             imageCount: totalFiles,
             fileUploadComplete: false
         };
@@ -2219,7 +2259,8 @@ async function handleSubmit(event) {
             unit: item.unit || '',
             reason: item.reason || 'N/A',
             notes: item.notes || '',
-            itemCost: Number(item.itemCost) || 0
+            itemCost: Number(item.itemCost) || 0,
+            hasImages: item.hasImages || false
         }));
         console.log("Items that will be sent to email:", JSON.stringify(emailItems, null, 2));
 
