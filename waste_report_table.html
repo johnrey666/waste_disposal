@@ -543,6 +543,48 @@ body.user .user-only {
     background: #d1ecf1 !important;
     color: #0c5460 !important;
 }
+
+/* Sortable Date Header Styles */
+#reportsTable th[onclick] {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease;
+    position: relative;
+}
+
+#reportsTable th[onclick]:hover {
+    background: var(--color-accent);
+}
+
+.sort-icon {
+    display: inline-block;
+    margin-left: 5px;
+    font-size: 12px;
+    color: var(--color-primary);
+}
+
+.sort-icon i {
+    transition: transform 0.15s ease;
+}
+
+/* Visual feedback when sorting */
+#reportsTable th.sorted-asc,
+#reportsTable th.sorted-desc {
+    background: var(--color-accent);
+    color: var(--color-primary);
+}
+
+/* Add a subtle indicator for the sorted column */
+#reportsTable th.sorted-asc::after,
+#reportsTable th.sorted-desc::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 10%;
+    width: 80%;
+    height: 2px;
+    background: var(--color-primary);
+}
 </style>
 <body class="">
     <!-- Enhanced Loading Overlay -->
@@ -732,7 +774,7 @@ body.user .user-only {
                 </div>
             </div>
 
-            <!-- Reports Table -->
+            <!-- Reports Table with Sortable Date Column -->
             <div class="table-container">
                 <table id="reportsTable">
                     <thead>
@@ -740,7 +782,12 @@ body.user .user-only {
                             <th>Report ID</th>
                             <th>Store</th>
                             <th>Personnel</th>
-                            <th>Date</th>
+                            <th onclick="toggleDateSort()" style="cursor: pointer; user-select: none;">
+                                Date 
+                                <span id="sortDateIcon" class="sort-icon">
+                                    <i class="fas fa-sort-down"></i>
+                                </span>
+                            </th>
                             <th>Type</th>
                             <th>Email</th>
                             <th>Submitted</th>

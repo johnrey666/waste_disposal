@@ -228,7 +228,7 @@ const ADMIN_EMAILS = [
 ];
 
 // ================================
-// DATE SORTING FUNCTION
+// DATE SORTING FUNCTIONS
 // ================================
 
 // Toggle date sort direction
@@ -238,7 +238,16 @@ function toggleDateSort() {
     // Update icon
     const icon = document.getElementById('sortDateIcon');
     if (icon) {
-        icon.className = sortDateDirection === 'desc' ? 'fas fa-sort-down' : 'fas fa-sort-up';
+        icon.innerHTML = sortDateDirection === 'desc' ? 
+            '<i class="fas fa-sort-down"></i>' : 
+            '<i class="fas fa-sort-up"></i>';
+    }
+    
+    // Update sorted column visual indicator
+    const dateHeader = document.querySelector('#reportsTable th[onclick="toggleDateSort()"]');
+    if (dateHeader) {
+        dateHeader.classList.remove('sorted-asc', 'sorted-desc');
+        dateHeader.classList.add(sortDateDirection === 'desc' ? 'sorted-desc' : 'sorted-asc');
     }
     
     // Re-sort and reload
@@ -6496,6 +6505,18 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('Document loaded, initializing reports table...');
     initializeApp();
     setupEventListeners();
+    
+    // Initialize sort icon
+    const sortIcon = document.getElementById('sortDateIcon');
+    if (sortIcon) {
+        sortIcon.innerHTML = '<i class="fas fa-sort-down"></i>';
+    }
+    
+    // Add visual indicator for default sort (descending - newest first)
+    const dateHeader = document.querySelector('#reportsTable th[onclick="toggleDateSort()"]');
+    if (dateHeader) {
+        dateHeader.classList.add('sorted-desc');
+    }
 });
 
 // ================================
@@ -6572,4 +6593,4 @@ window.saveDrawnSignature = saveDrawnSignature;
 window.clearSignaturePad = clearSignaturePad;
 
 // Date sort function
-window.toggleDateSort = toggleDateSort;     
+window.toggleDateSort = toggleDateSort;
