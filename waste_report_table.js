@@ -120,6 +120,7 @@ let isDataLoading = false;
 let allReportsData = [];
 let filteredReportsData = [];
 let totalFilteredCount = 0;
+let sortDateDirection = 'desc'; // 'asc' or 'desc' for date sorting
 
 // Items management variables
 let itemsData = [];
@@ -225,6 +226,41 @@ const ADMIN_EMAILS = [
     'rmcbien61@gmail.com',
     'johnreydado3@gmail.com'
 ];
+
+// ================================
+// DATE SORTING FUNCTION
+// ================================
+
+// Toggle date sort direction
+function toggleDateSort() {
+    sortDateDirection = sortDateDirection === 'desc' ? 'asc' : 'desc';
+    
+    // Update icon
+    const icon = document.getElementById('sortDateIcon');
+    if (icon) {
+        icon.className = sortDateDirection === 'desc' ? 'fas fa-sort-down' : 'fas fa-sort-up';
+    }
+    
+    // Re-sort and reload
+    sortReportsByDate();
+    loadReports();
+}
+
+// Sort reports by date
+function sortReportsByDate() {
+    if (!filteredReportsData || filteredReportsData.length === 0) return;
+    
+    filteredReportsData.sort((a, b) => {
+        const dateA = new Date(a.reportDate).getTime();
+        const dateB = new Date(b.reportDate).getTime();
+        
+        if (sortDateDirection === 'desc') {
+            return dateB - dateA; // Newest first
+        } else {
+            return dateA - dateB; // Oldest first
+        }
+    });
+}
 
 // ================================
 // E-SIGNATURE FUNCTIONS
@@ -880,7 +916,7 @@ function showReportsSection() {
 }
 
 // ================================
-// STATISTICS FUNCTIONS
+// FIXED STATISTICS FUNCTIONS - CORRECT PERIOD CALCULATION
 // ================================
 function updateStatisticsFromAllReports() {
     if (!allReportsData || allReportsData.length === 0) {
@@ -921,6 +957,7 @@ function updateStatisticsFromAllReports() {
     }
 }
 
+// FIXED: Correct period filtering for Last Month, This Week, Last Week
 function filterReportsByPeriod(reports, period) {
     if (period === 'all' || !reports || reports.length === 0) {
         return reports;
@@ -929,68 +966,135 @@ function filterReportsByPeriod(reports, period) {
     const now = new Date();
     let startDate, endDate;
     
+    // Set timezone to local for consistent calculation
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
     switch(period) {
         case 'today':
-            startDate = new Date(now);
+            startDate = new Date(today);
             startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(now);
+            endDate = new Date(today);
             endDate.setHours(23, 59, 59, 999);
             break;
+            
         case 'thisWeek':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - startDate.getDay());
+            // Start from Monday (0 = Sunday, so adjust)
+            const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - daysToMonday);
             startDate.setHours(0, 0, 0, 0);
+            
             endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + 6);
+            endDate.setDate(startDate.getDate() + 6);
             endDate.setHours(23, 59, 59, 999);
             break;
+            
+        case 'lastWeek':
+            // Last week: Monday to Sunday of previous week
+            const currentDay = today.getDay();
+            const daysToLastMonday = currentDay === 0 ? 13 : currentDay + 6;
+            
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - daysToLastMonday);
+            startDate.setHours(0, 0, 0, 0);
+            
+            endDate = new Date(startDate);
+            endDate.setDate(startDate.getDate() + 6);
+            endDate.setHours(23, 59, 59, 999);
+            break;
+            
         case 'thisMonth':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
             startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
             endDate.setHours(23, 59, 59, 999);
             break;
+            
         case 'lastMonth':
-            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            // Last month: first day to last day of previous month
+            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            endDate = new Date(today.getFullYear(), today.getMonth(), 0);
             endDate.setHours(23, 59, 59, 999);
             break;
+            
         case 'thisYear':
-            startDate = new Date(now.getFullYear(), 0, 1);
+            startDate = new Date(today.getFullYear(), 0, 1);
             startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(now.getFullYear(), 11, 31);
+            endDate = new Date(today.getFullYear(), 11, 31);
             endDate.setHours(23, 59, 59, 999);
             break;
+            
         default:
             return reports;
     }
     
+    // Log for debugging
+    console.log(`Filtering for ${period}:`, {
+        start: startDate.toISOString(),
+        end: endDate.toISOString()
+    });
+    
     return reports.filter(report => {
         const reportDate = new Date(report.reportDate);
-        return reportDate >= startDate && reportDate <= endDate;
+        // Set to start of day for comparison
+        reportDate.setHours(0, 0, 0, 0);
+        
+        const reportTime = reportDate.getTime();
+        const startTime = startDate.getTime();
+        const endTime = endDate.getTime();
+        
+        return reportTime >= startTime && reportTime <= endTime;
     });
 }
 
 function getStatsPeriodText(period) {
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
     switch(period) {
         case 'today':
-            return `Today (${now.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'})})`;
-        case 'thisWeek':
-            const weekStart = new Date(now);
-            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            return `Today (${today.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'})})`;
+            
+        case 'thisWeek': {
+            const dayOfWeek = today.getDay();
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            
+            const weekStart = new Date(today);
+            weekStart.setDate(today.getDate() - daysToMonday);
+            
             const weekEnd = new Date(weekStart);
-            weekEnd.setDate(weekEnd.getDate() + 6);
+            weekEnd.setDate(weekStart.getDate() + 6);
+            
             return `This Week (${weekStart.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} - ${weekEnd.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
+        }
+        
+        case 'lastWeek': {
+            const currentDay = today.getDay();
+            const daysToLastMonday = currentDay === 0 ? 13 : currentDay + 6;
+            
+            const lastWeekStart = new Date(today);
+            lastWeekStart.setDate(today.getDate() - daysToLastMonday);
+            
+            const lastWeekEnd = new Date(lastWeekStart);
+            lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
+            
+            return `Last Week (${lastWeekStart.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} - ${lastWeekEnd.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
+        }
+        
         case 'thisMonth':
-            return `This Month (${now.toLocaleDateString('en-US', {month: 'long', year: 'numeric'})})`;
-        case 'lastMonth':
-            const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            return `This Month (${today.toLocaleDateString('en-US', {month: 'long', year: 'numeric'})})`;
+            
+        case 'lastMonth': {
+            const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             return `Last Month (${lastMonth.toLocaleDateString('en-US', {month: 'long', year: 'numeric'})})`;
+        }
+        
         case 'thisYear':
-            return `This Year (${now.getFullYear()})`;
+            return `This Year (${today.getFullYear()})`;
+            
         case 'all':
         default:
             return 'All Time';
@@ -1333,29 +1437,6 @@ function showNotification(message, type = 'success', duration = 3000) {
     return notification;
 }
 
-function showLoading(show, message = 'Loading...') {
-    const overlay = Performance.getElement('#loadingOverlay');
-    if (!overlay) return;
-    
-    Performance.batchUpdate(() => {
-        overlay.style.display = show ? 'flex' : 'none';
-        if (show && message !== 'Loading...') {
-            const spinner = overlay.querySelector('.loading-spinner');
-            if (spinner) {
-                const existingText = spinner.nextElementSibling;
-                if (existingText && existingText.tagName === 'P') {
-                    existingText.textContent = message;
-                } else {
-                    const text = document.createElement('p');
-                    text.textContent = message;
-                    text.style.cssText = 'color: white; margin: 15px 0 0; font-size: 14px; text-align: center;';
-                    overlay.appendChild(text);
-                }
-            }
-        }
-    });
-}
-
 // ================================
 // OPTIMIZED INITIALIZATION
 // ================================
@@ -1395,7 +1476,7 @@ function initializeApp() {
 }
 
 // ================================
-// CHART FUNCTIONS
+// FIXED CHART FUNCTIONS - CORRECT PERIOD CALCULATION
 // ================================
 function initChartTypeSelector() {
     const chartTypeBtns = document.querySelectorAll('.chart-type-btn');
@@ -1756,69 +1837,117 @@ function createBarOrPieChart(period, metric, sortOrder) {
     updateChartStatistics(sortedStoreEntries, metric, period);
 }
 
+// FIXED: Correct period calculation for Last Month, This Week, Last Week
 function calculatePeriodMetrics(storeEntries, period) {
     const now = new Date();
+    // Use local date for consistent calculation
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     let startDate, endDate;
     
     switch(period) {
         case 'last7days':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - 7);
-            endDate = new Date(now);
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 7);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(today);
+            endDate.setHours(23, 59, 59, 999);
             break;
+            
         case 'last30days':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - 30);
-            endDate = new Date(now);
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 30);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(today);
+            endDate.setHours(23, 59, 59, 999);
             break;
-        case 'thisWeek':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - startDate.getDay());
+            
+        case 'thisWeek': {
+            // Monday to Sunday
+            const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - daysToMonday);
+            startDate.setHours(0, 0, 0, 0);
+            
             endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + 6);
+            endDate.setDate(startDate.getDate() + 6);
+            endDate.setHours(23, 59, 59, 999);
             break;
-        case 'lastWeek':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - startDate.getDay() - 7);
+        }
+        
+        case 'lastWeek': {
+            // Previous week Monday to Sunday
+            const currentDay = today.getDay();
+            const daysToLastMonday = currentDay === 0 ? 13 : currentDay + 6;
+            
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - daysToLastMonday);
+            startDate.setHours(0, 0, 0, 0);
+            
             endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + 6);
+            endDate.setDate(startDate.getDate() + 6);
+            endDate.setHours(23, 59, 59, 999);
             break;
+        }
+        
         case 'thisMonth':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            endDate.setHours(23, 59, 59, 999);
             break;
+            
         case 'lastMonth':
-            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+            endDate.setHours(23, 59, 59, 999);
             break;
-        case 'thisQuarter':
-            const quarter = Math.floor(now.getMonth() / 3);
-            startDate = new Date(now.getFullYear(), quarter * 3, 1);
-            endDate = new Date(now.getFullYear(), (quarter + 1) * 3, 0);
+            
+        case 'thisQuarter': {
+            const quarter = Math.floor(today.getMonth() / 3);
+            startDate = new Date(today.getFullYear(), quarter * 3, 1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(today.getFullYear(), (quarter + 1) * 3, 0);
+            endDate.setHours(23, 59, 59, 999);
             break;
+        }
+        
         case 'thisYear':
-            startDate = new Date(now.getFullYear(), 0, 1);
-            endDate = new Date(now.getFullYear(), 11, 31);
+            startDate = new Date(today.getFullYear(), 0, 1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(today.getFullYear(), 11, 31);
+            endDate.setHours(23, 59, 59, 999);
             break;
-        case 'specificDateRange':
+            
+        case 'specificDateRange': {
             const dateFrom = Performance.getElement('#chartDateFrom')?.value;
             const dateTo = Performance.getElement('#chartDateTo')?.value;
             if (dateFrom && dateTo) {
                 startDate = new Date(dateFrom);
+                startDate.setHours(0, 0, 0, 0);
                 endDate = new Date(dateTo);
+                endDate.setHours(23, 59, 59, 999);
             } else {
-                startDate = new Date(now);
-                startDate.setDate(startDate.getDate() - 30);
-                endDate = new Date(now);
+                startDate = new Date(today);
+                startDate.setDate(today.getDate() - 30);
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(today);
+                endDate.setHours(23, 59, 59, 999);
             }
             break;
-        default:
+        }
+        
+        default: // 'all'
             startDate = new Date(0);
             endDate = new Date(8640000000000000);
     }
     
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(23, 59, 59, 999);
+    console.log(`Chart period ${period}:`, {
+        start: startDate.toISOString(),
+        end: endDate.toISOString()
+    });
     
     storeEntries.forEach(([store, data]) => {
         let periodApprovedCost = 0;
@@ -1827,24 +1956,30 @@ function calculatePeriodMetrics(storeEntries, period) {
         let periodItemCount = 0;
         let periodApprovedItemCount = 0;
         
-        const currentDate = new Date(startDate);
-        while (currentDate <= endDate) {
-            const dateKey = currentDate.toISOString().split('T')[0];
+        // Convert report dates to timestamps for comparison
+        const startTime = startDate.getTime();
+        const endTime = endDate.getTime();
+        
+        // Check each date in the period
+        data.reportDates.forEach(dateStr => {
+            const reportDate = new Date(dateStr);
+            reportDate.setHours(0, 0, 0, 0);
+            const reportTime = reportDate.getTime();
             
-            if (data.reportDates.has(dateKey)) {
+            if (reportTime >= startTime && reportTime <= endTime) {
                 periodReportCount++;
+                
+                // Add costs for this date
+                if (data.dailyCosts[dateStr]) {
+                    periodApprovedCost += data.dailyCosts[dateStr].approved || 0;
+                    periodTotalCost += data.dailyCosts[dateStr].total || 0;
+                }
+                
+                // Count items for this date
+                periodItemCount += calculateItemsForDate(store, dateStr);
+                periodApprovedItemCount += calculateApprovedItemsForDate(store, dateStr);
             }
-            
-            if (data.dailyCosts[dateKey]) {
-                periodApprovedCost += data.dailyCosts[dateKey].approved || 0;
-                periodTotalCost += data.dailyCosts[dateKey].total || 0;
-            }
-            
-            periodItemCount += calculateItemsForDate(store, dateKey);
-            periodApprovedItemCount += calculateApprovedItemsForDate(store, dateKey);
-            
-            currentDate.setDate(currentDate.getDate() + 1);
-        }
+        });
         
         data.periodReportCount = periodReportCount;
         data.periodApprovedCost = periodApprovedCost;
@@ -1864,54 +1999,62 @@ function createLineChart(period, metric, selectedStore) {
     }
     
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     let startDate, endDate;
     let dateFormat = 'MMM dd';
     
     switch(period) {
         case 'last7days':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - 7);
-            endDate = new Date(now);
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 7);
+            endDate = new Date(today);
             break;
         case 'last30days':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - 30);
-            endDate = new Date(now);
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 30);
+            endDate = new Date(today);
             break;
-        case 'thisWeek':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - startDate.getDay());
+        case 'thisWeek': {
+            const dayOfWeek = today.getDay();
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - daysToMonday);
             endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + 6);
+            endDate.setDate(startDate.getDate() + 6);
             break;
-        case 'lastWeek':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - startDate.getDay() - 7);
+        }
+        case 'lastWeek': {
+            const currentDay = today.getDay();
+            const daysToLastMonday = currentDay === 0 ? 13 : currentDay + 6;
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - daysToLastMonday);
             endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + 6);
+            endDate.setDate(startDate.getDate() + 6);
             break;
+        }
         case 'thisMonth':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
             dateFormat = 'MMM dd';
             break;
         case 'lastMonth':
-            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            endDate = new Date(today.getFullYear(), today.getMonth(), 0);
             dateFormat = 'MMM dd';
             break;
-        case 'thisQuarter':
-            const quarter = Math.floor(now.getMonth() / 3);
-            startDate = new Date(now.getFullYear(), quarter * 3, 1);
-            endDate = new Date(now.getFullYear(), (quarter + 1) * 3, 0);
+        case 'thisQuarter': {
+            const quarter = Math.floor(today.getMonth() / 3);
+            startDate = new Date(today.getFullYear(), quarter * 3, 1);
+            endDate = new Date(today.getFullYear(), (quarter + 1) * 3, 0);
             dateFormat = 'MMM dd';
             break;
+        }
         case 'thisYear':
-            startDate = new Date(now.getFullYear(), 0, 1);
-            endDate = new Date(now.getFullYear(), 11, 31);
+            startDate = new Date(today.getFullYear(), 0, 1);
+            endDate = new Date(today.getFullYear(), 11, 31);
             dateFormat = 'MMM';
             break;
-        case 'specificDateRange':
+        case 'specificDateRange': {
             const dateFrom = Performance.getElement('#chartDateFrom')?.value;
             const dateTo = Performance.getElement('#chartDateTo')?.value;
             if (dateFrom && dateTo) {
@@ -1920,11 +2063,12 @@ function createLineChart(period, metric, selectedStore) {
                 const dayDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
                 dateFormat = dayDiff > 90 ? 'MMM' : 'MMM dd';
             } else {
-                startDate = new Date(now);
-                startDate.setDate(startDate.getDate() - 30);
-                endDate = new Date(now);
+                startDate = new Date(today);
+                startDate.setDate(today.getDate() - 30);
+                endDate = new Date(today);
             }
             break;
+        }
         default:
             const allDates = Object.keys(chartAnalysis.timeSeriesData).sort();
             if (allDates.length > 0) {
@@ -1933,9 +2077,9 @@ function createLineChart(period, metric, selectedStore) {
                 const dayDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
                 dateFormat = dayDiff > 90 ? 'MMM yyyy' : 'MMM dd';
             } else {
-                startDate = new Date(now);
-                startDate.setDate(startDate.getDate() - 30);
-                endDate = new Date(now);
+                startDate = new Date(today);
+                startDate.setDate(today.getDate() - 30);
+                endDate = new Date(today);
             }
     }
     
@@ -2333,6 +2477,7 @@ function getChartLabel(metric, period) {
 
 function getPeriodText(period) {
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const dateFrom = Performance.getElement('#chartDateFrom');
     const dateTo = Performance.getElement('#chartDateTo');
     
@@ -2341,23 +2486,30 @@ function getPeriodText(period) {
             return 'Last 7 Days';
         case 'last30days':
             return 'Last 30 Days';
-        case 'thisWeek':
-            const thisWeekStart = new Date(now);
-            thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay());
-            return `This Week (${thisWeekStart.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
-        case 'lastWeek':
-            const lastWeekStart = new Date(now);
-            lastWeekStart.setDate(lastWeekStart.getDate() - lastWeekStart.getDay() - 7);
+        case 'thisWeek': {
+            const dayOfWeek = today.getDay();
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            const weekStart = new Date(today);
+            weekStart.setDate(today.getDate() - daysToMonday);
+            return `This Week (${weekStart.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
+        }
+        case 'lastWeek': {
+            const currentDay = today.getDay();
+            const daysToLastMonday = currentDay === 0 ? 13 : currentDay + 6;
+            const lastWeekStart = new Date(today);
+            lastWeekStart.setDate(today.getDate() - daysToLastMonday);
             return `Last Week (${lastWeekStart.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})})`;
+        }
         case 'thisMonth':
-            return `This Month (${now.toLocaleDateString('en-US', {month: 'short'})})`;
-        case 'lastMonth':
-            const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            return `This Month (${today.toLocaleDateString('en-US', {month: 'short'})})`;
+        case 'lastMonth': {
+            const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             return `Last Month (${lastMonth.toLocaleDateString('en-US', {month: 'short'})})`;
+        }
         case 'thisQuarter':
             return 'This Quarter';
         case 'thisYear':
-            return `This Year (${now.getFullYear()})`;
+            return `This Year (${today.getFullYear()})`;
         case 'specificDateRange':
             if (dateFrom?.value && dateTo?.value) {
                 const fromDate = new Date(dateFrom.value);
@@ -3642,7 +3794,7 @@ function confirmDeleteAll() {
 }
 
 // ================================
-// REPORTS LOADING
+// REPORTS LOADING - WITH SORTING
 // ================================
 async function loadReports() {
     if (isDataLoading) return;
@@ -3744,6 +3896,9 @@ async function loadReports() {
         
         allReportsData = allReports;
         totalFilteredCount = filteredReportsData.length;
+        
+        // Apply date sorting
+        sortReportsByDate();
         
         const totalPages = Math.ceil(totalFilteredCount / pageSize);
         const startIndex = (currentPage - 1) * pageSize;
@@ -6415,3 +6570,6 @@ window.onSignatureTypeChange = onSignatureTypeChange;
 window.uploadSignatureImage = uploadSignatureImage;
 window.saveDrawnSignature = saveDrawnSignature;
 window.clearSignaturePad = clearSignaturePad;
+
+// Date sort function
+window.toggleDateSort = toggleDateSort;     
