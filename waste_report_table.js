@@ -1655,6 +1655,7 @@ function analyzeStorePerformance() {
             });
         }
         
+
         if (report.wasteItems) {
             report.wasteItems.forEach(item => {
                 const itemCost = item.itemCost || 0;
@@ -1920,7 +1921,7 @@ function calculatePeriodMetrics(storeEntries, period) {
             startDate.setHours(0, 0, 0, 0);
             endDate = new Date(today.getFullYear(), (quarter + 1) * 3, 0);
             endDate.setHours(23, 59, 59, 999);
-            break;
+            break;  
         }
         
         case 'thisYear':
