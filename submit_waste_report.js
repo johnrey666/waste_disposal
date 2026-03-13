@@ -1,9 +1,10 @@
-// submit_waste_report.js - COMPLETE FILE - FIXED VERSION (February 27, 2026)
+// submit_waste_report.js - COMPLETE FILE - FIXED VERSION (March 13, 2026)
 // CHANGES:
 // 1. Fixed resubmission issue - now preserves other items in the report with their original data and images
 // 2. When resubmitting one item, other items in the same report are kept intact with their approval status
 // 3. Only the resubmitted item's status is reset to 'pending' for re-review
 // 4. Images for preserved items are maintained exactly as they were
+// 5. Fixed issue where only resubmitted item was showing in the report
 
 const Loader = {
     overlay: document.getElementById('loadingOverlay'),
@@ -803,8 +804,9 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         // Add a note about other items being preserved
         const infoDiv = document.createElement('div');
         infoDiv.className = 'resubmission-info';
+        infoDiv.style.cssText = 'background: #e8f5e9; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #28a745;';
         infoDiv.innerHTML = `
-            <i class="fas fa-info-circle"></i> 
+            <i class="fas fa-info-circle" style="color: #28a745;"></i> 
             You are resubmitting <strong>1 rejected item</strong>. 
             The other ${(report.expiredItems?.length || 0) + (report.wasteItems?.length || 0) - 1} item(s) in this report remain unchanged with their original status and images.
         `;
@@ -863,7 +865,7 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
                     </span>
                 </div>
             </div>
-            <div class="form-grid existing-item-grid">
+            <div class="form-grid existing-item-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px;">
                 <div class="info-row"><strong>Item:</strong> ${itemData.item || 'N/A'}</div>
                 <div class="info-row"><strong>Delivered:</strong> ${formatDate(itemData.deliveredDate)}</div>
                 <div class="info-row"><strong>Manufactured:</strong> ${formatDate(itemData.manufacturedDate)}</div>
@@ -871,11 +873,11 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
                 <div class="info-row"><strong>Quantity:</strong> ${quantity} ${itemData.unit || 'units'}</div>
                 <div class="info-row"><strong>Unit Cost:</strong> ₱${(itemCost || 0).toFixed(2)}</div>
                 <div class="info-row"><strong>Total Cost:</strong> ₱${totalCost.toFixed(2)}</div>
-                ${itemData.notes ? `<div class="info-row full-width"><strong>Notes:</strong> ${itemData.notes}</div>` : ''}
+                ${itemData.notes ? `<div class="info-row full-width" style="grid-column: 1 / -1;"><strong>Notes:</strong> ${itemData.notes}</div>` : ''}
                 ${itemData.documentation && itemData.documentation.length > 0 ? 
-                    `<div class="info-row full-width"><strong>Documentation:</strong> ${itemData.documentation.length} file(s) - <span style="color:#28a745;">PRESERVED</span></div>` : ''}
+                    `<div class="info-row full-width" style="grid-column: 1 / -1;"><strong>Documentation:</strong> ${itemData.documentation.length} file(s) - <span style="color:#28a745;">PRESERVED</span></div>` : ''}
                 ${itemData.rejectionReason ? `
-                    <div class="info-row full-width" style="color: #dc3545; background: #fff3cd; padding: 8px; border-radius: 4px;">
+                    <div class="info-row full-width" style="grid-column: 1 / -1; color: #dc3545; background: #fff3cd; padding: 8px; border-radius: 4px;">
                         <i class="fas fa-exclamation-triangle"></i> <strong>Previous Rejection:</strong> ${itemData.rejectionReason}
                     </div>` : ''}
             </div>
@@ -922,17 +924,17 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
                     </span>
                 </div>
             </div>
-            <div class="form-grid existing-item-grid">
+            <div class="form-grid existing-item-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px;">
                 <div class="info-row"><strong>Item:</strong> ${itemData.item || 'N/A'}</div>
                 <div class="info-row"><strong>Reason:</strong> ${itemData.reason || 'N/A'}</div>
                 <div class="info-row"><strong>Quantity:</strong> ${quantity} ${itemData.unit || 'units'}</div>
                 <div class="info-row"><strong>Unit Cost:</strong> ₱${(itemCost || 0).toFixed(2)}</div>
                 <div class="info-row"><strong>Total Cost:</strong> ₱${totalCost.toFixed(2)}</div>
-                ${itemData.notes ? `<div class="info-row full-width"><strong>Notes:</strong> ${itemData.notes}</div>` : ''}
+                ${itemData.notes ? `<div class="info-row full-width" style="grid-column: 1 / -1;"><strong>Notes:</strong> ${itemData.notes}</div>` : ''}
                 ${itemData.documentation && itemData.documentation.length > 0 ? 
-                    `<div class="info-row full-width"><strong>Documentation:</strong> ${itemData.documentation.length} file(s) - <span style="color:#28a745;">PRESERVED</span></div>` : ''}
+                    `<div class="info-row full-width" style="grid-column: 1 / -1;"><strong>Documentation:</strong> ${itemData.documentation.length} file(s) - <span style="color:#28a745;">PRESERVED</span></div>` : ''}
                 ${itemData.rejectionReason ? `
-                    <div class="info-row full-width" style="color: #dc3545; background: #fff3cd; padding: 8px; border-radius: 4px;">
+                    <div class="info-row full-width" style="grid-column: 1 / -1; color: #dc3545; background: #fff3cd; padding: 8px; border-radius: 4px;">
                         <i class="fas fa-exclamation-triangle"></i> <strong>Previous Rejection:</strong> ${itemData.rejectionReason}
                     </div>` : ''}
             </div>
@@ -1013,7 +1015,7 @@ function addExpiredItemWithData(itemData, preservedItemId = null, originalReport
             <div class="field-title">
                 ${isResubmittingItem ? '<i class="fas fa-sync-alt"></i> Resubmitting Expired Item' : 'Expired Item'} 
                 ${isKitchen ? '<span class="kitchen-unit-indicator">🍳 Fixed: KG</span>' : ''}
-                ${isResubmittingItem ? '<span class="resubmit-badge">RESUBMITTING</span>' : ''}
+                ${isResubmittingItem ? '<span class="resubmit-badge" style="background:#28a745; color:white; padding:2px 8px; border-radius:12px; font-size:10px; margin-left:8px;">RESUBMITTING</span>' : ''}
             </div>
             <button type="button" class="remove-btn" onclick="removeField('expired-${fieldId}')" ${isResubmittingItem ? 'disabled' : ''}>×</button>
         </div>
@@ -1130,7 +1132,7 @@ function addWasteItemWithData(itemData, preservedItemId = null, originalReportId
             <div class="field-title">
                 ${isResubmittingItem ? '<i class="fas fa-sync-alt"></i> Resubmitting Waste Item' : 'Waste Item'} 
                 ${isKitchen ? '<span class="kitchen-unit-indicator">🍳 Fixed: KG</span>' : ''}
-                ${isResubmittingItem ? '<span class="resubmit-badge">RESUBMITTING</span>' : ''}
+                ${isResubmittingItem ? '<span class="resubmit-badge" style="background:#28a745; color:white; padding:2px 8px; border-radius:12px; font-size:10px; margin-left:8px;">RESUBMITTING</span>' : ''}
             </div>
             <button type="button" class="remove-btn" onclick="removeField('waste-${fieldId}')" ${isResubmittingItem ? 'disabled' : ''}>×</button>
         </div>
@@ -1970,7 +1972,61 @@ async function handleSubmit(event) {
         }
     }
 
-    // SECOND: Collect editable expired items (including resubmitted item)
+    // SECOND: Collect existing waste items similarly
+    const existingWasteItems = document.querySelectorAll('#wasteFields .existing-item');
+    for (const item of existingWasteItems) {
+        const inputs = item.querySelectorAll('input[type="hidden"]');
+        const itemData = {};
+        
+        // Parse all hidden inputs
+        inputs.forEach(input => {
+            const name = input.name;
+            if (name.includes('existingItems')) {
+                const matches = name.match(/\[([^\]]+)\]/g);
+                if (matches && matches.length >= 2) {
+                    const fieldId = matches[0].replace('[', '').replace(']', '');
+                    const fieldName = matches[1].replace('[', '').replace(']', '');
+                    
+                    if (!itemData[fieldId]) itemData[fieldId] = {};
+                    
+                    if (fieldName === 'documentation' && matches.length >= 4) {
+                        const docIndex = matches[2].replace('[', '').replace(']', '');
+                        const docField = matches[3].replace('[', '').replace(']', '');
+                        
+                        if (!itemData[fieldId].documentation) itemData[fieldId].documentation = [];
+                        if (!itemData[fieldId].documentation[docIndex]) itemData[fieldId].documentation[docIndex] = {};
+                        itemData[fieldId].documentation[docIndex][docField] = input.value;
+                    } else {
+                        itemData[fieldId][fieldName] = input.value;
+                    }
+                }
+            }
+        });
+        
+        const mainKey = Object.keys(itemData)[0];
+        if (mainKey && itemData[mainKey]) {
+            const preservedItem = {
+                type: itemData[mainKey].type || 'waste',
+                item: itemData[mainKey].item || '',
+                reason: itemData[mainKey].reason || '',
+                quantity: parseFloat(itemData[mainKey].quantity) || 0,
+                unit: itemData[mainKey].unit || 'pieces',
+                notes: itemData[mainKey].notes || '',
+                itemCost: parseFloat(itemData[mainKey].itemCost) || 0,
+                documentation: itemData[mainKey].documentation || [],
+                approvalStatus: itemData[mainKey].approvalStatus || 'pending',
+                submittedAt: itemData.submittedAt || new Date().toISOString(),
+                preservedFromOriginal: true,
+                originalIndex: parseInt(itemData[mainKey].originalIndex) || 0,
+                hasImages: (itemData[mainKey].documentation && itemData[mainKey].documentation.length > 0)
+            };
+            
+            wasteItemsArray.push(preservedItem);
+            allItems.push(preservedItem);
+        }
+    }
+
+    // THIRD: Collect editable expired items (including resubmitted item)
     if (disposalTypes.includes('expired')) {
         const editableExpiredFields = document.querySelectorAll('#expiredFields .field-group:not(.existing-item)');
         
@@ -2034,7 +2090,7 @@ async function handleSubmit(event) {
         }
     }
 
-    // THIRD: Collect editable waste items (including resubmitted item)
+    // FOURTH: Collect editable waste items (including resubmitted item)
     if (disposalTypes.includes('waste')) {
         const editableWasteFields = document.querySelectorAll('#wasteFields .field-group:not(.existing-item)');
         
