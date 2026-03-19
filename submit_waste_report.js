@@ -1,10 +1,10 @@
-// submit_waste_report.js - COMPLETE FILE - FIXED VERSION (March 13, 2026)
+// submit_waste_report.js - COMPLETE FILE - FIXED VERSION WITH IMAGE PRESERVATION
 // CHANGES:
-// 1. Fixed resubmission issue - now preserves other items in the report with their original data and images
-// 2. When resubmitting one item, other items in the same report are kept intact with their approval status
-// 3. Only the resubmitted item's status is reset to 'pending' for re-review
-// 4. Images for preserved items are maintained exactly as they were
-// 5. Fixed issue where only resubmitted item was showing in the report
+// 1. Fixed image display in read-only existing items
+// 2. Added proper image thumbnail display for preserved items
+// 3. Ensured image URLs are properly preserved and displayed
+// 4. Added click-to-view functionality for preserved images
+// 5. Fixed image gallery display in read-only mode
 
 const Loader = {
     overlay: document.getElementById('loadingOverlay'),
@@ -767,7 +767,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
                 if (idx === itemIndex && itemType === 'expired') {
                     addExpiredItemWithData(item, itemId, reportId, idx, true); // true = isResubmittingItem
                 } else {
-                    // Add other expired items as read-only with their original data
+                    // Add other expired items as read-only with their original data and images
                     addExistingItemReadOnly(item, 'expired', idx, reportId);
                 }
             });
@@ -783,7 +783,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
                 if (idx === itemIndex && itemType === 'waste') {
                     addWasteItemWithData(item, itemId, reportId, idx, true); // true = isResubmittingItem
                 } else {
-                    // Add other waste items as read-only with their original data
+                    // Add other waste items as read-only with their original data and images
                     addExistingItemReadOnly(item, 'waste', idx, reportId);
                 }
             });
@@ -809,6 +809,9 @@ async function loadRejectedItem(itemIdFromUrl = null) {
             <i class="fas fa-info-circle" style="color: #28a745;"></i> 
             You are resubmitting <strong>1 rejected item</strong>. 
             The other ${(report.expiredItems?.length || 0) + (report.wasteItems?.length || 0) - 1} item(s) in this report remain unchanged with their original status and images.
+            <div style="margin-top: 5px; font-size: 11px;">
+                <i class="fas fa-images"></i> All original images are preserved.
+            </div>
         `;
         
         // Add it after the form header
@@ -821,7 +824,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
         updateDisposalTypeHint();
         updateDisposalTypesPreview();
       
-        showNotification('Rejected item loaded. Edit and resubmit. Other items in the report are preserved.', 'success');
+        showNotification('Rejected item loaded. Edit and resubmit. Other items in the report are preserved with their images.', 'success');
       
     } catch (error) {
         console.error('Error loading rejected item:', error);
@@ -831,7 +834,7 @@ async function loadRejectedItem(itemIdFromUrl = null) {
     }
 }
 
-// NEW FUNCTION: Add existing item as read-only with COMPLETE original data
+// ========== FIXED FUNCTION TO ADD EXISTING ITEM WITH IMAGES ==========
 function addExistingItemReadOnly(itemData, type, index, reportId) {
     const container = type === 'expired' ? document.getElementById('expiredFields') : document.getElementById('wasteFields');
     if (!container) return;
@@ -852,6 +855,45 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
                        approvalStatus === 'rejected' ? 'status-rejected' : 'status-pending';
     const statusIcon = approvalStatus === 'approved' ? 'fa-check-circle' : 
                       approvalStatus === 'rejected' ? 'fa-times-circle' : 'fa-clock';
+  
+    // Generate image gallery HTML if there are images
+    let imagesHTML = '';
+    if (itemData.documentation && itemData.documentation.length > 0) {
+        const imageCount = itemData.documentation.filter(doc => doc.type?.startsWith('image/')).length;
+        
+        if (imageCount > 0) {
+            imagesHTML = `
+                <div class="preserved-images-section" style="grid-column: 1 / -1; margin-top: 10px;">
+                    <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 8px;">
+                        <i class="fas fa-images" style="color: #28a745;"></i>
+                        <strong>Preserved Documentation (${imageCount} image${imageCount !== 1 ? 's' : ''})</strong>
+                        <span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">ORIGINAL PRESERVED</span>
+                    </div>
+                    <div class="preserved-images-grid" style="display: flex; flex-wrap: wrap; gap: 10px;">
+            `;
+            
+            itemData.documentation.forEach((doc, docIndex) => {
+                if (doc.type?.startsWith('image/')) {
+                    const imageUrl = doc.url || doc.path;
+                    const imageName = doc.name || `Image ${docIndex + 1}`;
+                    
+                    imagesHTML += `
+                        <div class="preserved-image-thumbnail" style="position: relative; cursor: pointer;" 
+                             onclick="openImagePreview('${imageUrl}', '${imageName}', ${JSON.stringify(doc).replace(/"/g, '&quot;')}, '${reportId}', ${index}, '${type}', ${docIndex})">
+                            <img src="${imageUrl}" alt="${imageName}" 
+                                 style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd;"
+                                 onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'80\\' height=\\'80\\'><rect width=\\'80\\' height=\\'80\\' fill=\\'%23f8f9fa\\'/><text x=\\'40\\' y=\\'40\\' font-family=\\'Arial\\' font-size=\\'10\\' text-anchor=\\'middle\\' fill=\\'%23999\\'>Image</text></svg>'">
+                            <div style="position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.5); color: white; font-size: 9px; padding: 2px 4px; border-radius: 2px;">
+                                ${docIndex + 1}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            
+            imagesHTML += `</div></div>`;
+        }
+    }
   
     let content = '';
     
@@ -874,8 +916,7 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
                 <div class="info-row"><strong>Unit Cost:</strong> ₱${(itemCost || 0).toFixed(2)}</div>
                 <div class="info-row"><strong>Total Cost:</strong> ₱${totalCost.toFixed(2)}</div>
                 ${itemData.notes ? `<div class="info-row full-width" style="grid-column: 1 / -1;"><strong>Notes:</strong> ${itemData.notes}</div>` : ''}
-                ${itemData.documentation && itemData.documentation.length > 0 ? 
-                    `<div class="info-row full-width" style="grid-column: 1 / -1;"><strong>Documentation:</strong> ${itemData.documentation.length} file(s) - <span style="color:#28a745;">PRESERVED</span></div>` : ''}
+                ${imagesHTML}
                 ${itemData.rejectionReason ? `
                     <div class="info-row full-width" style="grid-column: 1 / -1; color: #dc3545; background: #fff3cd; padding: 8px; border-radius: 4px;">
                         <i class="fas fa-exclamation-triangle"></i> <strong>Previous Rejection:</strong> ${itemData.rejectionReason}
@@ -931,8 +972,7 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
                 <div class="info-row"><strong>Unit Cost:</strong> ₱${(itemCost || 0).toFixed(2)}</div>
                 <div class="info-row"><strong>Total Cost:</strong> ₱${totalCost.toFixed(2)}</div>
                 ${itemData.notes ? `<div class="info-row full-width" style="grid-column: 1 / -1;"><strong>Notes:</strong> ${itemData.notes}</div>` : ''}
-                ${itemData.documentation && itemData.documentation.length > 0 ? 
-                    `<div class="info-row full-width" style="grid-column: 1 / -1;"><strong>Documentation:</strong> ${itemData.documentation.length} file(s) - <span style="color:#28a745;">PRESERVED</span></div>` : ''}
+                ${imagesHTML}
                 ${itemData.rejectionReason ? `
                     <div class="info-row full-width" style="grid-column: 1 / -1; color: #dc3545; background: #fff3cd; padding: 8px; border-radius: 4px;">
                         <i class="fas fa-exclamation-triangle"></i> <strong>Previous Rejection:</strong> ${itemData.rejectionReason}
@@ -972,6 +1012,43 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
   
     fieldGroup.innerHTML = content;
     container.appendChild(fieldGroup);
+}
+
+// ========== NEW FUNCTION TO OPEN IMAGE PREVIEW ==========
+function openImagePreview(imageUrl, imageName, imageData, reportId, itemIndex, itemType, imageIndex) {
+    // Create a modal for image preview
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'flex';
+    modal.style.zIndex = '10000';
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 90vw; max-height: 90vh;">
+            <div class="modal-header">
+                <h3><i class="fas fa-image"></i> Preserved Image</h3>
+                <span class="close-modal" onclick="this.closest('.modal').remove()">&times;</span>
+            </div>
+            <div class="modal-body" style="text-align: center; padding: 20px;">
+                <img src="${imageUrl}" alt="${imageName}" 
+                     style="max-width: 85vw; max-height: 70vh; object-fit: contain; border-radius: 8px;"
+                     onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'400\\' height=\\'300\\'><rect width=\\'400\\' height=\\'300\\' fill=\\'%23f8f9fa\\'/><text x=\\'200\\' y=\\'150\\' font-family=\\'Arial\\' font-size=\\'14\\' text-anchor=\\'middle\\' fill=\\'%23999\\'>Image not available</text></svg>'">
+                <div style="margin-top: 15px; font-size: 12px; color: #666;">
+                    <strong>${imageName}</strong>
+                    <div>Preserved from original report</div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">
+                    <i class="fas fa-times"></i> Close
+                </button>
+                <button class="btn btn-primary" onclick="window.open('${imageUrl}', '_blank')">
+                    <i class="fas fa-external-link-alt"></i> Open in new tab
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
 }
 
 // UPDATED addExpiredItemWithData with isResubmittingItem flag
@@ -1943,6 +2020,19 @@ async function handleSubmit(event) {
         // Get the main item data (first key)
         const mainKey = Object.keys(itemData)[0];
         if (mainKey && itemData[mainKey]) {
+            // Reconstruct documentation array
+            const documentation = [];
+            if (itemData[mainKey].documentation) {
+                // Convert the object back to array
+                Object.keys(itemData[mainKey].documentation).forEach(key => {
+                    if (itemData[mainKey].documentation[key] && 
+                        typeof itemData[mainKey].documentation[key] === 'object' &&
+                        itemData[mainKey].documentation[key].url) {
+                        documentation.push(itemData[mainKey].documentation[key]);
+                    }
+                });
+            }
+            
             const preservedItem = {
                 type: itemData[mainKey].type || 'expired',
                 item: itemData[mainKey].item || '',
@@ -1954,12 +2044,13 @@ async function handleSubmit(event) {
                 unit: itemData[mainKey].unit || 'pieces',
                 notes: itemData[mainKey].notes || '',
                 itemCost: parseFloat(itemData[mainKey].itemCost) || 0,
-                documentation: itemData[mainKey].documentation || [],
+                documentation: documentation,
                 approvalStatus: itemData[mainKey].approvalStatus || 'pending',
                 submittedAt: itemData.submittedAt || new Date().toISOString(),
                 preservedFromOriginal: true,
                 originalIndex: parseInt(itemData[mainKey].originalIndex) || 0,
-                hasImages: (itemData[mainKey].documentation && itemData[mainKey].documentation.length > 0)
+                hasImages: documentation.length > 0,
+                totalFiles: documentation.length
             };
             
             if (preservedItem.type === 'expired') {
@@ -2005,6 +2096,19 @@ async function handleSubmit(event) {
         
         const mainKey = Object.keys(itemData)[0];
         if (mainKey && itemData[mainKey]) {
+            // Reconstruct documentation array
+            const documentation = [];
+            if (itemData[mainKey].documentation) {
+                // Convert the object back to array
+                Object.keys(itemData[mainKey].documentation).forEach(key => {
+                    if (itemData[mainKey].documentation[key] && 
+                        typeof itemData[mainKey].documentation[key] === 'object' &&
+                        itemData[mainKey].documentation[key].url) {
+                        documentation.push(itemData[mainKey].documentation[key]);
+                    }
+                });
+            }
+            
             const preservedItem = {
                 type: itemData[mainKey].type || 'waste',
                 item: itemData[mainKey].item || '',
@@ -2013,12 +2117,13 @@ async function handleSubmit(event) {
                 unit: itemData[mainKey].unit || 'pieces',
                 notes: itemData[mainKey].notes || '',
                 itemCost: parseFloat(itemData[mainKey].itemCost) || 0,
-                documentation: itemData[mainKey].documentation || [],
+                documentation: documentation,
                 approvalStatus: itemData[mainKey].approvalStatus || 'pending',
                 submittedAt: itemData.submittedAt || new Date().toISOString(),
                 preservedFromOriginal: true,
                 originalIndex: parseInt(itemData[mainKey].originalIndex) || 0,
-                hasImages: (itemData[mainKey].documentation && itemData[mainKey].documentation.length > 0)
+                hasImages: documentation.length > 0,
+                totalFiles: documentation.length
             };
             
             wasteItemsArray.push(preservedItem);
@@ -2216,7 +2321,7 @@ async function handleSubmit(event) {
                     itemType: originalItemType,
                     itemIndex: originalItemIndex,
                     resubmittedBy: currentUser?.email || 'System',
-                    note: `Resubmitted one item, preserved ${(originalReport.expiredItems?.length || 0) + (originalReport.wasteItems?.length || 0) - 1} other items with their original status`
+                    note: `Resubmitted one item, preserved ${(originalReport.expiredItems?.length || 0) + (originalReport.wasteItems?.length || 0) - 1} other items with their original status and images`
                 }
             ]
         };
@@ -2415,3 +2520,4 @@ window.removeField = removeField;
 window.toggleDisposalType = toggleDisposalType;
 window.handleStoreChange = handleStoreChange;
 window.isKitchenItem = isKitchenItem;
+window.openImagePreview = openImagePreview;
