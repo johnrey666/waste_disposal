@@ -2094,6 +2094,7 @@ async function handleSubmit(event) {
             }
         });
         
+        
         const mainKey = Object.keys(itemData)[0];
         if (mainKey && itemData[mainKey]) {
             // Reconstruct documentation array

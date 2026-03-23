@@ -74,7 +74,6 @@ const Loader = {
     }
 };
 
-// Replace the existing showLoading function with:
 function showLoading(show, message = 'Loading...') {
     if (show) {
         Loader.show(message);
@@ -87,12 +86,10 @@ function showLoading(show, message = 'Loading...') {
 // CONFIGURATION
 // ================================
 
-// Google Apps Script endpoint for email
 const GAS_CONFIG = {
     ENDPOINT: 'https://script.google.com/macros/s/AKfycbyPGgZ54q-lDUu5YxaeQbSJ-z2pDqM8ia4eTfshdpSNbrqBFF7fQZvglx9IeZn0PqHSTg/exec'
 };
 
-// Firestore configuration
 const firebaseConfig = {
     apiKey: "AIzaSyAyp2f1b6cG4E_Dx9eako31LgTDuZrZ8_E",
     authDomain: "disposal-e6b83.firebaseapp.com",
@@ -120,16 +117,15 @@ let isDataLoading = false;
 let allReportsData = [];
 let filteredReportsData = [];
 let totalFilteredCount = 0;
-let sortDateDirection = 'desc'; // 'asc' or 'desc' for date sorting
+let sortDateDirection = 'desc';
 
-// Items management variables
 let itemsData = [];
 let itemsCurrentPage = 1;
 const itemsPageSize = 10;
 let itemsLastVisibleDoc = null;
 let itemsFirstVisibleDoc = null;
 let currentEditItemId = null;
-let currentItemType = 'regular'; // 'regular' or 'kitchen'
+let currentItemType = 'regular';
 let kitchenItemsData = [];
 let regularItemsData = [];
 let regularItemsCount = 0;
@@ -138,11 +134,9 @@ let meatCount = 0;
 let vegetablesCount = 0;
 let seafoodCount = 0;
 
-// E-Signature variables
 let adminSignature = null;
 let adminSignatureData = null;
 
-// State variables
 let currentRejectionData = null;
 let currentBulkRejectionData = null;
 let currentReportDetailsId = null;
@@ -150,7 +144,6 @@ let currentReportToDelete = null;
 let currentImageToDelete = null;
 let currentImageToDeleteData = null;
 
-// Chart variables
 let storeChart = null;
 let currentChartType = 'bar';
 let chartAnalysis = {
@@ -161,17 +154,14 @@ let chartAnalysis = {
     timeSeriesData: {}
 };
 
-// Statistics variables
 let statsFilterPeriod = 'all';
 
-// Cache for reports
 let reportsCache = {
     data: [],
     timestamp: 0,
     ttl: 5 * 60 * 1000
 };
 
-// Define all store names
 const ALL_STORES = [
     'FG Express IROSIN',
     'FG Express LIGAO',
@@ -187,7 +177,6 @@ const ALL_STORES = [
     'FG NAGA'
 ];
 
-// Store abbreviations for better display
 const STORE_ABBREVIATIONS = {
     'FG Express IROSIN': 'FG IROSIN',
     'FG Express LIGAO': 'FG LIGAO',
@@ -203,7 +192,6 @@ const STORE_ABBREVIATIONS = {
     'FG NAGA': 'FG NAGA'
 };
 
-// Store display names for chart labels
 const STORE_DISPLAY_NAMES = {
     'FG Express IROSIN': 'IROSIN',
     'FG Express LIGAO': 'LIGAO',
@@ -219,7 +207,6 @@ const STORE_DISPLAY_NAMES = {
     'FG NAGA': 'NAGA'
 };
 
-// Admin emails list
 const ADMIN_EMAILS = [
     'admin@fgoperations.com',
     'admin@gmail.com',
@@ -231,11 +218,9 @@ const ADMIN_EMAILS = [
 // DATE SORTING FUNCTIONS
 // ================================
 
-// Toggle date sort direction
 function toggleDateSort() {
     sortDateDirection = sortDateDirection === 'desc' ? 'asc' : 'desc';
     
-    // Update icon
     const icon = document.getElementById('sortDateIcon');
     if (icon) {
         icon.innerHTML = sortDateDirection === 'desc' ? 
@@ -243,19 +228,16 @@ function toggleDateSort() {
             '<i class="fas fa-sort-up"></i>';
     }
     
-    // Update sorted column visual indicator
     const dateHeader = document.querySelector('#reportsTable th[onclick="toggleDateSort()"]');
     if (dateHeader) {
         dateHeader.classList.remove('sorted-asc', 'sorted-desc');
         dateHeader.classList.add(sortDateDirection === 'desc' ? 'sorted-desc' : 'sorted-asc');
     }
     
-    // Re-sort and reload
     sortReportsByDate();
     loadReports();
 }
 
-// Sort reports by date
 function sortReportsByDate() {
     if (!filteredReportsData || filteredReportsData.length === 0) return;
     
@@ -264,9 +246,9 @@ function sortReportsByDate() {
         const dateB = new Date(b.reportDate).getTime();
         
         if (sortDateDirection === 'desc') {
-            return dateB - dateA; // Newest first
+            return dateB - dateA;
         } else {
-            return dateA - dateB; // Oldest first
+            return dateA - dateB;
         }
     });
 }
@@ -275,7 +257,6 @@ function sortReportsByDate() {
 // E-SIGNATURE FUNCTIONS
 // ================================
 
-// Open e-signature modal
 function openSignatureModal() {
     if (!isAuthenticated()) {
         showNotification('Please login to manage signature', 'error');
@@ -294,7 +275,6 @@ function openSignatureModal() {
     }
 }
 
-// Close e-signature modal
 function closeSignatureModal() {
     const modal = document.getElementById('signatureModal');
     if (modal) {
@@ -302,7 +282,6 @@ function closeSignatureModal() {
     }
 }
 
-// Load signature from Firestore
 async function loadSignature() {
     if (!isAdmin()) return;
     
@@ -314,7 +293,6 @@ async function loadSignature() {
             adminSignature = data.signature || null;
             adminSignatureData = data;
             
-            // Display existing signature
             const preview = document.getElementById('signaturePreview');
             const uploadSection = document.getElementById('signatureUploadSection');
             const drawSection = document.getElementById('signatureDrawSection');
@@ -343,7 +321,6 @@ async function loadSignature() {
                 document.getElementById('signatureTypeDraw').checked = true;
             }
         } else {
-            // No signature yet
             document.getElementById('signaturePreview').innerHTML = '';
             document.getElementById('signatureTypeUpload').checked = true;
             document.getElementById('signatureUploadSection').style.display = 'block';
@@ -355,7 +332,6 @@ async function loadSignature() {
     }
 }
 
-// Handle signature type change
 function onSignatureTypeChange() {
     const typeUpload = document.getElementById('signatureTypeUpload').checked;
     const uploadSection = document.getElementById('signatureUploadSection');
@@ -371,7 +347,6 @@ function onSignatureTypeChange() {
     }
 }
 
-// Initialize signature pad
 function initSignaturePad() {
     const canvas = document.getElementById('signatureCanvas');
     if (!canvas) return;
@@ -422,7 +397,6 @@ function initSignaturePad() {
     });
 }
 
-// Clear signature pad
 function clearSignaturePad() {
     const canvas = document.getElementById('signatureCanvas');
     if (!canvas) return;
@@ -431,7 +405,6 @@ function clearSignaturePad() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
-// Upload signature image
 async function uploadSignatureImage() {
     const fileInput = document.getElementById('signatureFile');
     const file = fileInput?.files[0];
@@ -458,7 +431,6 @@ async function uploadSignatureImage() {
         await storageRef.put(file);
         const signatureUrl = await storageRef.getDownloadURL();
         
-        // Save to Firestore
         await db.collection('adminSignatures').doc(currentUser.uid).set({
             signature: signatureUrl,
             signatureType: 'upload',
@@ -469,7 +441,6 @@ async function uploadSignatureImage() {
         
         adminSignature = signatureUrl;
         
-        // Show preview
         const preview = document.getElementById('signaturePreview');
         if (preview) {
             preview.innerHTML = `<img src="${signatureUrl}" alt="Signature" style="max-width: 200px; max-height: 80px; border: 1px solid #ddd; padding: 5px;">`;
@@ -485,7 +456,6 @@ async function uploadSignatureImage() {
     }
 }
 
-// Save drawn signature
 async function saveDrawnSignature() {
     const canvas = document.getElementById('signatureCanvas');
     if (!canvas) return;
@@ -504,7 +474,6 @@ async function saveDrawnSignature() {
     try {
         const signatureData = canvas.toDataURL('image/png');
         
-        // Save to Firestore
         await db.collection('adminSignatures').doc(currentUser.uid).set({
             signature: signatureData,
             signatureType: 'draw',
@@ -525,13 +494,11 @@ async function saveDrawnSignature() {
     }
 }
 
-// Get admin signature HTML for emails
 async function getAdminSignatureHTML() {
     if (!isAdmin()) return '';
     
     try {
         if (adminSignature) {
-            // Check if it's a URL or data URL
             if (adminSignature.startsWith('data:image') || adminSignature.startsWith('http')) {
                 return `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
                     <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Digitally Signed by:</div>
@@ -541,7 +508,6 @@ async function getAdminSignatureHTML() {
             }
         }
         
-        // Fallback to text signature
         return `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
             <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Signed by:</div>
             <div style="font-family: 'Brush Script MT', cursive; font-size: 24px; color: #2a5934;">${currentUser?.displayName || 'Administrator'}</div>
@@ -558,11 +524,9 @@ async function getAdminSignatureHTML() {
 // AUTHENTICATION FUNCTIONS
 // ================================
 
-// Initialize Firebase Auth
 function initializeAuth() {
     auth = firebase.auth();
     
-    // Set up auth state observer
     auth.onAuthStateChanged(async (user) => {
         if (user) {
             currentUser = user;
@@ -571,7 +535,6 @@ function initializeAuth() {
             updateNavBar(user);
             loadReports();
             
-            // Load signature for admin
             if (isAdmin()) {
                 await loadSignature();
             }
@@ -586,7 +549,6 @@ function initializeAuth() {
     });
 }
 
-// Determine user role
 async function determineUserRole(user) {
     if (!user) {
         currentUserRole = 'user';
@@ -614,7 +576,6 @@ async function determineUserRole(user) {
     }
 }
 
-// Update navigation bar
 function updateNavBar(user) {
     const navActions = Performance.getElement('#navActions');
     if (!navActions) return;
@@ -645,7 +606,6 @@ function updateNavBar(user) {
     }
 }
 
-// Handle login
 async function handleLogin() {
     const email = Performance.getElement('#loginEmail')?.value.trim();
     const password = Performance.getElement('#loginPassword')?.value;
@@ -692,10 +652,9 @@ async function handleLogin() {
 }
 
 // ================================
-// CREATE ACCOUNT MODAL FUNCTIONS - FIXED
+// CREATE ACCOUNT MODAL FUNCTIONS
 // ================================
 
-// Open create account modal
 function openCreateAccountModal() {
     if (!isAdmin()) {
         showNotification('Only administrators can create accounts', 'error');
@@ -708,13 +667,11 @@ function openCreateAccountModal() {
     }
 }
 
-// Close create account modal - FIXED: Now properly closes the modal
 function closeCreateAccountModal() {
     const modal = document.getElementById('createAccountModal');
     if (modal) {
         modal.style.display = 'none';
         
-        // Clear form fields
         const emailInput = document.getElementById('newAccountEmail');
         const passwordInput = document.getElementById('newAccountPassword');
         const confirmInput = document.getElementById('newAccountConfirmPassword');
@@ -725,13 +682,11 @@ function closeCreateAccountModal() {
         if (confirmInput) confirmInput.value = '';
         if (nameInput) nameInput.value = '';
         
-        // Reset radio to default
         const userRadio = document.getElementById('roleUser');
         if (userRadio) userRadio.checked = true;
     }
 }
 
-// Setup create account modal event listeners
 function setupCreateAccountModalListeners() {
     const closeBtn = document.getElementById('closeCreateAccountModal');
     const cancelBtn = document.getElementById('cancelCreateAccount');
@@ -749,7 +704,6 @@ function setupCreateAccountModalListeners() {
         createBtn.addEventListener('click', handleAdminCreateAccount);
     }
     
-    // Handle backdrop click
     const modal = document.getElementById('createAccountModal');
     if (modal) {
         modal.addEventListener('click', (e) => {
@@ -759,7 +713,6 @@ function setupCreateAccountModalListeners() {
         });
     }
     
-    // Handle escape key
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             const modal = document.getElementById('createAccountModal');
@@ -770,7 +723,6 @@ function setupCreateAccountModalListeners() {
     });
 }
 
-// Handle admin creating new account
 async function handleAdminCreateAccount() {
     if (!isAuthenticated()) {
         showNotification('You must be logged in', 'error');
@@ -796,7 +748,6 @@ async function handleAdminCreateAccount() {
         }
     }
     
-    // Validation
     if (!email || !password || !confirmPassword || !fullName) {
         showNotification('Please fill in all fields', 'error');
         return;
@@ -821,15 +772,12 @@ async function handleAdminCreateAccount() {
     showLoading(true, 'Creating account...');
     
     try {
-        // Create user in Firebase Auth
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         
-        // Update profile
         await userCredential.user.updateProfile({
             displayName: fullName
         });
         
-        // Store in users collection
         await db.collection('users').doc(userCredential.user.uid).set({
             email: email,
             displayName: fullName,
@@ -838,14 +786,12 @@ async function handleAdminCreateAccount() {
             createdBy: currentUser?.email || 'Administrator'
         });
         
-        // Add to admin list if role is admin
         if (selectedRole === 'admin' && !ADMIN_EMAILS.includes(email)) {
             ADMIN_EMAILS.push(email);
         }
         
         showNotification(`Account created successfully for ${fullName} (${selectedRole})`, 'success');
         
-        // Clear form and close modal
         closeCreateAccountModal();
         
     } catch (error) {
@@ -872,7 +818,6 @@ async function handleAdminCreateAccount() {
     }
 }
 
-// Handle logout
 async function handleLogout() {
     try {
         await auth.signOut();
@@ -884,17 +829,14 @@ async function handleLogout() {
     }
 }
 
-// Check if user is authenticated
 function isAuthenticated() {
     return currentUser !== null;
 }
 
-// Check if user is admin
 function isAdmin() {
     return currentUserRole === 'admin';
 }
 
-// Toggle password visibility
 function togglePassword(inputId) {
     const input = Performance.getElement(`#${inputId}`);
     const toggleBtn = input?.nextElementSibling;
@@ -906,7 +848,6 @@ function togglePassword(inputId) {
     }
 }
 
-// Show auth section
 function showAuthSection() {
     const authSection = Performance.getElement('#authSection');
     const reportsSection = Performance.getElement('#reportsSection');
@@ -915,7 +856,6 @@ function showAuthSection() {
     if (reportsSection) reportsSection.style.display = 'none';
 }
 
-// Show reports section
 function showReportsSection() {
     const authSection = Performance.getElement('#authSection');
     const reportsSection = Performance.getElement('#reportsSection');
@@ -925,8 +865,9 @@ function showReportsSection() {
 }
 
 // ================================
-// FIXED STATISTICS FUNCTIONS - CORRECT PERIOD CALCULATION
+// STATISTICS FUNCTIONS
 // ================================
+
 function updateStatisticsFromAllReports() {
     if (!allReportsData || allReportsData.length === 0) {
         updateStatistics(0, 0, 0, 0, 0);
@@ -966,7 +907,6 @@ function updateStatisticsFromAllReports() {
     }
 }
 
-// FIXED: Correct period filtering for Last Month, This Week, Last Week
 function filterReportsByPeriod(reports, period) {
     if (period === 'all' || !reports || reports.length === 0) {
         return reports;
@@ -975,7 +915,6 @@ function filterReportsByPeriod(reports, period) {
     const now = new Date();
     let startDate, endDate;
     
-    // Set timezone to local for consistent calculation
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
     switch(period) {
@@ -987,8 +926,7 @@ function filterReportsByPeriod(reports, period) {
             break;
             
         case 'thisWeek':
-            // Start from Monday (0 = Sunday, so adjust)
-            const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const dayOfWeek = today.getDay();
             const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
             
             startDate = new Date(today);
@@ -1001,7 +939,6 @@ function filterReportsByPeriod(reports, period) {
             break;
             
         case 'lastWeek':
-            // Last week: Monday to Sunday of previous week
             const currentDay = today.getDay();
             const daysToLastMonday = currentDay === 0 ? 13 : currentDay + 6;
             
@@ -1022,7 +959,6 @@ function filterReportsByPeriod(reports, period) {
             break;
             
         case 'lastMonth':
-            // Last month: first day to last day of previous month
             startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             startDate.setHours(0, 0, 0, 0);
             endDate = new Date(today.getFullYear(), today.getMonth(), 0);
@@ -1040,7 +976,6 @@ function filterReportsByPeriod(reports, period) {
             return reports;
     }
     
-    // Log for debugging
     console.log(`Filtering for ${period}:`, {
         start: startDate.toISOString(),
         end: endDate.toISOString()
@@ -1048,7 +983,6 @@ function filterReportsByPeriod(reports, period) {
     
     return reports.filter(report => {
         const reportDate = new Date(report.reportDate);
-        // Set to start of day for comparison
         reportDate.setHours(0, 0, 0, 0);
         
         const reportTime = reportDate.getTime();
@@ -1321,7 +1255,7 @@ const ImageManager = {
         
         const link = document.createElement('a');
         link.href = imageUrl;
-        link.download = (imageName || 'image').replace(/[^a-z0-9.]/gi, '_').toLowerCase() + '.jpg';
+        link.download = (imageName || 'image').replace(/[^a-zA-Z0-9.]/gi, '_').toLowerCase() + '.jpg';
         link.target = '_blank';
         
         document.body.appendChild(link);
@@ -1420,7 +1354,7 @@ const ImageManager = {
 };
 
 // ================================
-// OPTIMIZED LOADING & NOTIFICATION
+// NOTIFICATION FUNCTION
 // ================================
 function showNotification(message, type = 'success', duration = 3000) {
     const notification = Performance.getElement('#notification');
@@ -1447,7 +1381,7 @@ function showNotification(message, type = 'success', duration = 3000) {
 }
 
 // ================================
-// OPTIMIZED INITIALIZATION
+// INITIALIZATION
 // ================================
 function initializeApp() {
     try {
@@ -1470,7 +1404,6 @@ function initializeApp() {
         
         initializeAuth();
         
-        // Migrate existing items to have category field
         setTimeout(() => {
             if (isAdmin()) {
                 migrateItemsToCategories();
@@ -1485,7 +1418,7 @@ function initializeApp() {
 }
 
 // ================================
-// FIXED CHART FUNCTIONS - CORRECT PERIOD CALCULATION
+// CHART FUNCTIONS
 // ================================
 function initChartTypeSelector() {
     const chartTypeBtns = document.querySelectorAll('.chart-type-btn');
@@ -1655,7 +1588,6 @@ function analyzeStorePerformance() {
             });
         }
         
-
         if (report.wasteItems) {
             report.wasteItems.forEach(item => {
                 const itemCost = item.itemCost || 0;
@@ -1847,10 +1779,8 @@ function createBarOrPieChart(period, metric, sortOrder) {
     updateChartStatistics(sortedStoreEntries, metric, period);
 }
 
-// FIXED: Correct period calculation for Last Month, This Week, Last Week
 function calculatePeriodMetrics(storeEntries, period) {
     const now = new Date();
-    // Use local date for consistent calculation
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     let startDate, endDate;
     
@@ -1872,8 +1802,7 @@ function calculatePeriodMetrics(storeEntries, period) {
             break;
             
         case 'thisWeek': {
-            // Monday to Sunday
-            const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const dayOfWeek = today.getDay();
             const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
             
             startDate = new Date(today);
@@ -1887,7 +1816,6 @@ function calculatePeriodMetrics(storeEntries, period) {
         }
         
         case 'lastWeek': {
-            // Previous week Monday to Sunday
             const currentDay = today.getDay();
             const daysToLastMonday = currentDay === 0 ? 13 : currentDay + 6;
             
@@ -1949,7 +1877,7 @@ function calculatePeriodMetrics(storeEntries, period) {
             break;
         }
         
-        default: // 'all'
+        default:
             startDate = new Date(0);
             endDate = new Date(8640000000000000);
     }
@@ -1966,11 +1894,9 @@ function calculatePeriodMetrics(storeEntries, period) {
         let periodItemCount = 0;
         let periodApprovedItemCount = 0;
         
-        // Convert report dates to timestamps for comparison
         const startTime = startDate.getTime();
         const endTime = endDate.getTime();
         
-        // Check each date in the period
         data.reportDates.forEach(dateStr => {
             const reportDate = new Date(dateStr);
             reportDate.setHours(0, 0, 0, 0);
@@ -1979,13 +1905,11 @@ function calculatePeriodMetrics(storeEntries, period) {
             if (reportTime >= startTime && reportTime <= endTime) {
                 periodReportCount++;
                 
-                // Add costs for this date
                 if (data.dailyCosts[dateStr]) {
                     periodApprovedCost += data.dailyCosts[dateStr].approved || 0;
                     periodTotalCost += data.dailyCosts[dateStr].total || 0;
                 }
                 
-                // Count items for this date
                 periodItemCount += calculateItemsForDate(store, dateStr);
                 periodApprovedItemCount += calculateApprovedItemsForDate(store, dateStr);
             }
@@ -3907,7 +3831,6 @@ async function loadReports() {
         allReportsData = allReports;
         totalFilteredCount = filteredReportsData.length;
         
-        // Apply date sorting
         sortReportsByDate();
         
         const totalPages = Math.ceil(totalFilteredCount / pageSize);
@@ -4122,9 +4045,6 @@ function clearFilters() {
 // APPROVAL & REJECTION FUNCTIONS
 // ================================
 
-// ================================
-// APPROVAL EMAIL FUNCTIONS
-// ================================
 async function sendApprovalEmailViaGAS(toEmail, reportId, itemIndex, itemType, reportData, item) {
     try {
         const itemName = item?.item || 'N/A';
@@ -4134,7 +4054,6 @@ async function sendApprovalEmailViaGAS(toEmail, reportId, itemIndex, itemType, r
         const expirationDate = itemType === 'expired' ? formatDate(item?.expirationDate) : 'N/A';
         const wasteReason = itemType === 'waste' ? item?.reason || 'N/A' : 'N/A';
         
-        // Get signature HTML
         const signatureHTML = await getAdminSignatureHTML();
         
         const emailData = {
@@ -4213,7 +4132,6 @@ async function sendApprovalEmailViaGAS(toEmail, reportId, itemIndex, itemType, r
 
 async function sendBulkApprovalEmailViaGAS(toEmail, reportId, approvedCount, reportData) {
     try {
-        // Get signature HTML
         const signatureHTML = await getAdminSignatureHTML();
         
         const emailData = {
@@ -4315,7 +4233,6 @@ async function approveItem(reportId, itemIndex, itemType) {
             return;
         }
         
-        // Get signature
         const signatureHTML = await getAdminSignatureHTML();
         
         const approvedItem = {
@@ -4333,7 +4250,6 @@ async function approveItem(reportId, itemIndex, itemType) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: items });
         
-        // Send approval email
         if (report.email) {
             await sendApprovalEmailViaGAS(
                 report.email,
@@ -4394,7 +4310,6 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
         
         const uniqueItemId = `${reportId}_${itemType}_${itemIndex}_${Date.now()}`;
         
-        // Get signature
         const signatureHTML = await getAdminSignatureHTML();
         
         items[itemIndex] = {
@@ -4485,7 +4400,6 @@ async function bulkApproveItems(reportId, itemType) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: updatedItems });
         
-        // Send bulk approval email if any items were approved
         if (approvedCount > 0 && report.email) {
             await sendBulkApprovalEmailViaGAS(
                 report.email,
@@ -4508,8 +4422,7 @@ async function bulkApproveItems(reportId, itemType) {
 }
 
 // ================================
-// FIXED BULK REJECTION FUNCTION
-// Sends individual rejection emails for each rejected item
+// UPDATED BULK REJECTION FUNCTION - SENDS ONE EMAIL WITH ALL REJECTED ITEMS
 // ================================
 async function bulkRejectItems(reportId, itemType, reason) {
     if (!isAuthenticated()) {
@@ -4552,7 +4465,7 @@ async function bulkRejectItems(reportId, itemType, reason) {
                 const uniqueItemId = `${reportId}_${itemType}_${index}_${Date.now()}`;
                 
                 rejectedItems.push({
-                    item: item,
+                    ...item,
                     index: index,
                     itemId: uniqueItemId
                 });
@@ -4575,27 +4488,21 @@ async function bulkRejectItems(reportId, itemType, reason) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: updatedItems });
         
-        // Send INDIVIDUAL rejection emails for each rejected item
+        // Send ONE email with ALL rejected items
         if (report.email && rejectedItems.length > 0) {
             const signatureHTML = await getAdminSignatureHTML();
             
-            for (const rejectedItem of rejectedItems) {
-                await sendRejectionEmailViaGAS(
-                    report.email, 
-                    report.reportId || reportId, 
-                    rejectedItem.index, 
-                    itemType, 
-                    reason.trim(), 
-                    report, 
-                    rejectedItem.itemId,
-                    signatureHTML
-                );
-                
-                // Small delay to prevent rate limiting
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
+            await sendBulkRejectionEmailViaGAS(
+                report.email,
+                report.reportId || reportId,
+                rejectedItems.length,
+                reason,
+                report,
+                rejectedItems,
+                signatureHTML
+            );
             
-            showNotification(`${rejectedItems.length} item(s) rejected. ${rejectedItems.length} email(s) sent.`, 'success');
+            showNotification(`${rejectedItems.length} item(s) rejected. One email with all items sent.`, 'success');
         } else {
             showNotification(`${rejectedItems.length} item(s) rejected, but no email address found.`, 'warning');
         }
@@ -4784,7 +4691,6 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, 
         const expirationDate = itemType === 'expired' ? formatDate(rejectedItem?.expirationDate) : 'N/A';
         const wasteReason = itemType === 'waste' ? rejectedItem?.reason || 'N/A' : 'N/A';
         
-        // Use provided signatureHTML or get it
         const finalSignatureHTML = signatureHTML || await getAdminSignatureHTML();
         
         const emailData = {
@@ -4865,12 +4771,41 @@ async function sendRejectionEmailViaGAS(toEmail, reportId, itemIndex, itemType, 
     }
 }
 
-async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, reason, reportData) {
+// ================================
+// UPDATED BULK REJECTION EMAIL FUNCTION - SENDS ONE EMAIL WITH ALL ITEMS
+// ================================
+async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, reason, reportData, rejectedItemsList, signatureHTML) {
     try {
         const editLink = 'https://waste-disposal-six.vercel.app/submit_waste_report.html';
         
-        // Get signature HTML
-        const signatureHTML = await getAdminSignatureHTML();
+        // Build a combined edit URL with all item IDs
+        const itemIds = rejectedItemsList.map(item => item.itemId);
+        const combinedEditUrl = `${editLink}?itemIds=${encodeURIComponent(itemIds.join(','))}`;
+        
+        // Build detailed item list for the email
+        let itemsListHtml = '<ul style="margin: 10px 0; padding-left: 20px;">';
+        let itemsListPlain = '';
+        
+        rejectedItemsList.forEach((item, idx) => {
+            const itemName = item.item || 'N/A';
+            const itemQuantity = item.quantity || 0;
+            const itemUnit = item.unit || 'units';
+            const itemCost = `₱${((item.itemCost || 0) * (item.quantity || 0)).toFixed(2)}`;
+            
+            itemsListHtml += `
+                <li style="margin-bottom: 15px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
+                    <strong>${idx + 1}. ${itemName}</strong><br>
+                    <small>Quantity: ${itemQuantity} ${itemUnit} | Cost: ${itemCost}</small><br>
+                    <small style="color: #666;">Item ID: ${item.itemId}</small>
+                </li>
+            `;
+            
+            itemsListPlain += `${idx + 1}. ${itemName} - ${itemQuantity} ${itemUnit} (${itemCost})\n   Item ID: ${item.itemId}\n`;
+        });
+        
+        itemsListHtml += '</ul>';
+        
+        const finalSignatureHTML = signatureHTML || await getAdminSignatureHTML();
         
         const emailData = {
             emailType: 'bulk_rejection',
@@ -4883,7 +4818,9 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
             reportId: reportId,
             rejectedCount: rejectedCount,
             rejectionReason: reason,
-            editLink: editLink,
+            editLink: combinedEditUrl,
+            itemsListHtml: itemsListHtml,
+            itemsListPlain: itemsListPlain,
             rejectedAt: new Date().toLocaleString('en-US', { 
                 year: 'numeric', 
                 month: 'short', 
@@ -4893,7 +4830,7 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
             }),
             rejectedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
             rejectedByEmail: currentUser?.email || 'Administrator',
-            rejectedBySignature: signatureHTML
+            rejectedBySignature: finalSignatureHTML
         };
 
         const formData = new FormData();
@@ -4930,7 +4867,7 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
         }
 
         if (success) {
-            console.log('✅ Bulk rejection email sent successfully');
+            console.log('✅ Bulk rejection email sent successfully with all items');
             return { success: true };
         } else {
             console.warn('⚠️ Bulk email sending failed, but items were still rejected');
@@ -5275,7 +5212,7 @@ function hideExportDate() {
 }
 
 // ================================
-// ITEMS MANAGEMENT FUNCTIONS - UPDATED WITH IMPORT AND CATEGORY
+// ITEMS MANAGEMENT FUNCTIONS
 // ================================
 function openItemsManagement() {
     if (!isAuthenticated()) {
@@ -5291,7 +5228,6 @@ function openItemsManagement() {
     const itemsModal = Performance.getElement('#itemsManagementModal');
     if (itemsModal) {
         itemsModal.style.display = 'flex';
-        // Reset to regular items view
         const typeSelect = Performance.getElement('#itemTypeSelect');
         if (typeSelect) typeSelect.value = 'regular';
         currentItemType = 'regular';
@@ -5308,7 +5244,6 @@ function closeItemsManagement() {
     const itemsModal = Performance.getElement('#itemsManagementModal');
     if (itemsModal) {
         itemsModal.style.display = 'none';
-        // Reset search when closing
         const searchInput = Performance.getElement('#searchItems');
         if (searchInput) searchInput.value = '';
     }
@@ -5316,19 +5251,16 @@ function closeItemsManagement() {
 
 async function updateItemCounts() {
     try {
-        // Get regular items count
         const regularSnapshot = await db.collection('items')
             .where('category', '==', 'regular')
             .get();
         regularItemsCount = regularSnapshot.size;
         
-        // Get kitchen items count
         const kitchenSnapshot = await db.collection('items')
             .where('category', '==', 'kitchen')
             .get();
         kitchenItemsCount = kitchenSnapshot.size;
         
-        // Get kitchen category counts
         meatCount = 0;
         vegetablesCount = 0;
         seafoodCount = 0;
@@ -5340,7 +5272,6 @@ async function updateItemCounts() {
             else if (item.kitchenCategory === 'seafood') seafoodCount++;
         });
         
-        // Update UI
         const regularTotalEl = Performance.getElement('#totalRegularItemsCount');
         const kitchenTotalEl = Performance.getElement('#totalKitchenItemsCount');
         
@@ -5384,7 +5315,6 @@ function updateKitchenCategoryVisibility() {
     }
 }
 
-// UPDATED loadItems function to handle kitchen categories
 async function loadItems() {
     if (!isAuthenticated()) return;
     
@@ -5394,7 +5324,6 @@ async function loadItems() {
         const searchTerm = Performance.getElement('#searchItems')?.value || '';
         currentItemType = Performance.getElement('#itemTypeSelect')?.value || 'regular';
         
-        // Update badge
         const badge = Performance.getElement('#itemTypeBadge');
         if (badge) {
             if (currentItemType === 'regular') {
@@ -5406,64 +5335,51 @@ async function loadItems() {
             }
         }
         
-        // Update kitchen category visibility
         updateKitchenCategoryVisibility();
         
-        // Get ALL items of the selected category first (without pagination)
         let query = db.collection('items').where('category', '==', currentItemType);
         
         const snapshot = await query.get();
         
-        // Convert to array and filter by search term (case insensitive, contains anywhere)
         let allItems = [];
         snapshot.forEach(doc => {
             const item = { id: doc.id, ...doc.data() };
             allItems.push(item);
         });
         
-        // Apply search filter if there's a search term
         let filteredItems = allItems;
         if (searchTerm) {
             const searchLower = searchTerm.toLowerCase().trim();
             filteredItems = allItems.filter(item => {
-                // Check if item name contains the search term anywhere (case insensitive)
                 return item.name && item.name.toLowerCase().includes(searchLower);
             });
         }
         
-        // Sort alphabetically
         filteredItems.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         
-        // Update total counts for both categories
         await updateItemCounts();
         
-        // Apply pagination to filtered results
         const startIndex = (itemsCurrentPage - 1) * itemsPageSize;
         const endIndex = startIndex + itemsPageSize;
         const pageItems = filteredItems.slice(startIndex, endIndex);
         
         itemsData = pageItems;
         
-        // Store whether there are more pages
         itemsLastVisibleDoc = endIndex < filteredItems.length;
         
-        // Render the items
         renderItemsTable(itemsData);
         
-        // Update UI elements
         const showingEl = Performance.getElement('#showingItemsCount');
         if (showingEl) {
             showingEl.textContent = itemsData.length;
         }
         
-        // Update page info
         const pageInfo = Performance.getElement('#itemsPageInfo');
         if (pageInfo) {
             const totalPages = Math.ceil(filteredItems.length / itemsPageSize) || 1;
             pageInfo.textContent = `Page ${itemsCurrentPage} of ${totalPages}`;
         }
         
-        // Update pagination buttons
         const prevBtn = Performance.getElement('#prevItemsPageBtn');
         const nextBtn = Performance.getElement('#nextItemsPageBtn');
         
@@ -5475,7 +5391,6 @@ async function loadItems() {
             nextBtn.disabled = endIndex >= filteredItems.length;
         }
         
-        // Update category item count display
         const categoryCountEl = Performance.getElement('#categoryItemCount');
         if (categoryCountEl) {
             const totalInCategory = currentItemType === 'regular' ? regularItemsCount : kitchenItemsCount;
@@ -5489,7 +5404,6 @@ async function loadItems() {
             }
         }
         
-        // Update kitchen category stats
         updateKitchenCategoryStats();
         
     } catch (error) {
@@ -5500,7 +5414,6 @@ async function loadItems() {
     }
 }
 
-// Helper function to render items table with kitchen category
 function renderItemsTable(items) {
     const tableBody = Performance.getElement('#itemsTableBody');
     if (!tableBody) return;
@@ -5512,7 +5425,6 @@ function renderItemsTable(items) {
         const categoryIcon = item.category === 'kitchen' ? '🍳' : '📦';
         const categoryName = item.category === 'kitchen' ? 'Kitchen' : 'Regular';
         
-        // Kitchen category display
         let kitchenCategoryDisplay = 'N/A';
         let kitchenCategoryClass = '';
         if (item.category === 'kitchen' && item.kitchenCategory) {
@@ -5534,17 +5446,17 @@ function renderItemsTable(items) {
                 <div style="color: #28a745; font-weight: bold; font-size: 14px;">
                     ₱${(item.cost || 0).toFixed(2)}
                 </div>
-            </td>
+             </td>
             <td>
                 <span style="background: ${item.category === 'kitchen' ? '#fff3cd' : '#e8f5e9'}; color: ${item.category === 'kitchen' ? '#856404' : '#2e7d32'}; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 500;">
                     ${categoryIcon} ${categoryName}
                 </span>
-            </td>
+             </td>
             <td>
                 ${item.category === 'kitchen' && item.kitchenCategory ? 
                     `<span class="kitchen-category-badge ${kitchenCategoryClass}">${kitchenCategoryDisplay}</span>` : 
                     '<span style="color: #999;">-</span>'}
-            </td>
+             </td>
             <td><small style="color: var(--color-gray);">${formatDate(item.createdAt)}</small></td>
             <td>
                 <div class="item-actions">
@@ -5555,7 +5467,7 @@ function renderItemsTable(items) {
                         <i class="fas fa-trash"></i> Delete
                     </button>
                 </div>
-            </td>
+             </td>
         `;
         
         fragment.appendChild(row);
@@ -5580,7 +5492,6 @@ function renderItemsTable(items) {
     }
 }
 
-// Escape HTML helper
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
@@ -5588,7 +5499,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Setup item type listener
 function setupItemTypeListener() {
     const itemTypeSelect = Performance.getElement('#itemTypeSelect');
     if (itemTypeSelect) {
@@ -5609,7 +5519,6 @@ function setupItemTypeListener() {
     }
 }
 
-// Updated addItemToDatabase to handle kitchen category
 async function addItemToDatabase() {
     if (!isAuthenticated()) {
         showNotification('Please login to add items', 'error');
@@ -5657,7 +5566,6 @@ async function addItemToDatabase() {
     showLoading(true, 'Adding item...');
     
     try {
-        // Check if item exists in the same category
         let query = db.collection('items')
             .where('nameLowerCase', '==', name.toLowerCase())
             .where('category', '==', category);
@@ -5680,7 +5588,6 @@ async function addItemToDatabase() {
             usageCount: 0
         };
         
-        // Add kitchen category if applicable
         if (category === 'kitchen' && kitchenCategory) {
             newItem.kitchenCategory = kitchenCategory;
         }
@@ -5703,7 +5610,6 @@ async function addItemToDatabase() {
     }
 }
 
-// Updated openEditItemModal to include kitchen category
 function openEditItemModal(itemId, name, cost = 0, category = 'regular', kitchenCategory = '') {
     if (!isAdmin()) {
         showNotification('Only administrators can edit items', 'error');
@@ -5724,7 +5630,6 @@ function openEditItemModal(itemId, name, cost = 0, category = 'regular', kitchen
     if (categorySelect) categorySelect.value = category;
     if (kitchenCategorySelect) kitchenCategorySelect.value = kitchenCategory;
     
-    // Show/hide kitchen category based on category
     if (kitchenCategoryGroup) {
         kitchenCategoryGroup.style.display = category === 'kitchen' ? 'block' : 'none';
     }
@@ -5797,7 +5702,6 @@ async function saveItemChanges() {
     showLoading(true, 'Saving changes...');
     
     try {
-        // Check if item name exists in the same category (excluding current item)
         const existingQuery = await db.collection('items')
             .where('nameLowerCase', '==', name.toLowerCase())
             .where('category', '==', category)
@@ -5825,11 +5729,9 @@ async function saveItemChanges() {
             updatedBy: currentUser?.email || 'Administrator'
         };
         
-        // Add kitchen category if applicable
         if (category === 'kitchen') {
             updates.kitchenCategory = kitchenCategory;
         } else {
-            // Remove kitchen category if switching to regular
             updates.kitchenCategory = null;
         }
         
@@ -5908,7 +5810,6 @@ function applyItemsFilters() {
     loadItems();
 }
 
-// Migration function to update existing items with category
 async function migrateItemsToCategories() {
     if (!isAdmin()) return;
     
@@ -5920,7 +5821,6 @@ async function migrateItemsToCategories() {
         snapshot.forEach(doc => {
             const item = doc.data();
             if (!item.category) {
-                // Assume existing items are regular items
                 batch.update(doc.ref, { category: 'regular' });
                 updatedCount++;
             }
@@ -5935,18 +5835,12 @@ async function migrateItemsToCategories() {
     }
 }
 
-// ================================
-// IMPORT FUNCTIONS - NEW
-// ================================
-
-// Setup import button listener
 function setupImportListener() {
     const importButton = Performance.getElement('#importItemsButton');
     const importFileInput = document.getElementById('importFileInput');
     
     if (importButton) {
         importButton.addEventListener('click', () => {
-            // Create file input if it doesn't exist
             if (!importFileInput) {
                 const input = document.createElement('input');
                 input.type = 'file';
@@ -5962,7 +5856,6 @@ function setupImportListener() {
         });
     }
     
-    // Re-attach listener if file input exists
     const existingInput = document.getElementById('importFileInput');
     if (existingInput) {
         existingInput.removeEventListener('change', handleFileImport);
@@ -5970,7 +5863,6 @@ function setupImportListener() {
     }
 }
 
-// Handle file import
 async function handleFileImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -5987,12 +5879,10 @@ async function handleFileImport(event) {
         showNotification('Error importing file: ' + error.message, 'error');
     } finally {
         showLoading(false);
-        // Clear file input
         fileInput.value = '';
     }
 }
 
-// Read Excel file
 function readExcelFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -6005,7 +5895,6 @@ function readExcelFile(file) {
                 const worksheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                 
-                // Remove empty rows
                 const filteredData = jsonData.filter(row => row.some(cell => cell && cell.toString().trim() !== ''));
                 
                 if (filteredData.length < 2) {
@@ -6013,13 +5902,8 @@ function readExcelFile(file) {
                     return;
                 }
                 
-                // Parse headers
                 const headers = filteredData[0].map(h => (h || '').toString().toLowerCase().trim());
                 
-                // Expected headers
-                const expectedHeaders = ['item name', 'cost', 'category'];
-                
-                // Check if required columns exist
                 const nameIndex = headers.findIndex(h => h.includes('item name') || h.includes('name'));
                 const costIndex = headers.findIndex(h => h.includes('cost') || h.includes('price'));
                 const categoryIndex = headers.findIndex(h => h.includes('category'));
@@ -6027,7 +5911,6 @@ function readExcelFile(file) {
                 if (nameIndex === -1) throw new Error('Column "Item Name" not found');
                 if (costIndex === -1) throw new Error('Column "Cost" not found');
                 
-                // Parse data rows
                 const items = [];
                 const errors = [];
                 
@@ -6036,14 +5919,12 @@ function readExcelFile(file) {
                     const itemName = row[nameIndex] ? row[nameIndex].toString().trim() : '';
                     const itemCost = parseFloat(row[costIndex]) || 0;
                     
-                    // Determine category
                     let category = 'regular';
                     let kitchenCategory = null;
                     
                     if (categoryIndex !== -1) {
                         const rawCategory = row[categoryIndex] ? row[categoryIndex].toString().toLowerCase().trim() : '';
                         
-                        // Check if it's a kitchen category
                         if (rawCategory === 'meat' || rawCategory.includes('meat')) {
                             category = 'kitchen';
                             kitchenCategory = 'meat';
@@ -6095,14 +5976,12 @@ function readExcelFile(file) {
     });
 }
 
-// Process imported data
 async function processImportedData(items) {
     if (items.length === 0) {
         showNotification('No valid items found in file', 'warning');
         return;
     }
     
-    // Show preview
     const importPreview = Performance.getElement('#importPreview');
     if (importPreview) {
         const kitchenCount = items.filter(i => i.category === 'kitchen').length;
@@ -6128,7 +6007,6 @@ async function processImportedData(items) {
         `;
         importPreview.style.display = 'block';
         
-        // Add event listeners
         const confirmBtn = document.getElementById('confirmImportBtn');
         const cancelBtn = document.getElementById('cancelImportBtn');
         
@@ -6147,7 +6025,6 @@ async function processImportedData(items) {
     }
 }
 
-// Save imported items to database
 async function saveImportedItems(items) {
     showLoading(true, 'Importing items...');
     
@@ -6157,7 +6034,6 @@ async function saveImportedItems(items) {
         let skippedCount = 0;
         
         for (const item of items) {
-            // Check if item already exists
             const existingQuery = await db.collection('items')
                 .where('nameLowerCase', '==', item.nameLowerCase)
                 .where('category', '==', item.category)
@@ -6179,7 +6055,6 @@ async function saveImportedItems(items) {
         
         showNotification(`Successfully imported ${addedCount} items. ${skippedCount} items skipped (already exist).`, 'success');
         
-        // Refresh items list
         await loadItems();
         await updateItemCounts();
         
@@ -6195,7 +6070,6 @@ async function saveImportedItems(items) {
 // EVENT LISTENERS
 // ================================
 function setupEventListeners() {
-    // Auth section
     const logoutButton = Performance.getElement('#logoutButton');
     if (logoutButton) logoutButton.addEventListener('click', handleLogout);
     
@@ -6208,19 +6082,15 @@ function setupEventListeners() {
         });
     }
     
-    // Create Account Modal listeners
     setupCreateAccountModalListeners();
     
-    // Create Account button
     const createAccountButton = Performance.getElement('#createAccountButton');
     if (createAccountButton) {
         createAccountButton.addEventListener('click', openCreateAccountModal);
     }
     
-    // Initialize chart type selector
     initChartTypeSelector();
     
-    // Chart controls
     const chartPeriod = Performance.getElement('#chartPeriod');
     const chartMetric = Performance.getElement('#chartMetric');
     const chartSort = Performance.getElement('#chartSort');
@@ -6237,7 +6107,6 @@ function setupEventListeners() {
     if (chartDatePickerTo) chartDatePickerTo.addEventListener('change', createChartBasedOnType);
     if (chartStore) chartStore.addEventListener('change', createChartBasedOnType);
     
-    // Statistics filter
     const statsPeriodFilter = Performance.getElement('#statsPeriodFilter');
     if (statsPeriodFilter) {
         statsPeriodFilter.addEventListener('change', function() {
@@ -6245,7 +6114,6 @@ function setupEventListeners() {
         });
     }
     
-    // Signature modal listeners
     const signatureCloseBtn = document.getElementById('closeSignatureModal');
     const signatureCancelBtn = document.getElementById('cancelSignatureButton');
     const signatureTypeUpload = document.getElementById('signatureTypeUpload');
@@ -6262,7 +6130,6 @@ function setupEventListeners() {
     if (saveSignatureBtn) saveSignatureBtn.addEventListener('click', saveDrawnSignature);
     if (clearSignatureBtn) clearSignatureBtn.addEventListener('click', clearSignaturePad);
     
-    // Reports filters
     const searchInput = Performance.getElement('#searchInput');
     const filterStore = Performance.getElement('#filterStore');
     const filterType = Performance.getElement('#filterType');
@@ -6284,14 +6151,12 @@ function setupEventListeners() {
         clearFiltersBtn.addEventListener('click', clearFilters);
     }
     
-    // Reports pagination
     const prevPageBtn = Performance.getElement('#prevPageBtn');
     const nextPageBtn = Performance.getElement('#nextPageBtn');
     
     if (prevPageBtn) prevPageBtn.addEventListener('click', () => changePage(-1));
     if (nextPageBtn) nextPageBtn.addEventListener('click', () => changePage(1));
     
-    // Export functionality
     const exportDropdown = document.querySelector('.export-dropdown');
     if (exportDropdown) {
         exportDropdown.addEventListener('mouseenter', function() {
@@ -6317,7 +6182,6 @@ function setupEventListeners() {
     if (exportDateButton) exportDateButton.addEventListener('click', exportReportsByDate);
     if (cancelExportDate) cancelExportDate.addEventListener('click', hideExportDate);
     
-    // Manage items
     const manageItemsButton = Performance.getElement('#manageItemsButton');
     const closeItemsModalBtn = Performance.getElement('#closeItemsModal');
     const closeItemsModalButton = Performance.getElement('#closeItemsModalButton');
@@ -6342,13 +6206,9 @@ function setupEventListeners() {
     if (prevItemsPageBtn) prevItemsPageBtn.addEventListener('click', () => changeItemsPage(-1));
     if (nextItemsPageBtn) nextItemsPageBtn.addEventListener('click', () => changeItemsPage(1));
     
-    // Item type selector
     setupItemTypeListener();
-    
-    // Import button
     setupImportListener();
     
-    // Edit item modal
     const closeEditItemModalBtn = Performance.getElement('#closeEditItemModal');
     const cancelEditItemButton = Performance.getElement('#cancelEditItemButton');
     const saveItemButton = Performance.getElement('#saveItemButton');
@@ -6357,7 +6217,6 @@ function setupEventListeners() {
     if (cancelEditItemButton) cancelEditItemButton.addEventListener('click', closeEditItemModal);
     if (saveItemButton) saveItemButton.addEventListener('click', saveItemChanges);
     
-    // Category change in edit modal
     const editCategorySelect = Performance.getElement('#editItemCategory');
     if (editCategorySelect) {
         editCategorySelect.addEventListener('change', function() {
@@ -6368,17 +6227,14 @@ function setupEventListeners() {
         });
     }
     
-    // Report details modal
     const closeDetailsModalBtn = Performance.getElement('#closeDetailsModal');
     
     if (closeDetailsModalBtn) closeDetailsModalBtn.addEventListener('click', closeDetailsModal);
     
-    // Image modal
     const closeImageModalBtn = Performance.getElement('#closeImageModal');
     
     if (closeImageModalBtn) closeImageModalBtn.addEventListener('click', ImageManager.closeModal);
     
-    // Rejection modals
     const closeRejectionModalBtn = Performance.getElement('#closeRejectionModal');
     const cancelRejectionButton = Performance.getElement('#cancelRejectionButton');
     const confirmRejectionButton = Performance.getElement('#confirmRejectionButton');
@@ -6393,7 +6249,6 @@ function setupEventListeners() {
     if (cancelBulkRejectionButton) cancelBulkRejectionButton.addEventListener('click', closeBulkRejectionModal);
     if (confirmBulkRejectionButton) confirmBulkRejectionButton.addEventListener('click', handleBulkItemRejection);
     
-    // Character count for rejection reasons
     const rejectionReason = Performance.getElement('#rejectionReason');
     const bulkRejectionReason = Performance.getElement('#bulkRejectionReason');
     
@@ -6423,7 +6278,6 @@ function setupEventListeners() {
         });
     }
     
-    // Delete modals
     const closeDeleteModalBtn = Performance.getElement('#closeDeleteModal');
     const cancelDeleteButton = Performance.getElement('#cancelDeleteButton');
     const confirmDeleteButton = Performance.getElement('#confirmDeleteButton');
@@ -6455,7 +6309,6 @@ function setupEventListeners() {
         }
     });
     
-    // Modal close on backdrop click
     const modals = document.querySelectorAll('.modal');
     modals.forEach(modal => {
         modal.addEventListener('click', (e) => {
@@ -6475,7 +6328,6 @@ function setupEventListeners() {
         });
     });
     
-    // Escape key to close modals
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeDetailsModal();
@@ -6507,13 +6359,11 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
     setupEventListeners();
     
-    // Initialize sort icon
     const sortIcon = document.getElementById('sortDateIcon');
     if (sortIcon) {
         sortIcon.innerHTML = '<i class="fas fa-sort-down"></i>';
     }
     
-    // Add visual indicator for default sort (descending - newest first)
     const dateHeader = document.querySelector('#reportsTable th[onclick="toggleDateSort()"]');
     if (dateHeader) {
         dateHeader.classList.add('sorted-desc');
@@ -6584,14 +6434,10 @@ window.openCreateAccountModal = openCreateAccountModal;
 window.closeCreateAccountModal = closeCreateAccountModal;
 window.sendApprovalEmailViaGAS = sendApprovalEmailViaGAS;
 window.sendBulkApprovalEmailViaGAS = sendBulkApprovalEmailViaGAS;
-
-// Signature functions
 window.openSignatureModal = openSignatureModal;
 window.closeSignatureModal = closeSignatureModal;
 window.onSignatureTypeChange = onSignatureTypeChange;
 window.uploadSignatureImage = uploadSignatureImage;
 window.saveDrawnSignature = saveDrawnSignature;
 window.clearSignaturePad = clearSignaturePad;
-
-// Date sort function
 window.toggleDateSort = toggleDateSort;
