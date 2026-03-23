@@ -4420,175 +4420,500 @@ async function bulkApproveItems(reportId, itemType) {
         showLoading(false);
     }
 }
+
 // ================================
-// FIXED BULK REJECTION FUNCTION - SENDS ONE EMAIL WITH ALL REJECTED ITEMS
+// UPDATED BULK REJECTION HANDLER IN APPS SCRIPT
 // ================================
-async function bulkRejectItems(reportId, itemType, reason) {
-    if (!isAuthenticated()) {
-        showNotification('Please login to reject items', 'error');
-        return;
-    }
-    
-    if (!isAdmin()) {
-        showNotification('Only administrators can reject items', 'error');
-        return;
-    }
-    
-    if (!reason || reason.trim().length === 0) {
-        showNotification('Please provide a reason for rejection', 'error');
-        return;
-    }
-    
-    showLoading(true, 'Rejecting items...');
-    
-    try {
-        const docRef = db.collection('wasteReports').doc(reportId);
-        const doc = await docRef.get();
+
+function createBulkRejectionEmail(data, editLink) {
+  const rejectedCount = data.rejectedCount || 0;
+  const signatureHTML = data.rejectedBySignature || '';
+  const rejectedByName = data.rejectedBy || 'Administrator';
+  const rejectedByEmail = data.rejectedByEmail || '';
+  const itemsListHtml = data.itemsListHtml || '';
+  const itemsListPlain = data.itemsListPlain || '';
+  
+  // Get the combined edit URL (may contain multiple item IDs)
+  let combinedEditUrl = editLink;
+  if (data.editLink) {
+    combinedEditUrl = data.editLink;
+  }
+  
+  // Build items list if not provided
+  let finalItemsListHtml = itemsListHtml;
+  let finalItemsListPlain = itemsListPlain;
+  
+  if (!finalItemsListHtml && data.itemName) {
+    // Fallback for single item
+    finalItemsListHtml = `
+      <div style="padding: 12px; margin-bottom: 12px; background: #fff5f5; border-radius: 8px; border-left: 4px solid #d32f2f;">
+        <div style="font-weight: 600; margin-bottom: 8px;">${data.itemName || 'Item'}</div>
+        <div>Quantity: ${data.itemQuantity || 0} ${data.itemUnit || 'units'}</div>
+        <div>Cost: ${data.itemCost || 'N/A'}</div>
+        <div style="font-size: 11px; margin-top: 5px;">Item ID: ${data.itemId || 'N/A'}</div>
+      </div>
+    `;
+    finalItemsListPlain = `${data.itemName || 'Item'} - ${data.itemQuantity || 0} ${data.itemUnit || 'units'} (${data.itemCost || 'N/A'})\nItem ID: ${data.itemId || 'N/A'}`;
+  }
+  
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiple Items Rejected</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        if (!doc.exists) {
-            showNotification('Report not found', 'error');
-            return;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 20px;
         }
         
-        const report = doc.data();
-        const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
-        
-        if (!items || items.length === 0) {
-            showNotification('No items found to reject', 'error');
-            return;
+        .email-container {
+            max-width: 650px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
         }
         
-        // Get all pending items
-        const pendingItems = items.filter(item => !item.approvalStatus || item.approvalStatus === 'pending');
-        
-        if (pendingItems.length === 0) {
-            showNotification('No pending items to reject', 'info');
-            return;
+        .email-header {
+            background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
+            color: white;
+            padding: 32px 24px;
+            text-align: center;
         }
         
-        console.log(`Found ${pendingItems.length} pending items to reject`);
+        .email-header h1 {
+            font-size: 28px;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
         
-        const rejectedItemsList = [];
-        const updatedItems = items.map((item, index) => {
-            if (!item.approvalStatus || item.approvalStatus === 'pending') {
-                const uniqueItemId = `${reportId}_${itemType}_${index}_${Date.now()}`;
-                
-                rejectedItemsList.push({
-                    ...item,
-                    index: index,
-                    itemId: uniqueItemId,
-                    originalItem: item
-                });
-                
-                return {
-                    ...item,
-                    approvalStatus: 'rejected',
-                    rejectedAt: new Date().toISOString(),
-                    rejectedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
-                    rejectedByEmail: currentUser?.email || 'Administrator',
-                    rejectedBySignature: adminSignature || null,
-                    rejectionReason: reason.trim(),
-                    itemId: uniqueItemId,
-                    canResubmit: true
-                };
-            }
-            return item;
-        });
+        .counter-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 24px;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 12px;
+            display: inline-block;
+            backdrop-filter: blur(4px);
+        }
         
-        const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
-        await docRef.update({ [field]: updatedItems });
+        .email-content {
+            padding: 32px;
+        }
         
-        // Prepare items for email - build detailed list
-        const emailItemsList = rejectedItemsList.map((item, idx) => {
-            const itemName = item.item || 'N/A';
-            const itemQuantity = item.quantity || 0;
-            const itemUnit = item.unit || 'units';
-            const itemCost = `₱${((item.itemCost || 0) * (item.quantity || 0)).toFixed(2)}`;
+        .greeting {
+            font-size: 16px;
+            margin-bottom: 24px;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #d32f2f;
+        }
+        
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+            background: #fafafa;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .info-table th,
+        .info-table td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .info-table th {
+            background: #f0f0f0;
+            font-weight: 600;
+            color: #555;
+            width: 35%;
+        }
+        
+        .info-table tr:last-child th,
+        .info-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .rejection-reason {
+            background: #fff8e1;
+            border-left: 4px solid #ffb300;
+            padding: 20px;
+            margin: 24px 0;
+            border-radius: 12px;
+        }
+        
+        .rejection-reason h3 {
+            color: #e65100;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+        
+        .rejection-reason p {
+            font-style: italic;
+            color: #5d4037;
+            margin: 0;
+        }
+        
+        .rejected-items-section {
+            margin: 28px 0;
+        }
+        
+        .rejected-items-section h3 {
+            color: #d32f2f;
+            margin-bottom: 16px;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .items-list {
+            background: #fafafa;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .items-list-header {
+            background: #f5f5f5;
+            padding: 12px 16px;
+            font-weight: 600;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 20px;
+        }
+        
+        .instructions {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 24px;
+            margin: 28px 0;
+            border-radius: 12px;
+        }
+        
+        .instructions h3 {
+            color: #2e7d32;
+            margin-bottom: 16px;
+            font-size: 18px;
+        }
+        
+        .step {
+            margin-bottom: 12px;
+            padding-left: 10px;
+        }
+        
+        .step-number {
+            color: #2e7d32;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        
+        .action-button {
+            display: inline-block;
+            background: #d32f2f;
+            color: white;
+            padding: 14px 32px;
+            text-decoration: none;
+            border-radius: 40px;
+            font-weight: 600;
+            margin-top: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .action-button:hover {
+            background: #b71c1c;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .signature-section {
+            margin-top: 28px;
+            padding-top: 20px;
+            border-top: 2px dashed #ddd;
+        }
+        
+        .email-footer {
+            background: #f8f9fa;
+            padding: 20px 24px;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .company-name {
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            .email-content { padding: 20px; }
+            .info-table th, .info-table td { padding: 10px; }
+            .action-button { width: 100%; padding: 14px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="email-header">
+            <h1>❌ ${rejectedCount} Item(s) Rejected</h1>
+            <div class="counter-badge">ACTION REQUIRED - RESUBMIT</div>
+        </div>
+        
+        <div class="email-content">
+            <div class="greeting">
+                <strong>Hello ${data.personnel || 'Team Member'},</strong><br>
+                <span style="color: #d32f2f;">${rejectedCount} item(s)</span> in your waste report have been rejected by the administrator.
+            </div>
             
-            return {
-                id: item.itemId,
-                name: itemName,
-                quantity: itemQuantity,
-                unit: itemUnit,
-                cost: itemCost,
-                index: item.index,
-                expirationDate: itemType === 'expired' ? formatDate(item.expirationDate) : null,
-                reason: itemType === 'waste' ? item.reason || 'N/A' : null
-            };
-        });
-        
-        // Build HTML items list for email
-        let itemsListHtml = '<div style="margin: 15px 0;">';
-        emailItemsList.forEach((item, idx) => {
-            itemsListHtml += `
-                <div style="padding: 12px; margin-bottom: 10px; background: #f9f9f9; border-radius: 6px; border-left: 3px solid #d32f2f;">
-                    <div style="font-weight: 600; margin-bottom: 5px;">${idx + 1}. ${item.name}</div>
-                    <div style="font-size: 13px; color: #666;">
-                        Quantity: ${item.quantity} ${item.unit} | Cost: ${item.cost}
-                    </div>
-                    ${item.expirationDate ? `<div style="font-size: 12px; color: #999;">Expiration: ${item.expirationDate}</div>` : ''}
-                    ${item.reason ? `<div style="font-size: 12px; color: #999;">Reason: ${item.reason}</div>` : ''}
-                    <div style="font-size: 11px; font-family: monospace; margin-top: 5px; color: #d32f2f;">
-                        Item ID: ${item.id}
-                    </div>
+            <table class="info-table">
+                <tr><th>Report ID:</th><td><strong>${data.reportId || 'N/A'}</strong></td></tr>
+                <tr><th>Store:</th><td>${data.store || 'N/A'}</td></tr>
+                <tr><th>Submitted By:</th><td>${data.personnel || 'N/A'}</td></tr>
+                <tr><th>Report Date:</th><td>${data.reportDate || 'N/A'}</td></tr>
+                <tr><th>Disposal Type:</th><td><strong style="color: #d32f2f;">${(data.disposalType || 'N/A').toUpperCase()}</strong></td></tr>
+                <tr><th>Rejected On:</th><td>${data.rejectedAt || new Date().toLocaleString()}</td></tr>
+            </table>
+            
+            <div class="rejection-reason">
+                <h3>📝 Administrator's Rejection Reason:</h3>
+                <p>"${data.rejectionReason || 'No reason provided'}"</p>
+                <div style="margin-top: 12px; font-size: 12px; color: #666;">
+                    Rejected by: ${data.rejectedBy || 'Administrator'} (${data.rejectedByEmail || ''})
                 </div>
-            `;
-        });
-        itemsListHtml += '</div>';
-        
-        // Build plain text items list
-        let itemsListPlain = '';
-        emailItemsList.forEach((item, idx) => {
-            itemsListPlain += `${idx + 1}. ${item.name} - ${item.quantity} ${item.unit} (${item.cost})\n`;
-            if (item.expirationDate) itemsListPlain += `   Expiration: ${item.expirationDate}\n`;
-            if (item.reason) itemsListPlain += `   Reason: ${item.reason}\n`;
-            itemsListPlain += `   Item ID: ${item.id}\n\n`;
-        });
-        
-        // Build combined edit URL with all item IDs
-        const allItemIds = emailItemsList.map(item => item.id).join(',');
-        const combinedEditUrl = `https://waste-disposal-six.vercel.app/submit_waste_report.html?itemIds=${encodeURIComponent(allItemIds)}`;
-        
-        console.log(`Preparing to send bulk rejection email to: ${report.email}`);
-        console.log(`Items count: ${emailItemsList.length}`);
-        console.log(`Combined edit URL: ${combinedEditUrl}`);
-        
-        // Send ONE email with ALL rejected items
-        if (report.email && emailItemsList.length > 0) {
-            const signatureHTML = await getAdminSignatureHTML();
+            </div>
             
-            const emailResult = await sendBulkRejectionEmailViaGAS(
-                report.email,
-                report.reportId || reportId,
-                emailItemsList.length,
-                reason.trim(),
-                report,
-                itemsListHtml,
-                itemsListPlain,
-                combinedEditUrl,
-                signatureHTML
-            );
+            <div class="rejected-items-section">
+                <h3>
+                    <span>📋 Rejected Items (${rejectedCount})</span>
+                </h3>
+                <div class="items-list">
+                    ${finalItemsListHtml}
+                </div>
+            </div>
             
-            if (emailResult && emailResult.success) {
-                showNotification(`${emailItemsList.length} item(s) rejected. One email with all items sent successfully.`, 'success');
-            } else {
-                console.warn('Bulk rejection email may have failed:', emailResult?.error);
-                showNotification(`${emailItemsList.length} item(s) rejected, but email sending may have failed.`, 'warning');
+            <div class="instructions">
+                <h3>✨ How to Resubmit All Items:</h3>
+                <div class="step">
+                    <span class="step-number">1️⃣</span> Click the button below to open the submission form
+                </div>
+                <div class="step">
+                    <span class="step-number">2️⃣</span> All rejected items will be loaded automatically
+                </div>
+                <div class="step">
+                    <span class="step-number">3️⃣</span> Review each item and make corrections
+                </div>
+                <div class="step">
+                    <span class="step-number">4️⃣</span> Upload new documentation if needed
+                </div>
+                <div class="step">
+                    <span class="step-number">5️⃣</span> Submit the corrected items
+                </div>
+                
+                <div style="text-align: center; margin-top: 24px;">
+                    <a href="${combinedEditUrl}" class="action-button">
+                        ✏️ RESUBMIT ALL ${rejectedCount} ITEMS
+                    </a>
+                </div>
+            </div>
+            
+            <div class="signature-section">
+                <div style="font-size: 12px; color: #666; margin-bottom: 8px;">Digitally Signed by:</div>
+                ${signatureHTML || `
+                <div style="font-family: 'Brush Script MT', cursive; font-size: 24px; color: #2a5934;">${rejectedByName}</div>
+                <div style="font-size: 11px; color: #999; margin-top: 4px;">${rejectedByEmail}</div>
+                `}
+            </div>
+        </div>
+        
+        <div class="email-footer">
+            <p class="company-name">FG Operations Waste Management System</p>
+            <p>Automated notification — please do not reply to this email.</p>
+            <p>© ${new Date().getFullYear()} FG Operations. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>`;
+}
+
+function createBulkRejectionPlainText(data, editLink) {
+  const itemsListPlain = data.itemsListPlain || '';
+  const rejectedCount = data.rejectedCount || 0;
+  
+  let itemsText = itemsListPlain;
+  if (!itemsText && data.itemName) {
+    itemsText = `${data.itemName} - ${data.itemQuantity || 0} ${data.itemUnit || 'units'} (${data.itemCost || 'N/A'})\nItem ID: ${data.itemId || 'N/A'}`;
+  }
+  
+  return `
+❌ ${rejectedCount} ITEM(S) REJECTED - ACTION REQUIRED
+${'='.repeat(50)}
+
+Hello ${data.personnel || 'Team Member'},
+
+${rejectedCount} item(s) in your waste report have been REJECTED by the administrator.
+
+REPORT INFORMATION:
+• Report ID: ${data.reportId || 'N/A'}
+• Store: ${data.store || 'N/A'}
+• Submitted By: ${data.personnel || 'N/A'}
+• Report Date: ${data.reportDate || 'N/A'}
+• Disposal Type: ${(data.disposalType || 'N/A').toUpperCase()}
+• Rejected On: ${data.rejectedAt || new Date().toLocaleString()}
+
+ADMINISTRATOR'S REJECTION REASON:
+"${data.rejectionReason || 'No reason provided'}"
+
+REJECTED ITEMS:
+${itemsText}
+
+Rejected by: ${data.rejectedBy || 'Administrator'} (${data.rejectedByEmail || ''})
+
+HOW TO RESUBMIT:
+1. Click the link below to open the submission form
+2. All rejected items will be loaded automatically
+3. Review each item and make corrections
+4. Upload new documentation if needed
+5. Submit the corrected items
+
+Resubmit all items: ${editLink}
+
+FG Operations Waste Management System
+=====================================
+Automated notification — please do not reply.
+© ${new Date().getFullYear()} FG Operations
+  `.trim();
+}
+
+// Update the handleRequest function to properly handle bulk_rejection
+function handleRequest(e) {
+  try {
+    console.log('=== New Email Request ===');
+
+    let data = {};
+
+    if (e.postData && e.postData.contents) {
+      console.log('Parsing POST body');
+      const contents = e.postData.contents.trim();
+      try {
+        // Try to parse as JSON first
+        data = JSON.parse(contents);
+      } catch (err) {
+        // Try to parse as form data
+        const params = contents.split('&');
+        for (let param of params) {
+          const pair = param.split('=');
+          if (pair[0] === 'data') {
+            try {
+              data = JSON.parse(decodeURIComponent(pair[1].replace(/\+/g, ' ')));
+            } catch (err2) {
+              console.error('Failed to parse data parameter:', err2);
             }
-        } else if (!report.email) {
-            showNotification(`${emailItemsList.length} item(s) rejected, but no email address found.`, 'warning');
-        } else {
-            showNotification(`${emailItemsList.length} item(s) rejected.`, 'success');
+          } else {
+            const key = decodeURIComponent(pair[0]);
+            const value = pair[1] ? decodeURIComponent(pair[1].replace(/\+/g, ' ')) : '';
+            data[key] = value;
+          }
         }
-        
-        updateReportAfterApproval(reportId);
-        
-    } catch (error) {
-        console.error('Error bulk rejecting items:', error);
-        showNotification('Error rejecting items: ' + error.message, 'error');
-    } finally {
-        showLoading(false);
+      }
+    } else if (e.parameter) {
+      console.log('Parsing GET parameters');
+      if (e.parameter.data) {
+        try {
+          data = JSON.parse(e.parameter.data);
+        } catch (err) {
+          data = e.parameter;
+        }
+      } else {
+        data = e.parameter;
+      }
     }
+
+    console.log('Parsed data - emailType:', data.emailType);
+    console.log('Parsed data - to:', data.to);
+
+    const toEmail = data.to || data.email || '';
+    if (!toEmail) {
+      throw new Error('Recipient email required');
+    }
+
+    const emailType = data.emailType || 'confirmation';
+    
+    let subject, htmlBody, plainBody;
+
+    if (emailType === 'rejection') {
+      subject = data.subject || `Waste Report Item Rejected - ${data.reportId || 'N/A'}`;
+      const editLink = data.editLink || 'https://waste-disposal-six.vercel.app/submit_waste_report.html';
+      const itemId = data.itemId || `${data.reportId}_${data.itemType || 'item'}_${Date.now()}`;
+      const editUrl = editLink + (editLink.includes('?') ? '&' : '?') + 'itemId=' + encodeURIComponent(itemId);
+      htmlBody = createRejectionEmail(data, itemId, editUrl);
+      plainBody = createRejectionPlainText(data, itemId, editUrl);
+
+    } else if (emailType === 'bulk_rejection') {
+      subject = data.subject || `❌ ${data.rejectedCount || 0} Item(s) Rejected - ${data.reportId || 'N/A'}`;
+      const editLink = data.editLink || 'https://waste-disposal-six.vercel.app/submit_waste_report.html';
+      htmlBody = createBulkRejectionEmail(data, editLink);
+      plainBody = createBulkRejectionPlainText(data, editLink);
+
+    } else if (emailType === 'approval') {
+      subject = data.subject || `✅ Item Approved - ${data.reportId || 'N/A'}`;
+      htmlBody = createApprovalEmail(data);
+      plainBody = createApprovalPlainText(data);
+
+    } else if (emailType === 'bulk_approval') {
+      subject = data.subject || `✅ Multiple Items Approved - ${data.reportId || 'N/A'}`;
+      htmlBody = createBulkApprovalEmail(data);
+      plainBody = createBulkApprovalPlainText(data);
+
+    } else {
+      subject = data.subject || `Waste Report Confirmation - ${data.reportId || 'N/A'}`;
+      htmlBody = createConfirmationEmail(data);
+      plainBody = createConfirmationPlainText(data);
+    }
+
+    console.log(`Sending ${emailType.toUpperCase()} email to: ${toEmail}`);
+
+    GmailApp.sendEmail(toEmail, subject, plainBody, {
+      htmlBody: htmlBody,
+      name: 'FG Operations'
+    });
+
+    console.log('Email sent successfully');
+
+    return createJsonResponse({
+      success: true,
+      message: 'Email sent',
+      type: emailType
+    });
+
+  } catch (error) {
+    console.error('Error:', error.toString());
+    return createJsonResponse({
+      success: false,
+      error: error.toString()
+    });
+  }
 }
 
 // ================================
