@@ -4420,9 +4420,8 @@ async function bulkApproveItems(reportId, itemType) {
         showLoading(false);
     }
 }
-
 // ================================
-// UPDATED BULK REJECTION FUNCTION - SENDS ONE EMAIL WITH ALL REJECTED ITEMS
+// FIXED BULK REJECTION FUNCTION - SENDS ONE EMAIL WITH ALL REJECTED ITEMS
 // ================================
 async function bulkRejectItems(reportId, itemType, reason) {
     if (!isAuthenticated()) {
@@ -4454,20 +4453,31 @@ async function bulkRejectItems(reportId, itemType, reason) {
         const report = doc.data();
         const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
         
-        if (!items) {
-            showNotification('No items found', 'error');
+        if (!items || items.length === 0) {
+            showNotification('No items found to reject', 'error');
             return;
         }
         
-        const rejectedItems = [];
+        // Get all pending items
+        const pendingItems = items.filter(item => !item.approvalStatus || item.approvalStatus === 'pending');
+        
+        if (pendingItems.length === 0) {
+            showNotification('No pending items to reject', 'info');
+            return;
+        }
+        
+        console.log(`Found ${pendingItems.length} pending items to reject`);
+        
+        const rejectedItemsList = [];
         const updatedItems = items.map((item, index) => {
             if (!item.approvalStatus || item.approvalStatus === 'pending') {
                 const uniqueItemId = `${reportId}_${itemType}_${index}_${Date.now()}`;
                 
-                rejectedItems.push({
+                rejectedItemsList.push({
                     ...item,
                     index: index,
-                    itemId: uniqueItemId
+                    itemId: uniqueItemId,
+                    originalItem: item
                 });
                 
                 return {
@@ -4488,35 +4498,191 @@ async function bulkRejectItems(reportId, itemType, reason) {
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: updatedItems });
         
+        // Prepare items for email - build detailed list
+        const emailItemsList = rejectedItemsList.map((item, idx) => {
+            const itemName = item.item || 'N/A';
+            const itemQuantity = item.quantity || 0;
+            const itemUnit = item.unit || 'units';
+            const itemCost = `₱${((item.itemCost || 0) * (item.quantity || 0)).toFixed(2)}`;
+            
+            return {
+                id: item.itemId,
+                name: itemName,
+                quantity: itemQuantity,
+                unit: itemUnit,
+                cost: itemCost,
+                index: item.index,
+                expirationDate: itemType === 'expired' ? formatDate(item.expirationDate) : null,
+                reason: itemType === 'waste' ? item.reason || 'N/A' : null
+            };
+        });
+        
+        // Build HTML items list for email
+        let itemsListHtml = '<div style="margin: 15px 0;">';
+        emailItemsList.forEach((item, idx) => {
+            itemsListHtml += `
+                <div style="padding: 12px; margin-bottom: 10px; background: #f9f9f9; border-radius: 6px; border-left: 3px solid #d32f2f;">
+                    <div style="font-weight: 600; margin-bottom: 5px;">${idx + 1}. ${item.name}</div>
+                    <div style="font-size: 13px; color: #666;">
+                        Quantity: ${item.quantity} ${item.unit} | Cost: ${item.cost}
+                    </div>
+                    ${item.expirationDate ? `<div style="font-size: 12px; color: #999;">Expiration: ${item.expirationDate}</div>` : ''}
+                    ${item.reason ? `<div style="font-size: 12px; color: #999;">Reason: ${item.reason}</div>` : ''}
+                    <div style="font-size: 11px; font-family: monospace; margin-top: 5px; color: #d32f2f;">
+                        Item ID: ${item.id}
+                    </div>
+                </div>
+            `;
+        });
+        itemsListHtml += '</div>';
+        
+        // Build plain text items list
+        let itemsListPlain = '';
+        emailItemsList.forEach((item, idx) => {
+            itemsListPlain += `${idx + 1}. ${item.name} - ${item.quantity} ${item.unit} (${item.cost})\n`;
+            if (item.expirationDate) itemsListPlain += `   Expiration: ${item.expirationDate}\n`;
+            if (item.reason) itemsListPlain += `   Reason: ${item.reason}\n`;
+            itemsListPlain += `   Item ID: ${item.id}\n\n`;
+        });
+        
+        // Build combined edit URL with all item IDs
+        const allItemIds = emailItemsList.map(item => item.id).join(',');
+        const combinedEditUrl = `https://waste-disposal-six.vercel.app/submit_waste_report.html?itemIds=${encodeURIComponent(allItemIds)}`;
+        
+        console.log(`Preparing to send bulk rejection email to: ${report.email}`);
+        console.log(`Items count: ${emailItemsList.length}`);
+        console.log(`Combined edit URL: ${combinedEditUrl}`);
+        
         // Send ONE email with ALL rejected items
-        if (report.email && rejectedItems.length > 0) {
+        if (report.email && emailItemsList.length > 0) {
             const signatureHTML = await getAdminSignatureHTML();
             
-            await sendBulkRejectionEmailViaGAS(
+            const emailResult = await sendBulkRejectionEmailViaGAS(
                 report.email,
                 report.reportId || reportId,
-                rejectedItems.length,
-                reason,
+                emailItemsList.length,
+                reason.trim(),
                 report,
-                rejectedItems,
+                itemsListHtml,
+                itemsListPlain,
+                combinedEditUrl,
                 signatureHTML
             );
             
-            showNotification(`${rejectedItems.length} item(s) rejected. One email with all items sent.`, 'success');
+            if (emailResult && emailResult.success) {
+                showNotification(`${emailItemsList.length} item(s) rejected. One email with all items sent successfully.`, 'success');
+            } else {
+                console.warn('Bulk rejection email may have failed:', emailResult?.error);
+                showNotification(`${emailItemsList.length} item(s) rejected, but email sending may have failed.`, 'warning');
+            }
+        } else if (!report.email) {
+            showNotification(`${emailItemsList.length} item(s) rejected, but no email address found.`, 'warning');
         } else {
-            showNotification(`${rejectedItems.length} item(s) rejected, but no email address found.`, 'warning');
+            showNotification(`${emailItemsList.length} item(s) rejected.`, 'success');
         }
         
         updateReportAfterApproval(reportId);
         
     } catch (error) {
         console.error('Error bulk rejecting items:', error);
-        showNotification('Error bulk rejecting items: ' + error.message, 'error');
+        showNotification('Error rejecting items: ' + error.message, 'error');
     } finally {
         showLoading(false);
     }
 }
 
+// ================================
+// UPDATED BULK REJECTION EMAIL FUNCTION - SENDS ONE EMAIL WITH ALL ITEMS
+// ================================
+async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, reason, reportData, itemsListHtml, itemsListPlain, combinedEditUrl, signatureHTML) {
+    try {
+        console.log(`Sending bulk rejection email to: ${toEmail} for ${rejectedCount} items`);
+        
+        const finalSignatureHTML = signatureHTML || await getAdminSignatureHTML();
+        
+        const emailData = {
+            emailType: 'bulk_rejection',
+            to: toEmail,
+            subject: `❌ ${rejectedCount} Item(s) Rejected - ${reportId}`,
+            store: reportData.store || 'N/A',
+            personnel: reportData.personnel || 'Team Member',
+            reportDate: formatDate(reportData.reportDate) || 'N/A',
+            disposalType: getDisposalTypeText(reportData.disposalTypes),
+            reportId: reportId,
+            rejectedCount: rejectedCount,
+            rejectionReason: reason,
+            editLink: combinedEditUrl,
+            itemsListHtml: itemsListHtml,
+            itemsListPlain: itemsListPlain,
+            rejectedAt: new Date().toLocaleString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            }),
+            rejectedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+            rejectedByEmail: currentUser?.email || 'Administrator',
+            rejectedBySignature: finalSignatureHTML
+        };
+
+        // Log the email data for debugging
+        console.log('Email data prepared:', {
+            to: emailData.to,
+            subject: emailData.subject,
+            rejectedCount: emailData.rejectedCount,
+            editLink: emailData.editLink
+        });
+
+        const formData = new FormData();
+        Object.keys(emailData).forEach(key => {
+            formData.append(key, emailData[key]);
+        });
+
+        let success = false;
+        let errorMessage = '';
+        
+        try {
+            const response = await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData,
+                mode: 'no-cors'
+            });
+            success = true;
+            console.log('✅ Bulk rejection email sent via POST (no-cors)');
+        } catch (error) {
+            console.warn('Form data approach failed:', error);
+            errorMessage = error.message;
+            
+            try {
+                const params = new URLSearchParams();
+                Object.keys(emailData).forEach(key => {
+                    params.append(key, emailData[key]);
+                });
+                
+                await fetch(GAS_CONFIG.ENDPOINT + '?' + params.toString(), {
+                    method: 'GET',
+                    mode: 'no-cors'
+                });
+                success = true;
+                console.log('✅ Bulk rejection email sent via GET (no-cors)');
+            } catch (error2) {
+                console.error('URL params approach also failed:', error2);
+                errorMessage = error2.message;
+            }
+        }
+
+        if (success) {
+            return { success: true };
+        } else {
+            return { success: false, error: errorMessage || 'Email sending failed' };
+        }
+
+    } catch (error) {
+        console.error('❌ Bulk rejection email function error:', error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
 async function updateReportAfterApproval(reportId) {
     try {
         const doc = await db.collection('wasteReports').doc(reportId).get();
