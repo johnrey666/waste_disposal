@@ -1072,51 +1072,53 @@ function changeStatsPeriod(period) {
 const ImageManager = {
     urlCache: new Map(),
     
-    displayImagesInItem(item, index, type) {
-        if (!item.documentation || !Array.isArray(item.documentation) || item.documentation.length === 0) {
-            return '';
-        }
-        
-        const images = item.documentation.filter(doc => doc.type?.startsWith('image/'));
-        if (images.length === 0) {
-            return '';
-        }
-        
-        let imagesHTML = `
-            <div class="image-gallery-section">
-                <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
-                    <i class="fas fa-images"></i> ${images.length} image${images.length !== 1 ? 's' : ''}
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-        `;
-        
-        images.forEach((doc, docIndex) => {
-            let imageUrl = this.urlCache.get(doc.path);
-            if (!imageUrl) {
-                imageUrl = doc.url || this.getFirebaseStorageUrl(doc.path || doc.fullPath || doc.filePath);
-                this.urlCache.set(doc.path, imageUrl);
-            }
-            
-            const imageName = doc.name || `Image ${docIndex + 1}`;
-            const safeImageName = this.escapeHtml(imageName);
-            const uniqueId = `${type}-${index}-${docIndex}`;
-            
-            imagesHTML += `
-                <div class="thumbnail-container" onclick="ImageManager.openModal('${imageUrl}', '${safeImageName}', '${uniqueId}', ${JSON.stringify(doc).replace(/"/g, '&quot;')}, '${currentReportDetailsId}', ${index}, '${type}', ${docIndex})">
-                    <img src="${imageUrl}" 
-                        alt="${safeImageName}"
-                        loading="lazy"
-                        style="width: 80px; height: 80px; object-fit: cover;"
-                        onerror="ImageManager.handleError(this, '${safeImageName}')">
-                    <div class="thumbnail-index">${docIndex + 1}</div>
-                </div>
-            `;
-        });
-        
-        imagesHTML += `</div></div>`;
-        return imagesHTML;
-    },
+displayImagesInItem(item, index, type) {
+    if (!item.documentation || !Array.isArray(item.documentation) || item.documentation.length === 0) {
+        return '';
+    }
     
+    const images = item.documentation.filter(doc => doc.type?.startsWith('image/'));
+    if (images.length === 0) {
+        return '';
+    }
+    
+    let imagesHTML = `
+        <div class="image-gallery-section">
+            <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
+                <i class="fas fa-images"></i> ${images.length} image${images.length !== 1 ? 's' : ''}
+                ${images.filter(img => img.name && img.name.toLowerCase().includes('.heic')).length > 0 ? 
+                    '<span style="margin-left: 8px; color: #dc3545;">(HEIC images cannot be previewed)</span>' : ''}
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+    `;
+    
+    images.forEach((doc, docIndex) => {
+        let imageUrl = this.urlCache.get(doc.path);
+        if (!imageUrl) {
+            imageUrl = doc.url || this.getFirebaseStorageUrl(doc.path || doc.fullPath || doc.filePath);
+            this.urlCache.set(doc.path, imageUrl);
+        }
+        
+        const imageName = doc.name || `Image ${docIndex + 1}`;
+        const safeImageName = this.escapeHtml(imageName);
+        const isHeic = imageName && (imageName.toLowerCase().endsWith('.heic') || imageName.toLowerCase().includes('.heic'));
+        
+        imagesHTML += `
+            <div class="thumbnail-container" onclick="ImageManager.openModal('${imageUrl}', '${safeImageName}', '${type}-${index}-${docIndex}', ${JSON.stringify(doc).replace(/"/g, '&quot;')}, '${currentReportDetailsId}', ${index}, '${type}', ${docIndex})" style="position: relative;">
+                <img src="${imageUrl}" 
+                    alt="${safeImageName}"
+                    loading="lazy"
+                    style="width: 80px; height: 80px; object-fit: cover; ${isHeic ? 'filter: grayscale(0.5);' : ''}"
+                    onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"80\"><rect width=\"80\" height=\"80\" fill=\"%23f8d7da\"/><text x=\"40\" y=\"35\" font-family=\"Arial\" font-size=\"8\" text-anchor=\"middle\" fill=\"%23721c24\">HEIC</text><text x=\"40\" y=\"50\" font-family=\"Arial\" font-size=\"7\" text-anchor=\"middle\" fill=\"%23721c24\">Format</text><text x=\"40\" y=\"65\" font-family=\"Arial\" font-size=\"6\" text-anchor=\"middle\" fill=\"%23721c24\"> CLICK HERE TO DOWLOAD</text></svg>';
+                <div class="thumbnail-index">${docIndex + 1}</div>
+                ${isHeic ? '<div style="position: absolute; bottom: 2px; right: 2px; background: #dc3545; color: white; font-size: 7px; padding: 1px 4px; border-radius: 3px;">HEIC</div>' : ''}
+            </div>
+        `;
+    });
+    
+    imagesHTML += `</div></div>`;
+    return imagesHTML;
+},
     getFirebaseStorageUrl(storagePath) {
         if (!storagePath) return null;
         
@@ -1146,97 +1148,126 @@ const ImageManager = {
         return url;
     },
     
-    openModal(imageUrl, imageName, uniqueId, imageData, reportId, itemIndex, itemType, imageIndex) {
-        const modal = Performance.getElement('#imageModal');
-        const modalImage = Performance.getElement('#modalImage');
-        const imageLoading = Performance.getElement('#imageLoading');
-        const imageInfo = Performance.getElement('#imageInfo');
-        const downloadBtn = Performance.getElement('#downloadImageBtn');
-        const deleteBtn = Performance.getElement('#deleteImageBtn');
+ openModal(imageUrl, imageName, uniqueId, imageData, reportId, itemIndex, itemType, imageIndex) {
+    const modal = Performance.getElement('#imageModal');
+    const modalImage = Performance.getElement('#modalImage');
+    const imageLoading = Performance.getElement('#imageLoading');
+    const imageInfo = Performance.getElement('#imageInfo');
+    const downloadBtn = Performance.getElement('#downloadImageBtn');
+    const deleteBtn = Performance.getElement('#deleteImageBtn');
+    
+    if (!modal || !modalImage) return;
+    
+    // Check if it's a HEIC file
+    const isHeic = imageName && (imageName.toLowerCase().endsWith('.heic') || imageName.toLowerCase().includes('.heic'));
+    
+    modalImage.style.display = 'none';
+    modalImage.src = '';
+    if (imageLoading) imageLoading.style.display = 'block';
+    
+    if (downloadBtn) {
+        downloadBtn.onclick = () => this.downloadImage(imageUrl, imageName);
+        downloadBtn.style.display = 'inline-block'; // Always show download for HEIC
+    }
+    
+    if (deleteBtn && imageData && reportId && isAdmin()) {
+        currentImageToDeleteData = {
+            reportId: reportId,
+            itemIndex: itemIndex,
+            itemType: itemType,
+            imageIndex: imageIndex,
+            imageData: imageData
+        };
+        deleteBtn.onclick = () => this.openDeleteImageModal(imageData, reportId, itemIndex, itemType, imageIndex);
+        deleteBtn.style.display = 'inline-block';
+    } else if (deleteBtn) {
+        deleteBtn.style.display = 'none';
+    }
+    
+    // For HEIC files, show a clear message
+    if (isHeic) {
+        if (imageLoading) imageLoading.style.display = 'none';
         
-        if (!modal || !modalImage) return;
-        
-        modalImage.style.display = 'none';
-        modalImage.src = '';
-        if (imageLoading) imageLoading.style.display = 'block';
+        modalImage.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="%23f8d7da"/><text x="200" y="130" font-family="Arial" font-size="16" text-anchor="middle" fill="%23721c24">PLEASE DOWNLOAD TO VIEW</text><text x="200" y="160" font-family="Arial" font-size="12" text-anchor="middle" fill="%23721c24">HEIC format is not supported by browsers</text><text x="200" y="190" font-family="Arial" font-size="11" text-anchor="middle" fill="%23999">Click Download to save and view the image</text><text x="200" y="215" font-family="Arial" font-size="10" text-anchor="middle" fill="%23999">File: ${imageName.substring(0, 40)}</text></svg>';
+        modalImage.style.display = 'block';
+        modalImage.alt = 'HEIC image - not supported';
         
         if (imageInfo) {
             imageInfo.innerHTML = `
                 <div style="text-align: center;">
                     <strong>${imageName}</strong><br>
-                    <small>Loading...</small>
+                    <span style="color: #721c24; background: #f8d7da; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 8px;">
+                        <i class="fas fa-exclamation-triangle"></i> HEIC Format Not Supported
+                    </span><br>
+                    <small style="color: #666; margin-top: 8px; display: block;">
+                        This image is in HEIC format (Apple's High Efficiency Image Format).<br>
+                        Browsers cannot display this format directly.<br>
+                        Click the Download button below to save and view the image.
+                    </small>
                 </div>
             `;
         }
         
-        if (downloadBtn) {
-            downloadBtn.onclick = () => this.downloadImage(imageUrl, imageName);
-        }
-        
-        if (deleteBtn && imageData && reportId && isAdmin()) {
-            currentImageToDeleteData = {
-                reportId: reportId,
-                itemIndex: itemIndex,
-                itemType: itemType,
-                imageIndex: imageIndex,
-                imageData: imageData
-            };
-            deleteBtn.onclick = () => this.openDeleteImageModal(imageData, reportId, itemIndex, itemType, imageIndex);
-            deleteBtn.style.display = 'inline-block';
-        } else if (deleteBtn) {
-            deleteBtn.style.display = 'none';
-        }
-        
-        const preloadTimer = setTimeout(() => {
-            if (imageLoading) imageLoading.style.display = 'none';
-            modalImage.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="%23f8f9fa"/><text x="200" y="140" font-family="Arial" font-size="14" text-anchor="middle" fill="%23666">Loading...</text></svg>';
-            modalImage.style.display = 'block';
-        }, 5000);
-        
-        const img = new Image();
-        img.onload = () => {
-            clearTimeout(preloadTimer);
-            modalImage.src = imageUrl;
-            modalImage.alt = imageName;
-            modalImage.style.display = 'block';
-            
-            if (imageLoading) imageLoading.style.display = 'none';
-            
-            if (imageInfo) {
-                imageInfo.innerHTML = `
-                    <div style="text-align: center;">
-                        <strong>${imageName}</strong><br>
-                        <small>${img.width} × ${img.height} pixels</small>
-                    </div>
-                `;
-            }
-            
-            if (downloadBtn) {
-                downloadBtn.style.display = 'inline-block';
-            }
-        };
-        
-        img.onerror = () => {
-            clearTimeout(preloadTimer);
-            modalImage.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="%23f8f9fa"/><text x="200" y="140" font-family="Arial" font-size="14" text-anchor="middle" fill="%23666">Image unavailable</text></svg>';
-            modalImage.alt = 'Image not available';
-            modalImage.style.display = 'block';
-            
-            if (imageLoading) imageLoading.style.display = 'none';
-            
-            if (imageInfo) {
-                imageInfo.innerHTML = `
-                    <div style="text-align: center;">
-                        <strong>${imageName}</strong><br>
-                        <small style="color: #dc3545;">Failed to load</small>
-                    </div>
-                `;
-            }
-        };
-        
-        img.src = imageUrl;
         modal.style.display = 'flex';
-    },
+        return;
+    }
+    
+    // For non-HEIC files, proceed with normal loading
+    let preloadTimer = setTimeout(() => {
+        if (imageLoading) imageLoading.style.display = 'none';
+        modalImage.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="%23f8f9fa"/><text x="200" y="140" font-family="Arial" font-size="14" text-anchor="middle" fill="%23666">Loading...</text></svg>';
+        modalImage.style.display = 'block';
+    }, 5000);
+    
+    if (imageInfo) {
+        imageInfo.innerHTML = `
+            <div style="text-align: center;">
+                <strong>${imageName}</strong><br>
+                <small>Loading...</small>
+            </div>
+        `;
+    }
+    
+    const img = new Image();
+    img.onload = () => {
+        clearTimeout(preloadTimer);
+        modalImage.src = imageUrl;
+        modalImage.alt = imageName;
+        modalImage.style.display = 'block';
+        
+        if (imageLoading) imageLoading.style.display = 'none';
+        
+        if (imageInfo) {
+            imageInfo.innerHTML = `
+                <div style="text-align: center;">
+                    <strong>${imageName}</strong><br>
+                    <small>${img.width} × ${img.height} pixels</small>
+                </div>
+            `;
+        }
+    };
+    
+    img.onerror = () => {
+        clearTimeout(preloadTimer);
+        modalImage.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="%23f8f9fa"/><text x="200" y="140" font-family="Arial" font-size="14" text-anchor="middle" fill="%23666">Image unavailable</text></svg>';
+        modalImage.alt = 'Image not available';
+        modalImage.style.display = 'block';
+        
+        if (imageLoading) imageLoading.style.display = 'none';
+        
+        if (imageInfo) {
+            imageInfo.innerHTML = `
+                <div style="text-align: center;">
+                    <strong>${imageName}</strong><br>
+                    <small style="color: #dc3545;">Failed to load</small>
+                </div>
+            `;
+        }
+    };
+    
+    img.src = imageUrl;
+    modal.style.display = 'flex';
+},
     
     closeModal() {
         const modal = Performance.getElement('#imageModal');
@@ -1335,12 +1366,23 @@ const ImageManager = {
         }
     },
     
-    handleError(imgElement, imageName) {
-        console.warn(`Failed to load image: ${imageName}`);
+handleError(imgElement, imageName) {
+    console.warn(`Failed to load image: ${imageName}`);
+    
+    // Check if it's a .heic file
+    const isHeic = imageName && (imageName.toLowerCase().endsWith('.heic') || imageName.toLowerCase().includes('.heic'));
+    
+    if (isHeic) {
+        // Show clear "Image Unavailable" message for HEIC
+        imgElement.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%23f8d7da"/><text x="40" y="30" font-family="Arial" font-size="8" text-anchor="middle" fill="%23721c24">HEIC</text><text x="40" y="45" font-family="Arial" font-size="7" text-anchor="middle" fill="%23721c24">Format</text><text x="40" y="60" font-family="Arial" font-size="6" text-anchor="middle" fill="%23721c24">Unavailable</text></svg>';
+    } else {
         imgElement.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%23f0f0f0"/><text x="40" y="40" font-family="Arial" font-size="10" text-anchor="middle" fill="%23999">Image</text></svg>';
-        imgElement.style.objectFit = 'contain';
-        imgElement.style.padding = '10px';
-    },
+    }
+    
+    imgElement.style.objectFit = 'contain';
+    imgElement.style.padding = '10px';
+    imgElement.title = isHeic ? `HEIC format not supported: ${imageName}` : imageName;
+},
     
     escapeHtml(text) {
         const div = document.createElement('div');
