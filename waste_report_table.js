@@ -1111,10 +1111,10 @@ displayImagesInItem(item, index, type) {
                     style="width: 80px; height: 80px; object-fit: cover; ${isHeic ? 'filter: grayscale(0.5);' : ''}"
                     onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"80\"><rect width=\"80\" height=\"80\" fill=\"%23f8d7da\"/><text x=\"40\" y=\"35\" font-family=\"Arial\" font-size=\"8\" text-anchor=\"middle\" fill=\"%23721c24\">HEIC</text><text x=\"40\" y=\"50\" font-family=\"Arial\" font-size=\"7\" text-anchor=\"middle\" fill=\"%23721c24\">Format</text><text x=\"40\" y=\"65\" font-family=\"Arial\" font-size=\"6\" text-anchor=\"middle\" fill=\"%23721c24\"></text></svg>';
                 <div class="thumbnail-index">${docIndex + 1}</div>
-                ${isHeic ? '<div style="position: absolute; bottom: 2px; right: 2px; background: #dc3545; color: white; font-size: 7px; padding: 1px 4px; border-radius: 3px;">HEIC</div>' : ''}
+                ${isHeicr ? '<div style="position: absolute; bottom: 2px; right: 2px; background: #dc3545; color: white; font-size: 7px; padding: 1px 4px; border-radius: 3px;">HEIC</div>' : ''}
             </div>
         `;
-    });
+    })
     
     imagesHTML += `</div></div>`;
     return imagesHTML;
