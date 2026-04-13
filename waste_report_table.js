@@ -1103,17 +1103,20 @@ displayImagesInItem(item, index, type) {
         const safeImageName = this.escapeHtml(imageName);
         const isHeic = imageName && (imageName.toLowerCase().endsWith('.heic') || imageName.toLowerCase().includes('.heic'));
         
-imagesHTML += `
-    <div class="thumbnail-container" onclick="ImageManager.openModal('${imageUrl}', '${safeImageName}', '${type}-${index}-${docIndex}', ${JSON.stringify(doc).replace(/"/g, '&quot;')}, '${currentReportDetailsId}', ${index}, '${type}', ${docIndex})" style="position: relative;">
-        <img src="${imageUrl}" 
-            alt="${safeImageName}"
-            loading="lazy"
-            style="width: 80px; height: 80px; object-fit: cover; ${isHeic ? 'filter: grayscale(0.5);' : ''}"
-            onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"80\"><rect width=\"80\" height=\"80\" fill=\"%23f8f9fa\"/><text x=\"40\" y=\"40\" font-family=\"Arial\" font-size=\"10\" text-anchor=\"middle\" fill=\"%23999\">Image</text><text x=\"40\" y=\"55\" font-family=\"Arial\" font-size=\"8\" text-anchor=\"middle\" fill=\"%23ccc\">unavailable</text></svg>';"
-        <div class="thumbnail-index">${docIndex + 1}</div>
-    </div>
-`;
-    })
+        // Create a clean onerror handler as a separate function
+        const errorSvg = 'data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2280%22 height%3D%2280%22%3E%3Crect width%3D%2280%22 height%3D%2280%22 fill%3D%22%23f8f9fa%22%2F%3E%3Ctext x%3D%2240%22 y%3D%2240%22 font-family%3D%22Arial%22 font-size%3D%2210%22 text-anchor%3D%22middle%22 fill%3D%22%23999%22%3EImage%3C%2Ftext%3E%3C%2Fsvg%3E';
+        
+        imagesHTML += `
+            <div class="thumbnail-container" onclick="ImageManager.openModal('${imageUrl}', '${safeImageName}', '${type}-${index}-${docIndex}', ${JSON.stringify(doc).replace(/"/g, '&quot;')}, '${currentReportDetailsId}', ${index}, '${type}', ${docIndex})" style="position: relative;">
+                <img src="${imageUrl}" 
+                    alt="${safeImageName}"
+                    loading="lazy"
+                    style="width: 80px; height: 80px; object-fit: cover; ${isHeic ? 'filter: grayscale(0.5);' : ''}"
+                    onerror="this.onerror=null; this.src='${errorSvg}'">
+                <div class="thumbnail-index">${docIndex + 1}</div>
+            </div>
+        `;
+    });
     
     imagesHTML += `</div></div>`;
     return imagesHTML;
@@ -1367,20 +1370,10 @@ imagesHTML += `
     
 handleError(imgElement, imageName) {
     console.warn(`Failed to load image: ${imageName}`);
-    
-    // Check if it's a .heic file
-    const isHeic = imageName && (imageName.toLowerCase().endsWith('.heic') || imageName.toLowerCase().includes('.heic'));
-    
-    if (isHeic) {
-        // Show a cleaner "Image Unavailable" message without HEIC text
-        imgElement.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%23f8f9fa"/><text x="40" y="40" font-family="Arial" font-size="10" text-anchor="middle" fill="%23999">Image</text><text x="40" y="55" font-family="Arial" font-size="8" text-anchor="middle" fill="%23ccc">unavailable</text></svg>';
-    } else {
-        imgElement.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%23f0f0f0"/><text x="40" y="40" font-family="Arial" font-size="10" text-anchor="middle" fill="%23999">Image</text><text x="40" y="55" font-family="Arial" font-size="8" text-anchor="middle" fill="%23ccc">unavailable</text></svg>';
-    }
-    
-    imgElement.style.objectFit = 'contain';
-    imgElement.style.padding = '10px';
-    imgElement.title = isHeic ? `HEIC format not supported: ${imageName}` : imageName;
+    // Just show a simple gray placeholder without any text
+    imgElement.src = 'data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2280%22 height%3D%2280%22%3E%3Crect width%3D%2280%22 height%3D%2280%22 fill%3D%22%23e0e0e0%22%2F%3E%3C%2Fsvg%3E';
+    imgElement.style.objectFit = 'cover';
+    imgElement.style.padding = '0';
 },
     
     escapeHtml(text) {
