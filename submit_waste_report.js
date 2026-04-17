@@ -52,7 +52,7 @@ const Loader = {
     hideUpload() {
         if (this.progressContainer) this.progressContainer.style.display = 'none';
         if (this.progressFill) this.progressFill.style.width = '0%';
-        if (this.progressText) this.progressText.textContent = 'Please WaitUploading: 0%';
+        if (this.progressText) this.progressText.textContent = 'Please Wait Uploading: 0%';
         if (this.progressDetails) this.progressDetails.textContent = '';
     },
 
