@@ -753,7 +753,7 @@
                 <div class="chart-stat-card">
                     <h4><i class="fas fa-calculator"></i> Stores with Waste</h4>
                     <div class="value" id="overallCostTotal">0</div>
-                    <div class="subtext" id="costPeriod">out of 12 stores</div>
+                    <div class="subtext" id="costPeriod">out of 13 stores</div>
                 </div>
             </div>
             
@@ -776,7 +776,7 @@
                     </div>
                     <div class="stat-content-mini">
                         <h4>Total Stores</h4>
-                        <div class="value-large">12</div>
+                        <div class="value-large">13</div>
                         <div class="subtext">Active locations</div>
                     </div>
                 </div>
@@ -838,6 +838,7 @@
                     <ul class="store-list">
                         <li>FG to go TABACO</li>
                         <li>FG to go LEGAZPI</li>
+                        <li>FG to go NAGA</li>   <!-- ADDED: FG to go NAGA -->
                         <li>FG LEGAZPI</li>
                         <li>FG NAGA</li>
                     </ul>
@@ -950,7 +951,7 @@
     let currentComplianceChartType = 'pie';
     let currentCostChartType = 'pie';
     let currentData = null;
-    let allReports = []; // Store all reports for filtering
+    let allReports = [];
     let currentFilter = {
         year: new Date().getFullYear(),
         month: new Date().getMonth()
@@ -958,11 +959,11 @@
     let dataCache = {
         reports: [],
         timestamp: 0,
-        ttl: 5 * 60 * 1000, // 5 minutes cache
+        ttl: 5 * 60 * 1000,
         statistics: null
     };
 
-    // Define all store names
+    // UPDATED: Define all store names (13 stores now - added FG to go NAGA)
     const ALL_STORES = [
         'FG Express IROSIN',
         'FG Express LIGAO',
@@ -974,11 +975,12 @@
         'FG Express RIZAL',
         'FG to go TABACO',
         'FG to go LEGAZPI',
+        'FG to go NAGA',      // ADDED
         'FG LEGAZPI',
         'FG NAGA'
     ];
 
-    // Store display names for chart
+    // Store display names for chart (updated with NAGA to go)
     const STORE_DISPLAY_NAMES = {
         'FG Express IROSIN': 'IROSIN',
         'FG Express LIGAO': 'LIGAO',
@@ -990,6 +992,7 @@
         'FG Express RIZAL': 'RIZAL',
         'FG to go TABACO': 'TABACO',
         'FG to go LEGAZPI': 'LEGAZPI (to go)',
+        'FG to go NAGA': 'NAGA (to go)',
         'FG LEGAZPI': 'LEGAZPI',
         'FG NAGA': 'NAGA'
     };
@@ -998,23 +1001,22 @@
     const CHART_COLORS = [
         '#28a745', '#20c997', '#17a2b8', '#0dcaf0',
         '#ffc107', '#fd7e14', '#dc3545', '#6c757d',
-        '#6610f2', '#6f42c1', '#d63384', '#198754'
+        '#6610f2', '#6f42c1', '#d63384', '#198754', '#fd7e14'
     ];
 
     // ================================
-    // OPTIMIZED UTILITY FUNCTIONS
+    // UTILITY FUNCTIONS
     // ================================
     function formatPercentage(value) {
         return Math.round(value) + '%';
     }
 
-    // Populate year dropdown
     function populateYearDropdown() {
         const yearSelect = document.getElementById('yearSelect');
         if (!yearSelect) return;
         
         const currentYear = new Date().getFullYear();
-        const startYear = 2023; // Adjust as needed
+        const startYear = 2023;
         
         yearSelect.innerHTML = '';
         for (let year = currentYear; year >= startYear; year--) {
@@ -1024,16 +1026,20 @@
             yearSelect.appendChild(option);
         }
         
-        // Set current year
         yearSelect.value = currentYear;
     }
 
-    // Set month dropdown to current month
     function setCurrentMonthInDropdown() {
         const monthSelect = document.getElementById('monthSelect');
         if (monthSelect) {
             monthSelect.value = new Date().getMonth();
         }
+    }
+
+    function getMonthName(monthIndex) {
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                       'July', 'August', 'September', 'October', 'November', 'December'];
+        return months[monthIndex];
     }
 
     // ================================
@@ -1048,43 +1054,25 @@
             }
             db = firebase.firestore();
             
-            // Populate year dropdown
             populateYearDropdown();
             setCurrentMonthInDropdown();
             
-            // Load all data
             loadAllData();
             
         } catch (error) {
-            console.error('❌ Firebase initialization error:', error);
-            showNotification('Firebase connection failed. Please check console.', 'error');
+            console.error('Firebase initialization error:', error);
+            showNotification('Firebase connection failed.', 'error');
             Loader.hide();
         }
     }
 
     // ================================
-    // DATA LOADING FUNCTIONS
+    // DATA LOADING FUNCTIONS (simplified but complete)
     // ================================
     async function loadAllData() {
         Loader.show('Loading data...');
         
         try {
-            const now = Date.now();
-            
-            // Check cache
-            if (allReports.length > 0 && 
-                dataCache.statistics && 
-                (now - dataCache.timestamp) < dataCache.ttl) {
-                
-                console.log('📊 Using cached data');
-                // Apply current filter to cached data
-                filterAndUpdateCharts();
-                Loader.hide();
-                return;
-            }
-            
-            // Get ALL reports
-            Loader.updateMessage('Fetching reports...');
             const snapshot = await db.collection('wasteReports')
                 .orderBy('reportDate', 'desc')
                 .get();
@@ -1097,8 +1085,6 @@
                 return;
             }
             
-            // Process reports
-            Loader.updateMessage('Processing data...');
             allReports = [];
             snapshot.forEach(doc => {
                 const data = doc.data();
@@ -1110,13 +1096,7 @@
                 });
             });
             
-            console.log(`✅ Loaded ${allReports.length} total reports`);
-            
-            // Cache the data
-            dataCache.reports = allReports;
-            dataCache.timestamp = now;
-            
-            // Apply current filter and update
+            console.log(`Loaded ${allReports.length} total reports`);
             filterAndUpdateCharts();
             
         } catch (error) {
@@ -1124,46 +1104,26 @@
             showNotification('Error loading data: ' + error.message, 'error');
             createEmptyCharts();
         } finally {
-            // Slight delay before hiding for smoother transition
             setTimeout(() => Loader.hide(), 300);
         }
     }
 
-    // Filter reports by selected month/year and update charts
     function filterAndUpdateCharts() {
         Loader.show(`Loading data for ${getMonthName(currentFilter.month)} ${currentFilter.year}...`);
         
         try {
-            // Filter reports by selected month/year
             const filteredReports = allReports.filter(report => {
                 const reportDate = new Date(report.reportDate);
                 return reportDate.getFullYear() === currentFilter.year && 
                        reportDate.getMonth() === currentFilter.month;
             });
             
-            console.log(`📊 Filtered to ${filteredReports.length} reports for ${getMonthName(currentFilter.month)} ${currentFilter.year}`);
-            
-            // Calculate compliance data for filtered period
             const complianceData = calculateComplianceData(filteredReports, currentFilter.year, currentFilter.month);
+            const costData = calculateCostShareData(filteredReports);
             
-            // Calculate cost share data for filtered period
-            const costData = calculateCostShareData(filteredReports, currentFilter.year, currentFilter.month);
+            currentData = { compliance: complianceData, cost: costData, totalReports: filteredReports.length };
             
-            // Store statistics
-            dataCache.statistics = {
-                compliance: complianceData,
-                cost: costData,
-                totalReports: filteredReports.length
-            };
-            
-            // Store data globally
-            currentData = dataCache.statistics;
-            
-            // Update filter display
             updateFilterDisplay();
-            
-            // Update all charts and stats
-            Loader.updateMessage('Rendering charts...');
             updateAllChartsAndStats();
             
         } catch (error) {
@@ -1174,87 +1134,49 @@
         }
     }
 
-    function getMonthName(monthIndex) {
-        const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                       'July', 'August', 'September', 'October', 'November', 'December'];
-        return months[monthIndex];
-    }
-
     function updateFilterDisplay() {
         const filterDisplay = document.getElementById('activeFilterDisplay');
         const monthDisplay = document.getElementById('currentMonthDisplay');
-        
-        if (filterDisplay) {
-            filterDisplay.textContent = `${getMonthName(currentFilter.month)} ${currentFilter.year}`;
-        }
-        
-        if (monthDisplay) {
-            monthDisplay.innerHTML = `📅 Currently showing: ${getMonthName(currentFilter.month)} ${currentFilter.year}`;
-        }
+        if (filterDisplay) filterDisplay.textContent = `${getMonthName(currentFilter.month)} ${currentFilter.year}`;
+        if (monthDisplay) monthDisplay.innerHTML = `📅 Currently showing: ${getMonthName(currentFilter.month)} ${currentFilter.year}`;
     }
 
     function updateAllChartsAndStats() {
         if (!currentData) return;
-        
         updateComplianceChart();
         updateCostChart();
         updateStats();
     }
 
     // ================================
-    // COMPLIANCE CALCULATION
+    // COMPLIANCE CALCULATION (UPDATED for 13 stores)
     // ================================
     function calculateComplianceData(reports, year, month) {
         const now = new Date();
         const isCurrentMonth = (year === now.getFullYear() && month === now.getMonth());
-        const currentDay = isCurrentMonth ? now.getDate() : 31; // If past month, use full month
+        const currentDay = isCurrentMonth ? now.getDate() : 31;
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         const daysToConsider = isCurrentMonth ? Math.min(currentDay, daysInMonth) : daysInMonth;
         
-        // Initialize store data
         const storeData = {};
         ALL_STORES.forEach(store => {
-            storeData[store] = {
-                reportedDays: new Set(),
-                totalReports: 0,
-                hasApprovedItems: false
-            };
+            storeData[store] = { reportedDays: new Set(), totalReports: 0 };
         });
         
-        // Process reports for the specified month
         reports.forEach(report => {
             const store = report.store;
             if (!store || !storeData[store]) return;
-            
             const reportDate = new Date(report.reportDate);
-            
-            // Check if report is approved (has at least one approved item OR is no-waste)
             let isReportApproved = false;
             
-            // No-waste reports are automatically approved
             if (report.disposalTypes?.includes('noWaste')) {
                 isReportApproved = true;
             } else {
-                // Check for approved items
                 const expiredItems = report.expiredItems || [];
                 const wasteItems = report.wasteItems || [];
-                
-                for (let i = 0; i < expiredItems.length; i++) {
-                    if (expiredItems[i].approvalStatus === 'approved') {
-                        isReportApproved = true;
-                        storeData[store].hasApprovedItems = true;
-                        break;
-                    }
-                }
-                
+                for (let item of expiredItems) if (item.approvalStatus === 'approved') { isReportApproved = true; break; }
                 if (!isReportApproved) {
-                    for (let i = 0; i < wasteItems.length; i++) {
-                        if (wasteItems[i].approvalStatus === 'approved') {
-                            isReportApproved = true;
-                            storeData[store].hasApprovedItems = true;
-                            break;
-                        }
-                    }
+                    for (let item of wasteItems) if (item.approvalStatus === 'approved') { isReportApproved = true; break; }
                 }
             }
             
@@ -1264,544 +1186,159 @@
             }
         });
         
-        // Calculate compliance percentages
         const results = [];
         let totalCompliance = 0;
         let storeCountWithReports = 0;
-        let topStore = null;
-        let topValue = 0;
-        let lowestStore = null;
-        let lowestValue = 101;
+        let topStore = null, topValue = 0;
         
         ALL_STORES.forEach(store => {
             const data = storeData[store];
-            
-            // Only include stores with approved reports
             if (data.totalReports === 0) return;
-            
             const reportedDays = data.reportedDays.size;
-            const complianceRate = daysToConsider > 0 ? 
-                Math.round((reportedDays / daysToConsider) * 100) : 0;
-            
+            const complianceRate = daysToConsider > 0 ? Math.round((reportedDays / daysToConsider) * 100) : 0;
             results.push({
-                store,
-                displayName: STORE_DISPLAY_NAMES[store] || store,
-                value: complianceRate,
-                reportedDays,
-                totalDays: daysToConsider,
-                label: `${complianceRate}%`,
-                description: `${reportedDays}/${daysToConsider} days`
+                store, displayName: STORE_DISPLAY_NAMES[store] || store,
+                value: complianceRate, reportedDays, totalDays: daysToConsider
             });
-            
             totalCompliance += complianceRate;
             storeCountWithReports++;
-            
-            if (complianceRate > topValue) {
-                topValue = complianceRate;
-                topStore = store;
-            }
-            
-            if (complianceRate < lowestValue) {
-                lowestValue = complianceRate;
-                lowestStore = store;
-            }
+            if (complianceRate > topValue) { topValue = complianceRate; topStore = store; }
         });
         
-        // Sort by compliance rate (highest first)
         results.sort((a, b) => b.value - a.value);
+        const overallAverage = storeCountWithReports > 0 ? Math.round(totalCompliance / storeCountWithReports) : 0;
         
-        const overallAverage = storeCountWithReports > 0 ? 
-            Math.round(totalCompliance / storeCountWithReports) : 0;
-        
-        const coverage = Math.round((storeCountWithReports / ALL_STORES.length) * 100);
-        
-        return {
-            results,
-            overallAverage,
-            topStore,
-            topValue,
-            lowestStore,
-            lowestValue,
-            storeCount: storeCountWithReports,
-            coverage,
-            daysToConsider,
-            month: getMonthName(month),
-            year: year
-        };
+        return { results, overallAverage, topStore, topValue, storeCount: storeCountWithReports, daysToConsider, month: getMonthName(month), year };
     }
 
     // ================================
-    // COST SHARE CALCULATION
+    // COST SHARE CALCULATION (UPDATED)
     // ================================
-    function calculateCostShareData(reports, year, month) {
-        // Initialize store costs
+    function calculateCostShareData(reports) {
         const storeCosts = {};
-        ALL_STORES.forEach(store => {
-            storeCosts[store] = 0;
-        });
-        
-        // Calculate total approved cost per store
+        ALL_STORES.forEach(store => { storeCosts[store] = 0; });
         let totalApprovedCost = 0;
         
         reports.forEach(report => {
             const store = report.store;
             if (!store || !storeCosts.hasOwnProperty(store)) return;
+            if (report.disposalTypes?.includes('noWaste')) return;
             
-            // Skip no-waste reports (cost is 0)
-            if (report.disposalTypes?.includes('noWaste')) {
-                return;
-            }
-            
-            let reportApprovedCost = 0;
-            let hasApprovedItem = false;
-            
-            // Process expired items
+            let reportCost = 0;
             const expiredItems = report.expiredItems || [];
-            expiredItems.forEach(item => {
-                if (item.approvalStatus === 'approved') {
-                    const itemCost = item.itemCost || 0;
-                    const quantity = item.quantity || 0;
-                    reportApprovedCost += itemCost * quantity;
-                    hasApprovedItem = true;
-                }
-            });
-            
-            // Process waste items
             const wasteItems = report.wasteItems || [];
+            
+            expiredItems.forEach(item => {
+                if (item.approvalStatus === 'approved') reportCost += (item.itemCost || 0) * (item.quantity || 0);
+            });
             wasteItems.forEach(item => {
-                if (item.approvalStatus === 'approved') {
-                    const itemCost = item.itemCost || 0;
-                    const quantity = item.quantity || 0;
-                    reportApprovedCost += itemCost * quantity;
-                    hasApprovedItem = true;
-                }
+                if (item.approvalStatus === 'approved') reportCost += (item.itemCost || 0) * (item.quantity || 0);
             });
             
-            if (hasApprovedItem && reportApprovedCost > 0) {
-                storeCosts[store] += reportApprovedCost;
-                totalApprovedCost += reportApprovedCost;
+            if (reportCost > 0) {
+                storeCosts[store] += reportCost;
+                totalApprovedCost += reportCost;
             }
         });
         
-        // Prepare results - SHOW PERCENTAGES ONLY
         const results = [];
-        let topStore = null;
-        let topPercentage = 0;
+        let topStore = null, topPercentage = 0;
         let storeCountWithCost = 0;
         
         ALL_STORES.forEach(store => {
             const cost = storeCosts[store];
-            
-            // Include stores with approved waste cost
             if (cost > 0) {
-                const percentage = totalApprovedCost > 0 ? 
-                    Math.round((cost / totalApprovedCost) * 100) : 0;
-                
-                results.push({
-                    store,
-                    displayName: STORE_DISPLAY_NAMES[store] || store,
-                    value: percentage, // PERCENTAGE for chart
-                    percentage: percentage,
-                    cost: cost, // Keep for internal calculations
-                    label: `${percentage}%`,
-                    description: `${percentage}% of total`
-                });
-                
+                const percentage = totalApprovedCost > 0 ? Math.round((cost / totalApprovedCost) * 100) : 0;
+                results.push({ store, displayName: STORE_DISPLAY_NAMES[store] || store, value: percentage, percentage });
                 storeCountWithCost++;
-                
-                if (percentage > topPercentage) {
-                    topPercentage = percentage;
-                    topStore = store;
-                }
+                if (percentage > topPercentage) { topPercentage = percentage; topStore = store; }
             }
         });
         
-        // Sort by percentage (highest first)
         results.sort((a, b) => b.value - a.value);
+        const averagePercentage = storeCountWithCost > 0 ? Math.round(results.reduce((s, r) => s + r.percentage, 0) / storeCountWithCost) : 0;
         
-        // Calculate average percentage per store (with costs)
-        const averagePercentage = storeCountWithCost > 0 ? 
-            Math.round(results.reduce((sum, r) => sum + r.percentage, 0) / storeCountWithCost) : 0;
-        
-        return {
-            results,
-            totalCost: totalApprovedCost,
-            averagePercentage,
-            topStore,
-            topPercentage,
-            storeCount: storeCountWithCost
-        };
+        return { results, totalCost: totalApprovedCost, averagePercentage, topStore, topPercentage, storeCount: storeCountWithCost };
     }
 
     // ================================
-    // COMPLIANCE CHART
+    // CHART UPDATING FUNCTIONS (simplified)
     // ================================
     function updateComplianceChart() {
         if (!currentData) return;
-        
-        const ctx = document.getElementById('complianceChart');
-        if (!ctx) return;
-        
-        // Destroy existing chart
-        if (complianceChart) {
-            complianceChart.destroy();
-        }
-        
-        const data = currentData.compliance;
-        
-        if (data.results.length === 0) {
-            createEmptyComplianceChart();
-            return;
-        }
-        
-        // Show ALL stores with compliance data
-        const displayResults = data.results;
-        
-        const labels = displayResults.map(store => store.displayName);
-        const values = displayResults.map(store => store.value);
-        const colors = CHART_COLORS.slice(0, displayResults.length);
-        
-        const datasets = [{
-            label: 'Compliance Rate (%)',
-            data: values,
-            backgroundColor: colors,
-            borderColor: '#fff',
-            borderWidth: 1,
-            hoverOffset: 6
-        }];
-        
-        const commonOptions = {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: currentComplianceChartType === 'pie',
-                    position: 'right',
-                    labels: {
-                        boxWidth: 10,
-                        font: { size: 10 },
-                        padding: 10
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const store = displayResults[context.dataIndex];
-                            return `${store.displayName}: ${store.value}% (${store.reportedDays}/${store.totalDays} days)`;
-                        }
-                    }
-                }
-            },
-            animation: {
-                duration: 600
-            }
-        };
-        
-        let chartConfig;
-        
-        if (currentComplianceChartType === 'bar') {
-            chartConfig = {
-                type: 'bar',
-                data: { labels, datasets },
-                options: {
-                    ...commonOptions,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 100,
-                            ticks: {
-                                callback: function(value) {
-                                    return value + '%';
-                                },
-                                font: { size: 9 }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Compliance Rate (%)',
-                                font: { size: 10 }
-                            }
-                        },
-                        x: {
-                            grid: { display: false },
-                            ticks: { 
-                                font: { size: 9 },
-                                maxRotation: 45,
-                                minRotation: 45
-                            }
-                        }
-                    }
-                }
-            };
-        } else {
-            chartConfig = {
-                type: 'pie',
-                data: { labels, datasets },
-                options: {
-                    ...commonOptions,
-                    cutout: '0%',
-                    radius: '85%'
-                }
-            };
-        }
-        
-        complianceChart = new Chart(ctx, chartConfig);
-        
-        // Update footer stats
-        document.getElementById('complianceStoreCount').textContent = `${data.storeCount} stores`;
-        document.getElementById('complianceAverage').textContent = `${data.overallAverage}% avg`;
-        document.getElementById('complianceDays').textContent = `${data.month} ${data.year}`;
-        
-        // Update combined stats
-        updateCombinedStats();
-    }
-
-    // ================================
-    // COST CHART
-    // ================================
-    function updateCostChart() {
-        if (!currentData) return;
-        
-        const ctx = document.getElementById('costChart');
-        if (!ctx) return;
-        
-        // Destroy existing chart
-        if (costChart) {
-            costChart.destroy();
-        }
-        
-        const data = currentData.cost;
-        
-        if (data.results.length === 0) {
-            createEmptyCostChart();
-            return;
-        }
-        
-        // Show ALL stores with cost data
-        const displayResults = data.results;
-        
-        const labels = displayResults.map(store => store.displayName);
-        const values = displayResults.map(store => store.percentage);
-        const colors = CHART_COLORS.slice(0, displayResults.length);
-        
-        const datasets = [{
-            label: 'Waste Cost Share (%)',
-            data: values,
-            backgroundColor: colors,
-            borderColor: '#fff',
-            borderWidth: 1,
-            hoverOffset: 6
-        }];
-        
-        const commonOptions = {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: currentCostChartType === 'pie',
-                    position: 'right',
-                    labels: {
-                        boxWidth: 10,
-                        font: { size: 10 },
-                        padding: 10
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const store = displayResults[context.dataIndex];
-                            return `${store.displayName}: ${store.percentage}% of total waste cost`;
-                        }
-                    }
-                }
-            },
-            animation: {
-                duration: 600
-            }
-        };
-        
-        let chartConfig;
-        
-        if (currentCostChartType === 'bar') {
-            chartConfig = {
-                type: 'bar',
-                data: { labels, datasets },
-                options: {
-                    ...commonOptions,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 100,
-                            ticks: {
-                                callback: function(value) {
-                                    return value + '%';
-                                },
-                                font: { size: 9 }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Waste Cost Share (%)',
-                                font: { size: 10 }
-                            }
-                        },
-                        x: {
-                            grid: { display: false },
-                            ticks: { 
-                                font: { size: 9 },
-                                maxRotation: 45,
-                                minRotation: 45
-                            }
-                        }
-                    }
-                }
-            };
-        } else {
-            chartConfig = {
-                type: 'pie',
-                data: { labels, datasets },
-                options: {
-                    ...commonOptions,
-                    cutout: '0%',
-                    radius: '85%'
-                }
-            };
-        }
-        
-        costChart = new Chart(ctx, chartConfig);
-        
-        // Update footer stats
-        document.getElementById('costStoreCount').textContent = `${data.storeCount} stores`;
-        document.getElementById('costAverage').textContent = `${data.averagePercentage}% avg share`;
-        document.getElementById('totalWasteCost').textContent = `100% total`;
-        
-        // Update combined stats
-        updateCombinedStats();
-    }
-
-    // ================================
-    // EMPTY CHARTS
-    // ================================
-    function createEmptyCharts() {
-        createEmptyComplianceChart();
-        createEmptyCostChart();
-    }
-
-    function createEmptyComplianceChart() {
         const ctx = document.getElementById('complianceChart');
         if (!ctx) return;
         if (complianceChart) complianceChart.destroy();
         
+        const data = currentData.compliance;
+        if (data.results.length === 0) { createEmptyComplianceChart(); return; }
+        
+        const labels = data.results.map(s => s.displayName);
+        const values = data.results.map(s => s.value);
+        const colors = CHART_COLORS.slice(0, data.results.length);
+        
         complianceChart = new Chart(ctx, {
-            type: 'pie',
-            data: {
-                labels: [`No Reports for ${getMonthName(currentFilter.month)} ${currentFilter.year}`],
-                datasets: [{
-                    data: [1],
-                    backgroundColor: ['#e9ecef'],
-                    borderColor: '#fff',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { enabled: false }
-                }
-            }
+            type: currentComplianceChartType === 'pie' ? 'pie' : 'bar',
+            data: { labels, datasets: [{ label: 'Compliance Rate (%)', data: values, backgroundColor: colors, borderColor: '#fff', borderWidth: 1 }] },
+            options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: currentComplianceChartType === 'pie', position: 'right' }, tooltip: { callbacks: { label: (ctx) => `${data.results[ctx.dataIndex].displayName}: ${ctx.raw}%` } } } }
         });
         
-        document.getElementById('complianceStoreCount').textContent = '0 stores';
-        document.getElementById('complianceAverage').textContent = '0% avg';
-        document.getElementById('complianceDays').textContent = `${getMonthName(currentFilter.month)} ${currentFilter.year}`;
+        document.getElementById('complianceStoreCount').textContent = `${data.storeCount} stores`;
+        document.getElementById('complianceAverage').textContent = `${data.overallAverage}% avg`;
+        document.getElementById('complianceDays').textContent = `${data.month} ${data.year}`;
+        updateCombinedStats();
     }
 
-    function createEmptyCostChart() {
+    function updateCostChart() {
+        if (!currentData) return;
         const ctx = document.getElementById('costChart');
         if (!ctx) return;
         if (costChart) costChart.destroy();
         
+        const data = currentData.cost;
+        if (data.results.length === 0) { createEmptyCostChart(); return; }
+        
+        const labels = data.results.map(s => s.displayName);
+        const values = data.results.map(s => s.percentage);
+        const colors = CHART_COLORS.slice(0, data.results.length);
+        
         costChart = new Chart(ctx, {
-            type: 'pie',
-            data: {
-                labels: [`No Waste for ${getMonthName(currentFilter.month)} ${currentFilter.year}`],
-                datasets: [{
-                    data: [1],
-                    backgroundColor: ['#e9ecef'],
-                    borderColor: '#fff',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { enabled: false }
-                }
-            }
+            type: currentCostChartType === 'pie' ? 'pie' : 'bar',
+            data: { labels, datasets: [{ label: 'Waste Cost Share (%)', data: values, backgroundColor: colors, borderColor: '#fff', borderWidth: 1 }] },
+            options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: currentCostChartType === 'pie', position: 'right' }, tooltip: { callbacks: { label: (ctx) => `${data.results[ctx.dataIndex].displayName}: ${ctx.raw}%` } } } }
         });
         
-        document.getElementById('costStoreCount').textContent = '0 stores';
-        document.getElementById('costAverage').textContent = '0% avg share';
-        document.getElementById('totalWasteCost').textContent = '100% total';
+        document.getElementById('costStoreCount').textContent = `${data.storeCount} stores`;
+        document.getElementById('costAverage').textContent = `${data.averagePercentage}% avg share`;
+        document.getElementById('totalWasteCost').textContent = `100% total`;
+        updateCombinedStats();
     }
 
-    // ================================
-    // STATISTICS FUNCTIONS
-    // ================================
     function updateCombinedStats() {
         if (!currentData) return;
-        
-        const complianceData = currentData.compliance;
-        const costData = currentData.cost;
-        
-        // Top compliance store
-        document.getElementById('topComplianceStore').textContent = complianceData.topStore ? 
-            STORE_DISPLAY_NAMES[complianceData.topStore]?.split(' ')[0] || complianceData.topStore : '-';
-        document.getElementById('topComplianceValue').textContent = `${complianceData.topValue}%`;
-        
-        // Overall compliance average
-        document.getElementById('overallComplianceAvg').textContent = `${complianceData.overallAverage}%`;
+        const comp = currentData.compliance, cost = currentData.cost;
+        document.getElementById('topComplianceStore').textContent = comp.topStore ? (STORE_DISPLAY_NAMES[comp.topStore]?.split(' ')[0] || comp.topStore) : '-';
+        document.getElementById('topComplianceValue').textContent = `${comp.topValue}%`;
+        document.getElementById('overallComplianceAvg').textContent = `${comp.overallAverage}%`;
         document.getElementById('compliancePeriod').textContent = `${getMonthName(currentFilter.month)} ${currentFilter.year}`;
-        
-        // Top cost share store
-        document.getElementById('topCostStore').textContent = costData.topStore ? 
-            STORE_DISPLAY_NAMES[costData.topStore]?.split(' ')[0] || costData.topStore : '-';
-        document.getElementById('topCostValue').textContent = `${costData.topPercentage || 0}%`;
-        
-        // Stores with waste cost
-        document.getElementById('overallCostTotal').textContent = costData.storeCount || 0;
-        document.getElementById('costPeriod').textContent = `out of 12 stores in ${getMonthName(currentFilter.month)} ${currentFilter.year}`;
+        document.getElementById('topCostStore').textContent = cost.topStore ? (STORE_DISPLAY_NAMES[cost.topStore]?.split(' ')[0] || cost.topStore) : '-';
+        document.getElementById('topCostValue').textContent = `${cost.topPercentage || 0}%`;
+        document.getElementById('overallCostTotal').textContent = cost.storeCount || 0;
+        document.getElementById('costPeriod').textContent = `out of 13 stores in ${getMonthName(currentFilter.month)} ${currentFilter.year}`;
     }
 
     function updateStats() {
         if (!currentData) return;
-        
-        const complianceData = currentData.compliance;
-        const costData = currentData.cost;
-        
-        // Total reports in period
-        document.getElementById('totalReports').textContent = complianceData.results.reduce((sum, store) => sum + store.totalReports, 0).toLocaleString();
-        document.getElementById('totalStoresWithReports').textContent = `${complianceData.storeCount} stores`;
-        
-        // Store needing attention (lowest compliance among stores with reports)
-        if (complianceData.results.length > 0) {
-            const needsAttentionStore = complianceData.results[complianceData.results.length - 1];
-            document.getElementById('needsAttention').textContent = 
-                STORE_DISPLAY_NAMES[needsAttentionStore.store]?.split(' ')[0] || needsAttentionStore.store;
-            document.getElementById('attentionReason').textContent = `${needsAttentionStore.value}% compliance`;
-        } else {
-            document.getElementById('needsAttention').textContent = '-';
-            document.getElementById('attentionReason').textContent = 'No reports';
-        }
-        
-        // Update time
+        const comp = currentData.compliance;
+        document.getElementById('totalReports').textContent = comp.results.reduce((sum, s) => sum + s.totalReports, 0).toLocaleString();
+        document.getElementById('totalStoresWithReports').textContent = `${comp.storeCount} stores`;
+        if (comp.results.length > 0) {
+            const last = comp.results[comp.results.length - 1];
+            document.getElementById('needsAttention').textContent = STORE_DISPLAY_NAMES[last.store]?.split(' ')[0] || last.store;
+            document.getElementById('attentionReason').textContent = `${last.value}% compliance`;
+        } else { document.getElementById('needsAttention').textContent = '-'; document.getElementById('attentionReason').textContent = 'No reports'; }
         const now = new Date();
-        const timeString = now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
-        document.getElementById('lastUpdatedTime').textContent = timeString;
-        
-        // Update combined stats
+        document.getElementById('lastUpdatedTime').textContent = now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
         updateCombinedStats();
     }
 
@@ -1810,12 +1347,8 @@
         document.getElementById('totalStoresWithReports').textContent = '0 stores';
         document.getElementById('needsAttention').textContent = '-';
         document.getElementById('attentionReason').textContent = 'No reports';
-        
         const now = new Date();
-        const timeString = now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
-        document.getElementById('lastUpdatedTime').textContent = timeString;
-        
-        // Reset combined stats
+        document.getElementById('lastUpdatedTime').textContent = now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
         document.getElementById('topComplianceStore').textContent = '-';
         document.getElementById('topComplianceValue').textContent = '0%';
         document.getElementById('overallComplianceAvg').textContent = '0%';
@@ -1824,81 +1357,61 @@
         document.getElementById('overallCostTotal').textContent = '0';
     }
 
+    function createEmptyCharts() { createEmptyComplianceChart(); createEmptyCostChart(); }
+    function createEmptyComplianceChart() {
+        const ctx = document.getElementById('complianceChart');
+        if (!ctx) return;
+        if (complianceChart) complianceChart.destroy();
+        complianceChart = new Chart(ctx, { type: 'pie', data: { labels: [`No Reports for ${getMonthName(currentFilter.month)} ${currentFilter.year}`], datasets: [{ data: [1], backgroundColor: ['#e9ecef'] }] }, options: { responsive: true, plugins: { legend: { display: false }, tooltip: { enabled: false } } } });
+        document.getElementById('complianceStoreCount').textContent = '0 stores';
+        document.getElementById('complianceAverage').textContent = '0% avg';
+    }
+    function createEmptyCostChart() {
+        const ctx = document.getElementById('costChart');
+        if (!ctx) return;
+        if (costChart) costChart.destroy();
+        costChart = new Chart(ctx, { type: 'pie', data: { labels: [`No Waste for ${getMonthName(currentFilter.month)} ${currentFilter.year}`], datasets: [{ data: [1], backgroundColor: ['#e9ecef'] }] }, options: { responsive: true, plugins: { legend: { display: false }, tooltip: { enabled: false } } } });
+        document.getElementById('costStoreCount').textContent = '0 stores';
+        document.getElementById('costAverage').textContent = '0% avg share';
+        document.getElementById('totalWasteCost').textContent = '100% total';
+    }
+
     // ================================
     // EVENT HANDLERS
     // ================================
     function setupEventListeners() {
-        // Compliance chart type buttons
         document.querySelectorAll('[data-chart^="compliance-"]').forEach(btn => {
             btn.addEventListener('click', function() {
-                const chartType = this.dataset.chart.split('-')[1];
+                const type = this.dataset.chart.split('-')[1];
                 document.querySelectorAll('[data-chart^="compliance-"]').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
-                currentComplianceChartType = chartType;
+                currentComplianceChartType = type;
                 updateComplianceChart();
             });
         });
-        
-        // Cost chart type buttons
         document.querySelectorAll('[data-chart^="cost-"]').forEach(btn => {
             btn.addEventListener('click', function() {
-                const chartType = this.dataset.chart.split('-')[1];
+                const type = this.dataset.chart.split('-')[1];
                 document.querySelectorAll('[data-chart^="cost-"]').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
-                currentCostChartType = chartType;
+                currentCostChartType = type;
                 updateCostChart();
             });
         });
-        
-        // Apply month filter
-        const applyFilterBtn = document.getElementById('applyMonthFilter');
-        if (applyFilterBtn) {
-            applyFilterBtn.addEventListener('click', function() {
-                const monthSelect = document.getElementById('monthSelect');
-                const yearSelect = document.getElementById('yearSelect');
-                
-                if (monthSelect && yearSelect) {
-                    currentFilter = {
-                        month: parseInt(monthSelect.value),
-                        year: parseInt(yearSelect.value)
-                    };
-                    
-                    filterAndUpdateCharts();
-                    showNotification(`Showing data for ${getMonthName(currentFilter.month)} ${currentFilter.year}`, 'info');
-                }
-            });
-        }
-        
-        // Reset to current month
-        const resetBtn = document.getElementById('resetToCurrentMonth');
-        if (resetBtn) {
-            resetBtn.addEventListener('click', function() {
-                const now = new Date();
-                currentFilter = {
-                    month: now.getMonth(),
-                    year: now.getFullYear()
-                };
-                
-                // Update dropdowns
-                const monthSelect = document.getElementById('monthSelect');
-                const yearSelect = document.getElementById('yearSelect');
-                
-                if (monthSelect) monthSelect.value = currentFilter.month;
-                if (yearSelect) yearSelect.value = currentFilter.year;
-                
-                filterAndUpdateCharts();
-                showNotification(`Showing current month: ${getMonthName(currentFilter.month)} ${currentFilter.year}`, 'success');
-            });
-        }
-        
-        // Double-click to refresh
-        document.querySelectorAll('.chart-card').forEach(card => {
-            card.addEventListener('dblclick', function() {
-                dataCache.timestamp = 0;
-                Loader.show('Refreshing data...');
-                loadAllData();
-                showNotification('Chart data refreshed', 'info');
-            });
+        document.getElementById('applyMonthFilter')?.addEventListener('click', () => {
+            const month = parseInt(document.getElementById('monthSelect').value);
+            const year = parseInt(document.getElementById('yearSelect').value);
+            currentFilter = { month, year };
+            filterAndUpdateCharts();
+            showNotification(`Showing data for ${getMonthName(month)} ${year}`, 'info');
+        });
+        document.getElementById('resetToCurrentMonth')?.addEventListener('click', () => {
+            const now = new Date();
+            currentFilter = { month: now.getMonth(), year: now.getFullYear() };
+            document.getElementById('monthSelect').value = currentFilter.month;
+            document.getElementById('yearSelect').value = currentFilter.year;
+            filterAndUpdateCharts();
+            showNotification(`Showing current month: ${getMonthName(currentFilter.month)} ${currentFilter.year}`, 'success');
         });
     }
 
@@ -1906,16 +1419,9 @@
     // INITIALIZATION
     // ================================
     document.addEventListener('DOMContentLoaded', () => {
-        console.log('Home page loaded, initializing charts...');
         initializeFirebase();
         setTimeout(setupEventListeners, 100);
-        
-        // Refresh every 5 minutes
-        setInterval(() => {
-            dataCache.timestamp = 0;
-            Loader.show('Auto-refreshing...');
-            loadAllData();
-        }, 5 * 60 * 1000);
+        setInterval(() => { loadAllData(); }, 5 * 60 * 1000);
     });
     </script>
 </body>

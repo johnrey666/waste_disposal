@@ -328,6 +328,7 @@
 
                         <option value="FG to go TABACO">FG to go TABACO</option>
                         <option value="FG to go LEGAZPI">FG to go LEGAZPI</option>
+                        <option value="FG to go NAGA">FG to go NAGA</option>   <!-- ADDED: FG to go NAGA -->
 
                         <option value="FG LEGAZPI">FG LEGAZPI</option>
                         <option value="FG NAGA">FG NAGA</option>
@@ -341,8 +342,6 @@
                                 <option value="Concourse Hall" class="concourse-option">└─ Concourse Hall</option>
                                 <option value="Concourse Convention" class="concourse-option">└─ Concourse Convention</option>
                             </optgroup>
-
-                            <!-- Note: FG Kitchen LC and FG Kitchen Naga are now combined with FG LEGAZPI and FG NAGA -->
                         </optgroup>
                     </select>
                     <span class="note">Click on "KITCHEN" or "Concourse" to expand/collapse</span>
@@ -460,6 +459,15 @@
 
     <!-- Your JavaScript file -->
     <script src="submit_waste_report.js"></script>
-
+    <!-- Inline JavaScript to ensure functionality is loaded -->
+    <script>
+        // Ensure global functions are defined and any immediate initialization runs
+        window.addEventListener('DOMContentLoaded', function() {
+            const reportDateInput = document.getElementById('reportDate');
+            if (reportDateInput && !reportDateInput.value) {
+                reportDateInput.value = new Date().toISOString().split('T')[0];
+            }
+        });
+    </script>
 </body>
 </html>
