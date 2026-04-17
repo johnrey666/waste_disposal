@@ -44,7 +44,7 @@ const Loader = {
         if (total > 0) {
             const percentage = Math.round((current / total) * 100);
             this.progressFill.style.width = `${percentage}%`;
-            this.progressText.textContent = `Uploading: ${percentage}%`;
+            this.progressText.textContent = `Please WaitUploading: ${percentage}%`;
             if (fileName) this.progressDetails.textContent = `File: ${fileName}`;
         }
     },
@@ -52,7 +52,7 @@ const Loader = {
     hideUpload() {
         if (this.progressContainer) this.progressContainer.style.display = 'none';
         if (this.progressFill) this.progressFill.style.width = '0%';
-        if (this.progressText) this.progressText.textContent = 'Uploading: 0%';
+        if (this.progressText) this.progressText.textContent = 'Please WaitUploading: 0%';
         if (this.progressDetails) this.progressDetails.textContent = '';
     },
 
@@ -60,7 +60,7 @@ const Loader = {
         if (!this.progressContainer || !this.progressFill || !this.progressText) return;
         const percentage = Math.round((current / total) * 100);
         this.progressFill.style.width = `${percentage}%`;
-        this.progressText.textContent = `Uploading: ${percentage}%`;
+        this.progressText.textContent = `Please Wait Uploading: ${percentage}%`;
         if (fileName) this.progressDetails.textContent = `File: ${fileName}`;
     }
 };
