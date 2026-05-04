@@ -173,6 +173,7 @@ const ALL_STORES = [
     'FG Express RIZAL',
     'FG to go TABACO',
     'FG to go LEGAZPI',
+    'FG to go NAGA',
     'FG LEGAZPI',
     'FG NAGA'
 ];
@@ -188,6 +189,7 @@ const STORE_ABBREVIATIONS = {
     'FG Express RIZAL': 'FG RIZAL',
     'FG to go TABACO': 'FG to go TABACO',
     'FG to go LEGAZPI': 'FG to go LEGAZPI',
+    'FG to go NAGA': 'FG to go NAGA',
     'FG LEGAZPI': 'FG LEGAZPI',
     'FG NAGA': 'FG NAGA'
 };
@@ -203,6 +205,7 @@ const STORE_DISPLAY_NAMES = {
     'FG Express RIZAL': 'RIZAL',
     'FG to go TABACO': 'TABACO',
     'FG to go LEGAZPI': 'LEGAZPI(to go)',
+    'FG to go NAGA': 'NAGA (to go)',
     'FG LEGAZPI': 'LEGAZPI',
     'FG NAGA': 'NAGA'
 };

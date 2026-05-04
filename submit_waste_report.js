@@ -104,7 +104,7 @@ const HYBRID_STORES = ['FG LEGAZPI', 'FG NAGA']; // These stores show both regul
 const REGULAR_STORES = [
     'FG Express IROSIN', 'FG Express LIGAO', 'FG Express POLANGUI', 
     'FG Express MASBATE', 'FG Express DARAGA', 'FG Express BAAO', 
-    'FG Express PIODURAN', 'FG Express RIZAL', 'FG to go TABACO', 'FG to go LEGAZPI'
+    'FG Express PIODURAN', 'FG Express RIZAL', 'FG to go TABACO', 'FG to go LEGAZPI', 'FG to go NAGA'
 ];
 const CONCOURSE_VARIANTS = ['Tabaco CN 2', 'Concourse Hall', 'Concourse Convention'];
 

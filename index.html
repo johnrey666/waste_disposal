@@ -652,7 +652,7 @@
                 <h2><i class="fas fa-chart-bar"></i> Store Performance</h2>
                 <div style="display: flex; gap: 15px; margin-top: 5px; flex-wrap: wrap;">
                     <span style="font-size: 13px; color: var(--color-gray); background: rgba(40, 167, 69, 0.1); padding: 4px 12px; border-radius: 20px;">
-                        <i class="fas fa-check-circle" style="color: #28a745;"></i> Compliance Rate: % of days reported
+                        <i class="fas fa-check-circle" style="color: #28a745;"></i> Compliance Rate: % based on reports submitted
                     </span>
                     <span style="font-size: 13px; color: var(--color-gray); background: rgba(220, 53, 69, 0.1); padding: 4px 12px; border-radius: 20px;">
                         <i class="fas fa-percent" style="color: #dc3545;"></i> Waste Cost Share: % of total approved waste cost
@@ -761,7 +761,7 @@
             <div class="chart-footer">
                 <div class="chart-info">
                     <i class="fas fa-info-circle"></i> 
-                    <span><strong>Charts can be filtered by month using the dropdown above</strong> • Compliance: % of days with approved reports • Waste Share: % of total approved waste cost (₱ values hidden)</span>
+                    <span><strong>Charts can be filtered by month using the dropdown above</strong> • Compliance: % based on reports submitted • Waste Share: % of total approved waste cost (₱ values hidden)</span>
                 </div>
             </div>
         </section>
@@ -1167,23 +1167,9 @@
             const store = report.store;
             if (!store || !storeData[store]) return;
             const reportDate = new Date(report.reportDate);
-            let isReportApproved = false;
             
-            if (report.disposalTypes?.includes('noWaste')) {
-                isReportApproved = true;
-            } else {
-                const expiredItems = report.expiredItems || [];
-                const wasteItems = report.wasteItems || [];
-                for (let item of expiredItems) if (item.approvalStatus === 'approved') { isReportApproved = true; break; }
-                if (!isReportApproved) {
-                    for (let item of wasteItems) if (item.approvalStatus === 'approved') { isReportApproved = true; break; }
-                }
-            }
-            
-            if (isReportApproved) {
-                storeData[store].totalReports++;
-                storeData[store].reportedDays.add(reportDate.getDate());
-            }
+            storeData[store].totalReports++;
+            storeData[store].reportedDays.add(reportDate.getDate());
         });
         
         const results = [];
@@ -1194,11 +1180,10 @@
         ALL_STORES.forEach(store => {
             const data = storeData[store];
             if (data.totalReports === 0) return;
-            const reportedDays = data.reportedDays.size;
-            const complianceRate = daysToConsider > 0 ? Math.round((reportedDays / daysToConsider) * 100) : 0;
+            const complianceRate = daysToConsider > 0 ? Math.min(100, Math.round((data.totalReports / daysToConsider) * 100)) : 0;
             results.push({
                 store, displayName: STORE_DISPLAY_NAMES[store] || store,
-                value: complianceRate, reportedDays, totalDays: daysToConsider
+                value: complianceRate, reportedDays: data.reportedDays.size, totalDays: daysToConsider
             });
             totalCompliance += complianceRate;
             storeCountWithReports++;
