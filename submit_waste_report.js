@@ -874,7 +874,7 @@ function addExistingItemReadOnly(itemData, type, index, reportId) {
             
             itemData.documentation.forEach((doc, docIndex) => {
                 if (doc.type?.startsWith('image/')) {
-                    const imageUrl = doc.url || doc.path || doc.storagePath || doc.fullPath || doc.filePath;
+                    const imageUrl = doc.url || doc.path;
                     const imageName = doc.name || `Image ${docIndex + 1}`;
                     
                     imagesHTML += `
