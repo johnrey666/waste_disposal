@@ -1096,22 +1096,23 @@ displayImagesInItem(item, index, type) {
     `;
     
     images.forEach((doc, docIndex) => {
-        let imageUrl = this.urlCache.get(doc.path);
+        const storagePath = doc.path || doc.storagePath || doc.fullPath || doc.filePath || doc.fileUrl || doc.downloadURL || doc.downloadUrl;
+        const cacheKey = storagePath || doc.url || doc.name || `${type}-${index}-${docIndex}`;
+        let imageUrl = this.urlCache.get(cacheKey);
         if (!imageUrl) {
-            imageUrl = doc.url || this.getFirebaseStorageUrl(doc.path || doc.fullPath || doc.filePath);
-            this.urlCache.set(doc.path, imageUrl);
+            imageUrl = doc.url || doc.downloadURL || doc.downloadUrl || doc.fileUrl || this.getFirebaseStorageUrl(storagePath);
+            this.urlCache.set(cacheKey, imageUrl);
         }
         
         const imageName = doc.name || `Image ${docIndex + 1}`;
         const safeImageName = this.escapeHtml(imageName);
         const isHeic = imageName && (imageName.toLowerCase().endsWith('.heic') || imageName.toLowerCase().includes('.heic'));
         
-        // Create a clean onerror handler as a separate function
         const errorSvg = 'data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2280%22 height%3D%2280%22%3E%3Crect width%3D%2280%22 height%3D%2280%22 fill%3D%22%23f8f9fa%22%2F%3E%3Ctext x%3D%2240%22 y%3D%2240%22 font-family%3D%22Arial%22 font-size%3D%2210%22 text-anchor%3D%22middle%22 fill%3D%22%23999%22%3EImage%3C%2Ftext%3E%3C%2Fsvg%3E';
         
         imagesHTML += `
-            <div class="thumbnail-container" onclick="ImageManager.openModal('${imageUrl}', '${safeImageName}', '${type}-${index}-${docIndex}', ${JSON.stringify(doc).replace(/"/g, '&quot;')}, '${currentReportDetailsId}', ${index}, '${type}', ${docIndex})" style="position: relative;">
-                <img src="${imageUrl}" 
+            <div class="thumbnail-container" onclick="ImageManager.openModal(${JSON.stringify(imageUrl)}, ${JSON.stringify(imageName)}, ${JSON.stringify(doc).replace(/"/g, '&quot;')}, ${JSON.stringify(currentReportDetailsId)}, ${index}, ${JSON.stringify(type)}, ${docIndex})" style="position: relative;">
+                <img src="${imageUrl || errorSvg}" 
                     alt="${safeImageName}"
                     loading="lazy"
                     style="width: 80px; height: 80px; object-fit: cover; ${isHeic ? 'filter: grayscale(0.5);' : ''}"
@@ -3088,6 +3089,7 @@ async function buildModalContent(report) {
     
     const content = await buildReportContent(report);
     modalContent.innerHTML = content;
+    populateReportGallery(report);
     
     const deleteReportButton = Performance.getElement('#deleteReportButton');
     if (deleteReportButton) {
@@ -3099,6 +3101,62 @@ async function buildModalContent(report) {
         }
     }
 }
+
+function populateReportGallery(report) {
+    const gallerySection = Performance.getElement('#imageGallerySection');
+    const galleryContainer = Performance.getElement('#galleryContainer');
+    const galleryInfo = Performance.getElement('#galleryInfo');
+    if (!gallerySection || !galleryContainer || !galleryInfo) return;
+    
+    const images = [];
+    ['expiredItems', 'wasteItems'].forEach((section) => {
+        const items = Array.isArray(report[section]) ? report[section] : [];
+        items.forEach((item, itemIndex) => {
+            if (!Array.isArray(item.documentation)) return;
+            item.documentation.forEach((doc, docIndex) => {
+                if (doc?.type?.startsWith('image/')) {
+                    images.push({ doc, item, itemIndex, section, docIndex });
+                }
+            });
+        });
+    });
+    
+    if (images.length === 0) {
+        gallerySection.style.display = 'none';
+        galleryContainer.innerHTML = '';
+        galleryInfo.textContent = '';
+        return;
+    }
+    
+    gallerySection.style.display = 'block';
+    galleryContainer.innerHTML = '';
+    galleryInfo.textContent = `${images.length} image${images.length !== 1 ? 's' : ''} available`;
+    
+    images.forEach((entry, idx) => {
+        const { doc, itemIndex, section, docIndex } = entry;
+        const storagePath = doc.path || doc.storagePath || doc.fullPath || doc.filePath || doc.fileUrl || doc.downloadURL || doc.downloadUrl;
+        const cacheKey = storagePath || doc.url || doc.name || `${section}-${itemIndex}-${docIndex}`;
+        let imageUrl = ImageManager.urlCache.get(cacheKey);
+        if (!imageUrl) {
+            imageUrl = doc.url || doc.downloadURL || doc.downloadUrl || doc.fileUrl || ImageManager.getFirebaseStorageUrl(storagePath);
+            ImageManager.urlCache.set(cacheKey, imageUrl);
+        }
+        const imageName = doc.name || `Image ${idx + 1}`;
+        const safeImageName = ImageManager.escapeHtml(imageName);
+        const isHeic = imageName && (imageName.toLowerCase().endsWith('.heic') || imageName.toLowerCase().includes('.heic'));
+        const errorSvg = 'data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2280%22 height%3D%2280%22%3E%3Crect width%3D%2280%22 height%3D%2280%22 fill%3D%22%23f8f9fa%22%2F%3E%3Ctext x%3D%2240%22 y%3D%2240%22 font-family%3D%22Arial%22 font-size%3D%2210%22 text-anchor%3D%22middle%22 fill%3D%22%23999%22%3EImage%3C%2Ftext%3E%3C%2Fsvg%3E';
+        
+        galleryContainer.insertAdjacentHTML('beforeend', `
+            <div class="thumbnail-container" onclick="ImageManager.openModal(${JSON.stringify(imageUrl)}, ${JSON.stringify(imageName)}, ${JSON.stringify(doc).replace(/"/g, '&quot;')}, ${JSON.stringify(currentReportDetailsId)}, ${itemIndex}, ${JSON.stringify(section === 'expiredItems' ? 'expired' : 'waste')}, ${docIndex})" style="position: relative; cursor: pointer;">
+                <img src="${imageUrl || errorSvg}" alt="${safeImageName}" loading="lazy"
+                    style="width: 80px; height: 80px; object-fit: cover; ${isHeic ? 'filter: grayscale(0.5);' : ''}"
+                    onerror="this.onerror=null; this.src='${errorSvg}'">
+                <div class="thumbnail-index">${idx + 1}</div>
+            </div>
+        `);
+    });
+}
+
 
 async function buildReportContent(report) {
     const disposalTypes = report.disposalTypes;
@@ -3317,21 +3375,25 @@ function buildItemContent(item, index, type, reportId) {
     content += `<div>Unit Cost: ₱${(item.itemCost || 0).toFixed(2)}</div></div>`;
     
     if (approvalStatus === 'approved' && item.approvedAt) {
+        const approvedSignature = item.approvedBySignature || '';
+        const approvedSignatureHtml = approvedSignature.trim().startsWith('<img') ? approvedSignature : `<img src="${approvedSignature}" alt="Signature" style="max-height: 30px; max-width: 100px;">`;
         content += `
             <div style="font-size: 10px; color: #155724; margin-bottom: 8px;">
                 <i class="fas fa-check-circle"></i> Approved by ${item.approvedBy || 'Administrator'} on ${formatDate(item.approvedAt)}
-                ${item.approvedBySignature ? `<div style="margin-top: 5px;"><img src="${item.approvedBySignature}" alt="Signature" style="max-height: 30px; max-width: 100px;"></div>` : ''}
+                ${item.approvedBySignature ? `<div style="margin-top: 5px;">${approvedSignatureHtml}</div>` : ''}
             </div>
         `;
     }
     
     if (approvalStatus === 'rejected' && item.rejectionReason) {
+        const rejectedSignature = item.rejectedBySignature || '';
+        const rejectedSignatureHtml = rejectedSignature.trim().startsWith('<img') ? rejectedSignature : `<img src="${rejectedSignature}" alt="Signature" style="max-height: 30px; max-width: 100px;">`;
         content += `
             <div class="rejection-reason">
                 <i class="fas fa-times-circle"></i> <strong>Rejection Reason:</strong> ${item.rejectionReason}
                 <div style="font-size: 9px; margin-top: 2px;">
                     Rejected by ${item.rejectedBy || 'Administrator'} on ${formatDate(item.rejectedAt)}
-                    ${item.rejectedBySignature ? `<div style="margin-top: 5px;"><img src="${item.rejectedBySignature}" alt="Signature" style="max-height: 30px; max-width: 100px;"></div>` : ''}
+                    ${item.rejectedBySignature ? `<div style="margin-top: 5px;">${rejectedSignatureHtml}</div>` : ''}
                 </div>
             </div>
         `;
