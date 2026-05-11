@@ -4458,6 +4458,109 @@ async function bulkApproveItems(reportId, itemType) {
     }
 }
 
+async function bulkRejectItems(reportId, itemType, reason) {
+    if (!isAuthenticated()) {
+        showNotification('Please login to reject items', 'error');
+        return;
+    }
+
+    if (!isAdmin()) {
+        showNotification('Only administrators can reject items', 'error');
+        return;
+    }
+
+    if (!reason || !reason.trim()) {
+        showNotification('Please provide a reason for rejection', 'error');
+        return;
+    }
+
+    showLoading(true, 'Rejecting items...');
+
+    try {
+        const docRef = db.collection('wasteReports').doc(reportId);
+        const doc = await docRef.get();
+
+        if (!doc.exists) {
+            showNotification('Report not found', 'error');
+            return;
+        }
+
+        const report = doc.data();
+        const items = itemType === 'expired' ? report.expiredItems : report.wasteItems;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            showNotification('No items found to reject', 'error');
+            return;
+        }
+
+        let rejectedCount = 0;
+        const rejectedItems = [];
+        const updatedItems = items.map((item, index) => {
+            if (!item.approvalStatus || item.approvalStatus === 'pending') {
+                rejectedCount += 1;
+                const uniqueItemId = item.itemId || `${reportId}_${itemType}_${index}_${Date.now()}`;
+                const rejectedItem = {
+                    ...item,
+                    approvalStatus: 'rejected',
+                    rejectedAt: new Date().toISOString(),
+                    rejectedBy: currentUser?.displayName || currentUser?.email || 'Administrator',
+                    rejectedByEmail: currentUser?.email || 'Administrator',
+                    rejectedBySignature: adminSignature || null,
+                    rejectionReason: reason.trim(),
+                    itemId: uniqueItemId,
+                    canResubmit: true
+                };
+                rejectedItems.push(rejectedItem);
+                return rejectedItem;
+            }
+            return item;
+        });
+
+        if (rejectedCount === 0) {
+            showNotification('No pending items were available for rejection', 'warning');
+            return;
+        }
+
+        const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
+        await docRef.update({ [field]: updatedItems });
+
+        if (report.email) {
+            const signatureHTML = await getAdminSignatureHTML();
+            for (const rejectedItem of rejectedItems) {
+                await sendRejectionEmailViaGAS(
+                    report.email,
+                    report.reportId || reportId,
+                    updatedItems.findIndex(item => item.itemId === rejectedItem.itemId),
+                    itemType,
+                    reason.trim(),
+                    report,
+                    rejectedItem.itemId,
+                    signatureHTML
+                );
+            }
+
+            // Send one summary email for the bulk reject operation as well
+            await sendBulkRejectionEmailViaGAS(
+                report.email,
+                report.reportId || reportId,
+                rejectedCount,
+                reason.trim(),
+                report,
+                rejectedItems,
+                signatureHTML
+            );
+        }
+
+        showNotification(`Bulk rejection completed (${rejectedCount} items)`, 'success');
+        updateReportAfterApproval(reportId);
+    } catch (error) {
+        console.error('Error bulk rejecting items:', error);
+        showNotification('Error bulk rejecting items: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
 // ================================
 // UPDATED BULK REJECTION HANDLER IN APPS SCRIPT
 // ================================
