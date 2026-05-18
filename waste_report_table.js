@@ -559,17 +559,25 @@ async function determineUserRole(user) {
     }
     
     try {
+        let role = 'user';
+
         if (ADMIN_EMAILS.includes(user.email)) {
-            currentUserRole = 'admin';
+            role = 'admin';
         } else {
             const idTokenResult = await user.getIdTokenResult();
             if (idTokenResult.claims.admin || idTokenResult.claims.role === 'admin') {
-                currentUserRole = 'admin';
+                role = 'admin';
             } else {
-                currentUserRole = 'user';
+                // Fall back to the saved Firestore user role for cross-device login
+                const userDoc = await db.collection('users').doc(user.uid).get();
+                const userData = userDoc.exists ? userDoc.data() : null;
+                if (userData?.role === 'admin') {
+                    role = 'admin';
+                }
             }
         }
-        
+
+        currentUserRole = role;
         document.body.className = currentUserRole;
         
     } catch (error) {
@@ -4457,7 +4465,7 @@ async function bulkApproveItems(reportId, itemType) {
         showLoading(false);
     }
 }
-
+ 
 async function bulkRejectItems(reportId, itemType, reason) {
     if (!isAuthenticated()) {
         showNotification('Please login to reject items', 'error');
