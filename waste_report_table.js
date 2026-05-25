@@ -162,7 +162,7 @@ let reportsCache = {
     ttl: 5 * 60 * 1000
 };
 
-const ALL_STORES = [
+const DEFAULT_STORES = [
     'FG Express IROSIN',
     'FG Express LIGAO',
     'FG Express POLANGUI',
@@ -175,8 +175,34 @@ const ALL_STORES = [
     'FG to go LEGAZPI',
     'FG to go NAGA',
     'FG LEGAZPI',
-    'FG NAGA'
+    'FG NAGA',
+    'CTK',
+    'Tabaco CN 2',
+    'Concourse Hall',
+    'Concourse Convention',
+    'LC Stockroom'
 ];
+
+const DEFAULT_STORE_DISPLAY_NAMES = {
+    'FG Express IROSIN': 'IROSIN',
+    'FG Express LIGAO': 'LIGAO',
+    'FG Express POLANGUI': 'POLANGUI',
+    'FG Express MASBATE': 'MASBATE',
+    'FG Express DARAGA': 'DARAGA',
+    'FG Express BAAO': 'BAAO',
+    'FG Express PIODURAN': 'FG PIODURAN',
+    'FG Express RIZAL': 'RIZAL',
+    'FG to go TABACO': 'TABACO',
+    'FG to go LEGAZPI': 'LEGAZPI(to go)',
+    'FG to go NAGA': 'NAGA (to go)',
+    'FG LEGAZPI': 'LEGAZPI',
+    'FG NAGA': 'NAGA',
+    'CTK': 'CTK',
+    'Tabaco CN 2': 'Tabaco CN 2',
+    'Concourse Hall': 'Concourse Hall',
+    'Concourse Convention': 'Concourse Convention',
+    'LC Stockroom': 'LC Stockroom'
+};
 
 const STORE_ABBREVIATIONS = {
     'FG Express IROSIN': 'FG IROSIN',
@@ -194,21 +220,41 @@ const STORE_ABBREVIATIONS = {
     'FG NAGA': 'FG NAGA'
 };
 
-const STORE_DISPLAY_NAMES = {
-    'FG Express IROSIN': 'IROSIN',
-    'FG Express LIGAO': 'LIGAO',
-    'FG Express POLANGUI': 'POLANGUI',
-    'FG Express MASBATE': 'MASBATE',
-    'FG Express DARAGA': 'DARAGA',
-    'FG Express BAAO': 'BAAO',
-    'FG Express PIODURAN': 'PIODURAN',
-    'FG Express RIZAL': 'RIZAL',
-    'FG to go TABACO': 'TABACO',
-    'FG to go LEGAZPI': 'LEGAZPI(to go)',
-    'FG to go NAGA': 'NAGA (to go)',
-    'FG LEGAZPI': 'LEGAZPI',
-    'FG NAGA': 'NAGA'
-};
+const STOCKROOM_NAMES = new Set([
+    'CTK',
+    'Tabaco CN 2',
+    'Concourse Hall',
+    'Concourse Convention',
+    'LC Stockroom'
+]);
+
+function getSelectedChartFilter() {
+    const showStores = Performance.getElement('#chartFilterStores')?.checked;
+    const showStockrooms = Performance.getElement('#chartFilterStockrooms')?.checked;
+    return {
+        showStores: typeof showStores === 'boolean' ? showStores : true,
+        showStockrooms: typeof showStockrooms === 'boolean' ? showStockrooms : false
+    };
+}
+
+function shouldIncludeStoreInChart(store) {
+    const { showStores, showStockrooms } = getSelectedChartFilter();
+    const isStockroom = STOCKROOM_NAMES.has(store);
+    if (!showStores && !showStockrooms) return true;
+    return isStockroom ? showStockrooms : showStores;
+}
+
+function filterChartStores(stores) {
+    const { showStores, showStockrooms } = getSelectedChartFilter();
+    if (!showStores && !showStockrooms) return stores;
+    return stores.filter(([store]) => {
+        const isStockroom = STOCKROOM_NAMES.has(store);
+        return isStockroom ? showStockrooms : showStores;
+    });
+}
+
+let ALL_STORES = [...DEFAULT_STORES];
+let STORE_DISPLAY_NAMES = { ...DEFAULT_STORE_DISPLAY_NAMES };
 
 const ADMIN_EMAILS = [
     'admin@fgoperations.com',
@@ -615,6 +661,161 @@ function updateNavBar(user) {
             </button>
         `;
     }
+}
+
+function renderStoreSelectors() {
+    const filterStore = Performance.getElement('#filterStore');
+    const chartStore = Performance.getElement('#chartStore');
+
+    if (filterStore) {
+        const currentValue = filterStore.value || '';
+        filterStore.innerHTML = '<option value="">All Stores</option>';
+        ALL_STORES.forEach(store => {
+            const option = document.createElement('option');
+            option.value = store;
+            option.textContent = STORE_DISPLAY_NAMES[store] || store;
+            filterStore.appendChild(option);
+        });
+        if (currentValue) filterStore.value = currentValue;
+    }
+
+    if (chartStore) {
+        const currentValue = chartStore.value || 'all';
+        chartStore.innerHTML = '<option value="all">All Stores</option>';
+        ALL_STORES.forEach(store => {
+            const option = document.createElement('option');
+            option.value = store;
+            option.textContent = STORE_DISPLAY_NAMES[store] || store;
+            chartStore.appendChild(option);
+        });
+        if (currentValue) chartStore.value = currentValue;
+    }
+}
+
+async function loadStores() {
+    try {
+        const snapshot = await db.collection('stores').orderBy('name').get();
+        const customStores = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data?.name) {
+                customStores.push({
+                    name: String(data.name).trim(),
+                    displayName: String(data.displayName || data.name).trim()
+                });
+            }
+        });
+
+        const storeSet = new Set(DEFAULT_STORES);
+        ALL_STORES = [...DEFAULT_STORES];
+        STORE_DISPLAY_NAMES = { ...DEFAULT_STORE_DISPLAY_NAMES };
+
+        customStores.forEach(store => {
+            if (!storeSet.has(store.name)) {
+                storeSet.add(store.name);
+                ALL_STORES.push(store.name);
+            }
+            STORE_DISPLAY_NAMES[store.name] = store.displayName || store.name;
+        });
+
+        renderStoreSelectors();
+    } catch (error) {
+        console.error('Error loading stores:', error);
+        ALL_STORES = [...DEFAULT_STORES];
+        STORE_DISPLAY_NAMES = { ...DEFAULT_STORE_DISPLAY_NAMES };
+        renderStoreSelectors();
+    }
+}
+
+async function addStore(storeName, storeDisplayName) {
+    if (!isAuthenticated() || !isAdmin()) {
+        showNotification('Only administrators can add stores', 'error');
+        return;
+    }
+
+    const normalizedName = String(storeName || '').trim();
+    const normalizedDisplayName = String(storeDisplayName || storeName || '').trim();
+
+    if (!normalizedName) {
+        showNotification('Please enter a store name', 'error');
+        return;
+    }
+
+    if (ALL_STORES.includes(normalizedName)) {
+        showNotification('This store already exists', 'warning');
+        return;
+    }
+
+    showLoading(true, 'Saving store...');
+    try {
+        const query = await db.collection('stores').where('name', '==', normalizedName).get();
+        if (!query.empty) {
+            showNotification('Store already exists in database', 'warning');
+            return;
+        }
+
+        await db.collection('stores').add({
+            name: normalizedName,
+            displayName: normalizedDisplayName,
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.email || 'administrator'
+        });
+
+        await loadStores();
+        showNotification(`Store added: ${normalizedName}`, 'success');
+        renderManageStoresList();
+    } catch (error) {
+        console.error('Error adding store:', error);
+        showNotification('Failed to save store: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function renderManageStoresList() {
+    const storeList = document.getElementById('storeList');
+    if (!storeList) return;
+
+    storeList.innerHTML = '';
+    ALL_STORES.forEach(store => {
+        const item = document.createElement('div');
+        item.className = 'store-item';
+        item.innerHTML = `
+            <span>${STORE_DISPLAY_NAMES[store] || store}</span>
+            <small>${store}</small>
+        `;
+        storeList.appendChild(item);
+    });
+}
+
+function openManageStoresModal() {
+    if (!isAdmin()) {
+        showNotification('Only administrators can manage stores', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('manageStoresModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        renderManageStoresList();
+    }
+}
+
+function closeManageStoresModal() {
+    const modal = document.getElementById('manageStoresModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function handleAddStoreClick() {
+    const nameInput = document.getElementById('newStoreName');
+    const displayInput = document.getElementById('newStoreDisplayName');
+    if (!nameInput) return;
+
+    await addStore(nameInput.value, displayInput?.value || nameInput.value);
+    if (nameInput) nameInput.value = '';
+    if (displayInput) displayInput.value = '';
 }
 
 async function handleLogin() {
@@ -1428,7 +1629,7 @@ function showNotification(message, type = 'success', duration = 3000) {
 // ================================
 // INITIALIZATION
 // ================================
-function initializeApp() {
+async function initializeApp() {
     try {
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
@@ -1447,6 +1648,7 @@ function initializeApp() {
                 }
             });
         
+        await loadStores();
         initializeAuth();
         
         setTimeout(() => {
@@ -1761,6 +1963,7 @@ function createBarOrPieChart(period, metric, sortOrder) {
         return [store, data];
     });
     
+    storeEntries = filterChartStores(storeEntries);
     calculatePeriodMetrics(storeEntries, period);
     
     const storeEntriesWithValues = storeEntries.map(([store, data]) => {
@@ -2099,6 +2302,8 @@ function createLineChart(period, metric, selectedStore) {
     } else {
         storesToShow = [selectedStore];
     }
+    
+    storesToShow = storesToShow.filter(shouldIncludeStoreInChart);
     
     storesToShow.forEach((store, index) => {
         const data = [];
@@ -6723,7 +6928,11 @@ function setupEventListeners() {
     
     setupCreateAccountModalListeners();
     
+    const manageStoresButton = Performance.getElement('#manageStoresButton');
     const createAccountButton = Performance.getElement('#createAccountButton');
+    if (manageStoresButton) {
+        manageStoresButton.addEventListener('click', openManageStoresModal);
+    }
     if (createAccountButton) {
         createAccountButton.addEventListener('click', openCreateAccountModal);
     }
@@ -6737,6 +6946,8 @@ function setupEventListeners() {
     const chartDatePickerFrom = Performance.getElement('#chartDateFrom');
     const chartDatePickerTo = Performance.getElement('#chartDateTo');
     const chartStore = Performance.getElement('#chartStore');
+    const chartFilterStores = Performance.getElement('#chartFilterStores');
+    const chartFilterStockrooms = Performance.getElement('#chartFilterStockrooms');
     
     if (chartPeriod) chartPeriod.addEventListener('change', updateChartControls);
     if (chartMetric) chartMetric.addEventListener('change', createChartBasedOnType);
@@ -6745,6 +6956,8 @@ function setupEventListeners() {
     if (chartDatePickerFrom) chartDatePickerFrom.addEventListener('change', createChartBasedOnType);
     if (chartDatePickerTo) chartDatePickerTo.addEventListener('change', createChartBasedOnType);
     if (chartStore) chartStore.addEventListener('change', createChartBasedOnType);
+    if (chartFilterStores) chartFilterStores.addEventListener('change', createChartBasedOnType);
+    if (chartFilterStockrooms) chartFilterStockrooms.addEventListener('change', createChartBasedOnType);
     
     const statsPeriodFilter = Performance.getElement('#statsPeriodFilter');
     if (statsPeriodFilter) {
@@ -6760,6 +6973,9 @@ function setupEventListeners() {
     const uploadSignatureBtn = document.getElementById('uploadSignatureBtn');
     const saveSignatureBtn = document.getElementById('saveSignatureBtn');
     const clearSignatureBtn = document.getElementById('clearSignatureBtn');
+    const closeManageStoresModalBtn = document.getElementById('closeManageStoresModal');
+    const cancelManageStoresButton = document.getElementById('cancelManageStores');
+    const addStoreButton = document.getElementById('addStoreButton');
     
     if (signatureCloseBtn) signatureCloseBtn.addEventListener('click', closeSignatureModal);
     if (signatureCancelBtn) signatureCancelBtn.addEventListener('click', closeSignatureModal);
@@ -6768,6 +6984,9 @@ function setupEventListeners() {
     if (uploadSignatureBtn) uploadSignatureBtn.addEventListener('click', uploadSignatureImage);
     if (saveSignatureBtn) saveSignatureBtn.addEventListener('click', saveDrawnSignature);
     if (clearSignatureBtn) clearSignatureBtn.addEventListener('click', clearSignaturePad);
+    if (closeManageStoresModalBtn) closeManageStoresModalBtn.addEventListener('click', closeManageStoresModal);
+    if (cancelManageStoresButton) cancelManageStoresButton.addEventListener('click', closeManageStoresModal);
+    if (addStoreButton) addStoreButton.addEventListener('click', handleAddStoreClick);
     
     const searchInput = Performance.getElement('#searchInput');
     const filterStore = Performance.getElement('#filterStore');
@@ -6962,6 +7181,7 @@ function setupEventListeners() {
                 else if (modal.id === 'deleteAllModal') closeDeleteAllModal();
                 else if (modal.id === 'deleteImageModal') ImageManager.closeDeleteImageModal();
                 else if (modal.id === 'createAccountModal') closeCreateAccountModal();
+                else if (modal.id === 'manageStoresModal') closeManageStoresModal();
                 else if (modal.id === 'signatureModal') closeSignatureModal();
             }
         });
@@ -6979,6 +7199,7 @@ function setupEventListeners() {
             closeDeleteAllModal();
             ImageManager.closeDeleteImageModal();
             closeCreateAccountModal();
+            closeManageStoresModal();
             closeSignatureModal();
         }
     });
@@ -6993,9 +7214,9 @@ function changeItemsPage(direction) {
 // ================================
 // MAIN INITIALIZATION
 // ================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('Document loaded, initializing reports table...');
-    initializeApp();
+    await initializeApp();
     setupEventListeners();
     
     const sortIcon = document.getElementById('sortDateIcon');

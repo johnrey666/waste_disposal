@@ -963,8 +963,7 @@
         statistics: null
     };
 
-    // UPDATED: Define all store names (13 stores now - added FG to go NAGA)
-    const ALL_STORES = [
+    const DEFAULT_STORES = [
         'FG Express IROSIN',
         'FG Express LIGAO',
         'FG Express POLANGUI',
@@ -975,13 +974,12 @@
         'FG Express RIZAL',
         'FG to go TABACO',
         'FG to go LEGAZPI',
-        'FG to go NAGA',      // ADDED
+        'FG to go NAGA',
         'FG LEGAZPI',
         'FG NAGA'
     ];
 
-    // Store display names for chart (updated with NAGA to go)
-    const STORE_DISPLAY_NAMES = {
+    const DEFAULT_STORE_DISPLAY_NAMES = {
         'FG Express IROSIN': 'IROSIN',
         'FG Express LIGAO': 'LIGAO',
         'FG Express POLANGUI': 'POLANGUI',
@@ -996,6 +994,9 @@
         'FG LEGAZPI': 'LEGAZPI',
         'FG NAGA': 'NAGA'
     };
+
+    let ALL_STORES = [...DEFAULT_STORES];
+    let STORE_DISPLAY_NAMES = { ...DEFAULT_STORE_DISPLAY_NAMES };
 
     // Colors for charts
     const CHART_COLORS = [
@@ -1036,6 +1037,38 @@
         }
     }
 
+    async function loadStores() {
+        try {
+            const snapshot = await db.collection('stores').orderBy('name').get();
+            const customStores = [];
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (data?.name) {
+                    customStores.push({
+                        name: String(data.name).trim(),
+                        displayName: String(data.displayName || data.name).trim()
+                    });
+                }
+            });
+
+            const storeSet = new Set(DEFAULT_STORES);
+            ALL_STORES = [...DEFAULT_STORES];
+            STORE_DISPLAY_NAMES = { ...DEFAULT_STORE_DISPLAY_NAMES };
+
+            customStores.forEach(store => {
+                if (!storeSet.has(store.name)) {
+                    storeSet.add(store.name);
+                    ALL_STORES.push(store.name);
+                }
+                STORE_DISPLAY_NAMES[store.name] = store.displayName || store.name;
+            });
+        } catch (error) {
+            console.error('Error loading stores:', error);
+            ALL_STORES = [...DEFAULT_STORES];
+            STORE_DISPLAY_NAMES = { ...DEFAULT_STORE_DISPLAY_NAMES };
+        }
+    }
+
     function getMonthName(monthIndex) {
         const months = ['January', 'February', 'March', 'April', 'May', 'June', 
                        'July', 'August', 'September', 'October', 'November', 'December'];
@@ -1045,7 +1078,7 @@
     // ================================
     // FIREBASE INITIALIZATION
     // ================================
-    function initializeFirebase() {
+    async function initializeFirebase() {
         Loader.show('Connecting to database...');
         
         try {
@@ -1057,6 +1090,7 @@
             populateYearDropdown();
             setCurrentMonthInDropdown();
             
+            await loadStores();
             loadAllData();
             
         } catch (error) {
@@ -1403,8 +1437,8 @@
     // ================================
     // INITIALIZATION
     // ================================
-    document.addEventListener('DOMContentLoaded', () => {
-        initializeFirebase();
+    document.addEventListener('DOMContentLoaded', async () => {
+        await initializeFirebase();
         setTimeout(setupEventListeners, 100);
         setInterval(() => { loadAllData(); }, 5 * 60 * 1000);
     });

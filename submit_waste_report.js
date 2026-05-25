@@ -108,6 +108,9 @@ const REGULAR_STORES = [
 ];
 const CONCOURSE_VARIANTS = ['Tabaco CN 2', 'Concourse Hall', 'Concourse Convention'];
 
+const DEFAULT_STORE_LIST = [...REGULAR_STORES, ...HYBRID_STORES, ...KITCHEN_STORES];
+let STORE_LIST = [...DEFAULT_STORE_LIST];
+
 let db, storage, auth;
 
 function initializeFirebase() {
@@ -127,6 +130,46 @@ function initializeFirebase() {
         console.error('❌ Firebase initialization error:', error);
         showNotification('Firebase connection failed. Please check console.', 'error');
         return false;
+    }
+}
+
+async function loadStores() {
+    try {
+        const snapshot = await db.collection('stores').orderBy('name').get();
+        const storeSet = new Set(DEFAULT_STORE_LIST);
+        STORE_LIST = [...DEFAULT_STORE_LIST];
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const name = String(data?.name || '').trim();
+            if (!name) return;
+            if (!storeSet.has(name)) {
+                storeSet.add(name);
+                STORE_LIST.push(name);
+            }
+        });
+    } catch (error) {
+        console.error('Error loading stores:', error);
+        STORE_LIST = [...DEFAULT_STORE_LIST];
+    }
+    renderStoreOptions();
+}
+
+function renderStoreOptions() {
+    const storeSelect = document.getElementById('store');
+    if (!storeSelect) return;
+
+    const currentValue = storeSelect.value || '';
+    storeSelect.innerHTML = '<option value="">Select a store</option>';
+    STORE_LIST.forEach(store => {
+        const option = document.createElement('option');
+        option.value = store;
+        option.textContent = store;
+        storeSelect.appendChild(option);
+    });
+
+    if (currentValue && STORE_LIST.includes(currentValue)) {
+        storeSelect.value = currentValue;
     }
 }
 
@@ -2497,6 +2540,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateDisposalTypesPreview();
 
     try {
+        await loadStores();
         await fetchItemsFromFirestore();
       
         const itemIdFromUrl = getUrlParameter('itemId');
