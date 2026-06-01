@@ -13,54 +13,77 @@ const Loader = {
     progressFill: document.getElementById('progressFill'),
     progressText: document.getElementById('progressText'),
     progressDetails: document.getElementById('progressDetails'),
+    showTimeout: null,
+    visible: false,
+    nextMessage: 'Loading...',
 
     show(message = 'Loading...') {
         if (!this.overlay) return;
-        requestAnimationFrame(() => {
-            this.overlay.style.display = 'flex';
+        this.nextMessage = message;
+        if (this.showTimeout) clearTimeout(this.showTimeout);
+
+        if (this.visible) {
             if (this.textElement) this.textElement.textContent = message;
+            return;
+        }
+
+        this.showTimeout = setTimeout(() => {
+            this.overlay.style.display = 'flex';
+            if (this.textElement) this.textElement.textContent = this.nextMessage;
             if (this.progressContainer) this.progressContainer.style.display = 'none';
-        });
+            this.visible = true;
+            this.showTimeout = null;
+        }, 180);
     },
 
     hide() {
         if (!this.overlay) return;
-        requestAnimationFrame(() => {
-            this.overlay.style.opacity = '0';
-            setTimeout(() => {
-                this.overlay.style.display = 'none';
-                this.overlay.style.opacity = '1';
-            }, 200);
-        });
+        if (this.showTimeout) {
+            clearTimeout(this.showTimeout);
+            this.showTimeout = null;
+        }
+        if (!this.visible) return;
+        this.overlay.style.opacity = '0';
+        setTimeout(() => {
+            this.overlay.style.display = 'none';
+            this.overlay.style.opacity = '1';
+            this.visible = false;
+        }, 120);
     },
 
     updateMessage(message) {
         if (this.textElement) this.textElement.textContent = message;
+        this.nextMessage = message;
     },
 
     showUpload(current = 0, total = 0, fileName = '') {
         if (!this.progressContainer || !this.progressFill || !this.progressText) return;
-        this.progressContainer.style.display = 'block';
-        if (total > 0) {
-            const percentage = Math.round((current / total) * 100);
-            this.progressFill.style.width = `${percentage}%`;
-            this.progressText.textContent = `Please WaitUploading: ${percentage}%`;
-            if (fileName) this.progressDetails.textContent = `File: ${fileName}`;
+        if (this.showTimeout) {
+            clearTimeout(this.showTimeout);
+            this.showTimeout = null;
         }
+        this.overlay.style.display = 'flex';
+        this.visible = true;
+        if (this.progressContainer) this.progressContainer.style.display = 'block';
+        const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+        this.progressFill.style.width = `${percentage}%`;
+        this.progressText.textContent = `Please wait: ${percentage}%`;
+        if (fileName) this.progressDetails.textContent = `File: ${fileName}`;
     },
 
     hideUpload() {
         if (this.progressContainer) this.progressContainer.style.display = 'none';
         if (this.progressFill) this.progressFill.style.width = '0%';
-        if (this.progressText) this.progressText.textContent = 'Please Wait Uploading: 0%';
+        if (this.progressText) this.progressText.textContent = 'Please wait: 0%';
         if (this.progressDetails) this.progressDetails.textContent = '';
+        this.hide();
     },
 
     updateUpload(current, total, fileName = '') {
         if (!this.progressContainer || !this.progressFill || !this.progressText) return;
-        const percentage = Math.round((current / total) * 100);
+        const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
         this.progressFill.style.width = `${percentage}%`;
-        this.progressText.textContent = `Please Wait Uploading: ${percentage}%`;
+        this.progressText.textContent = `Please wait: ${percentage}%`;
         if (fileName) this.progressDetails.textContent = `File: ${fileName}`;
     }
 };

@@ -872,34 +872,53 @@
     const Loader = {
         overlay: document.getElementById('loadingOverlay'),
         textElement: document.getElementById('loaderText'),
-        
+        showTimeout: null,
+        visible: false,
+        nextMessage: 'Loading...',
+
         show(message = 'Loading...') {
             if (!this.overlay) return;
-            
-            requestAnimationFrame(() => {
+            this.nextMessage = message;
+
+            if (this.showTimeout) {
+                clearTimeout(this.showTimeout);
+            }
+
+            if (this.visible) {
+                if (this.textElement) this.textElement.textContent = message;
+                return;
+            }
+
+            this.showTimeout = setTimeout(() => {
                 this.overlay.style.display = 'flex';
                 if (this.textElement) {
-                    this.textElement.textContent = message;
+                    this.textElement.textContent = this.nextMessage;
                 }
-            });
+                this.visible = true;
+                this.showTimeout = null;
+            }, 180);
         },
-        
+
         hide() {
             if (!this.overlay) return;
-            
-            requestAnimationFrame(() => {
-                this.overlay.style.opacity = '0';
-                setTimeout(() => {
-                    this.overlay.style.display = 'none';
-                    this.overlay.style.opacity = '1';
-                }, 200);
-            });
+            if (this.showTimeout) {
+                clearTimeout(this.showTimeout);
+                this.showTimeout = null;
+            }
+            if (!this.visible) return;
+            this.overlay.style.opacity = '0';
+            setTimeout(() => {
+                this.overlay.style.display = 'none';
+                this.overlay.style.opacity = '1';
+                this.visible = false;
+            }, 120);
         },
-        
+
         updateMessage(message) {
             if (this.textElement) {
                 this.textElement.textContent = message;
             }
+            this.nextMessage = message;
         }
     };
 
