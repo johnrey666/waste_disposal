@@ -180,10 +180,20 @@ let chartAnalysis = {
 
 let statsFilterPeriod = 'all';
 
+const REPORTS_CACHE_TTL = 15 * 60 * 1000;
+
 let reportsCache = {
     data: [],
     timestamp: 0,
-    ttl: 5 * 60 * 1000
+    queryKey: '',
+    ttl: REPORTS_CACHE_TTL
+};
+
+let itemsCache = {
+    regular: [],
+    kitchen: [],
+    timestamp: 0,
+    ttl: 15 * 60 * 1000
 };
 
 const DEFAULT_STORES = [
@@ -308,7 +318,7 @@ function toggleDateSort() {
     }
     
     sortReportsByDate();
-    loadReports();
+    applyFiltersAndRender();
 }
 
 function sortReportsByDate() {
@@ -1720,29 +1730,33 @@ function updateChartControlsVisibility() {
     }
 }
 
-async function loadAllReportsForChart() {
+async function loadAllReportsForChart(forceRefresh = false) {
     try {
+        if (!forceRefresh && allReportsData.length > 0) {
+            analyzeStorePerformance();
+            createChartBasedOnType();
+            return;
+        }
+
         showLoading(true, 'Analyzing store performance...');
-        
+
         const snapshot = await db.collection('wasteReports')
             .orderBy('reportDate', 'desc')
             .get();
-        
+
         allReportsData = [];
         snapshot.forEach(doc => {
-            const data = doc.data();
-            allReportsData.push({ 
-                id: doc.id, 
-                ...data,
-                disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                            data.disposalType ? [data.disposalType] : ['unknown']
-            });
+            allReportsData.push(normalizeReport(doc.id, doc.data()));
         });
-        
+
+        reportsCache.data = allReportsData;
+        reportsCache.timestamp = Date.now();
+        reportsCache.queryKey = getReportsQueryKey(getFilterValues());
+
         analyzeStorePerformance();
         createChartBasedOnType();
         updateStatisticsFromAllReports();
-        
+
     } catch (error) {
         console.error('Error loading reports for chart:', error);
         showNotification('Error analyzing store performance', 'error');
@@ -2985,7 +2999,7 @@ function getStoreDailyRate(store) {
 }
 
 function refreshChart() {
-    loadAllReportsForChart();
+    loadAllReportsForChart(true);
 }
 
 function updateChartControls() {
@@ -3288,21 +3302,18 @@ async function viewReportDetails(reportId) {
     
     try {
         currentReportDetailsId = reportId;
-        
-        const doc = await db.collection('wasteReports').doc(reportId).get();
-        
-        if (!doc.exists) {
-            showNotification('Report not found', 'error');
-            return;
+
+        let report = allReportsData.find(r => r.id === reportId) ||
+            reportsData.find(r => r.id === reportId);
+
+        if (!report) {
+            const doc = await db.collection('wasteReports').doc(reportId).get();
+            if (!doc.exists) {
+                showNotification('Report not found', 'error');
+                return;
+            }
+            report = normalizeReport(doc.id, doc.data());
         }
-        
-        const data = doc.data();
-        const report = { 
-            id: doc.id, 
-            ...data,
-            disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                        data.disposalType ? [data.disposalType] : ['unknown']
-        };
         
         await buildModalContent(report);
         
@@ -3698,22 +3709,18 @@ async function deleteReport(reportId) {
         const imagesDeleted = await deleteAllImagesFromReport(report);
         
         await db.collection('wasteReports').doc(reportId).delete();
-        
-        const index = reportsData.findIndex(r => r.id === reportId);
-        if (index !== -1) {
-            reportsData.splice(index, 1);
-        }
-        
-        await loadReports();
+
+        removeReportFromCache(reportId);
+        totalFilteredCount = filteredReportsData.length;
+        const totalPages = Math.ceil(totalFilteredCount / pageSize) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+        applyFiltersAndRender();
+        refreshChartFromCache();
         
         closeDeleteModal();
         closeDetailsModal();
         
         showNotification(`Report deleted successfully. ${imagesDeleted} images removed from storage.`, 'success');
-        
-        setTimeout(() => {
-            loadAllReportsForChart();
-        }, 500);
         
     } catch (error) {
         console.error('Error deleting report:', error);
@@ -3796,17 +3803,12 @@ async function deleteAllReports(applyFilters = false) {
             }
         }
         
-        reportsData = [];
-        
-        await loadReports();
+        invalidateReportsCache();
+        await loadReports(true);
         
         closeDeleteAllModal();
         
         showNotification(`Deleted ${deletedReports} reports and ${deletedImages} images from storage.`, 'success');
-        
-        setTimeout(() => {
-            loadAllReportsForChart();
-        }, 1000);
         
     } catch (error) {
         console.error('Error deleting all reports:', error);
@@ -3861,13 +3863,17 @@ async function deleteSingleImage(reportId, itemIndex, itemType, imageIndex) {
             [field]: items
         });
         
+        const updatedReport = normalizeReport(reportId, { ...reportDoc.data(), [field]: items });
+        patchReportInCache(reportId, updatedReport);
+
         showNotification('Image deleted successfully', 'success');
         
         if (currentReportDetailsId === reportId) {
-            await viewReportDetails(reportId);
+            await buildModalContent(updatedReport);
         }
-        
-        loadReports();
+
+        applyFiltersAndRender();
+        refreshChartFromCache();
         
         ImageManager.closeDeleteImageModal();
         ImageManager.closeModal();
@@ -4004,151 +4010,204 @@ function confirmDeleteAll() {
 // ================================
 // REPORTS LOADING - WITH SORTING
 // ================================
-async function loadReports() {
+function normalizeReport(docId, data) {
+    return {
+        id: docId,
+        ...data,
+        disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes :
+            data.disposalType ? [data.disposalType] : ['unknown']
+    };
+}
+
+function getFilterValues() {
+    return {
+        store: Performance.getElement('#filterStore')?.value || '',
+        dateFrom: Performance.getElement('#filterDateFrom')?.value || '',
+        dateTo: Performance.getElement('#filterDateTo')?.value || '',
+        search: Performance.getElement('#searchInput')?.value || '',
+        type: Performance.getElement('#filterType')?.value || '',
+        status: Performance.getElement('#filterStatus')?.value || ''
+    };
+}
+
+function getReportsQueryKey(filters) {
+    return filters.store || '';
+}
+
+function isReportsCacheValid(filters) {
+    if (!reportsCache.timestamp) return false;
+    if (Date.now() - reportsCache.timestamp > reportsCache.ttl) return false;
+    return reportsCache.queryKey === getReportsQueryKey(filters);
+}
+
+function invalidateReportsCache() {
+    reportsCache.data = [];
+    reportsCache.timestamp = 0;
+    reportsCache.queryKey = '';
+}
+
+function patchReportInCache(reportId, updatedReport) {
+    const normalized = normalizeReport(reportId, updatedReport);
+    const allIndex = allReportsData.findIndex(r => r.id === reportId);
+    if (allIndex !== -1) allReportsData[allIndex] = normalized;
+
+    const filteredIndex = filteredReportsData.findIndex(r => r.id === reportId);
+    if (filteredIndex !== -1) filteredReportsData[filteredIndex] = normalized;
+
+    const pageIndex = reportsData.findIndex(r => r.id === reportId);
+    if (pageIndex !== -1) reportsData[pageIndex] = normalized;
+
+    if (reportsCache.data.length) {
+        const cacheIndex = reportsCache.data.findIndex(r => r.id === reportId);
+        if (cacheIndex !== -1) reportsCache.data[cacheIndex] = normalized;
+    }
+}
+
+function removeReportFromCache(reportId) {
+    allReportsData = allReportsData.filter(r => r.id !== reportId);
+    filteredReportsData = filteredReportsData.filter(r => r.id !== reportId);
+    reportsData = reportsData.filter(r => r.id !== reportId);
+    reportsCache.data = reportsCache.data.filter(r => r.id !== reportId);
+}
+
+function applyClientFilters(allReports, filters) {
+    const searchLower = filters.search.toLowerCase();
+
+    return allReports.filter(report => {
+        const searchMatch = !filters.search ||
+            (report.reportId && report.reportId.toLowerCase().includes(searchLower)) ||
+            (report.email && report.email.toLowerCase().includes(searchLower)) ||
+            (report.personnel && report.personnel.toLowerCase().includes(searchLower)) ||
+            (report.store && report.store.toLowerCase().includes(searchLower));
+
+        const typeMatch = !filters.type || report.disposalTypes.includes(filters.type);
+
+        let statusMatch = true;
+        if (filters.status) {
+            const approvalStatus = getReportApprovalStatus(report);
+            if (filters.status === 'pending') statusMatch = hasPendingItems(report);
+            else if (filters.status === 'rejected') statusMatch = hasRejectedItems(report);
+            else if (filters.status === 'complete') statusMatch = approvalStatus === 'complete';
+            else if (filters.status === 'partial') statusMatch = approvalStatus === 'partial';
+        }
+
+        let dateMatch = true;
+        if (filters.dateFrom || filters.dateTo) {
+            const reportDate = new Date(report.reportDate);
+
+            if (filters.dateFrom) {
+                const fromDate = new Date(filters.dateFrom);
+                fromDate.setHours(0, 0, 0, 0);
+                if (reportDate < fromDate) dateMatch = false;
+            }
+
+            if (filters.dateTo) {
+                const toDate = new Date(filters.dateTo);
+                toDate.setHours(23, 59, 59, 999);
+                if (reportDate > toDate) dateMatch = false;
+            }
+        }
+
+        return searchMatch && typeMatch && statusMatch && dateMatch;
+    });
+}
+
+async function fetchReportsFromFirestore(filters) {
+    let query = db.collection('wasteReports');
+
+    if (filters.store) {
+        query = query.where('store', '==', filters.store);
+    }
+
+    query = query.orderBy('submittedAt', 'desc');
+
+    const snapshot = await query.get();
+    const allReports = [];
+    snapshot.forEach(doc => {
+        allReports.push(normalizeReport(doc.id, doc.data()));
+    });
+    return allReports;
+}
+
+function renderReportsTable() {
+    reportsData = [];
+    const tableBody = Performance.getElement('#reportsTableBody');
+    if (!tableBody) return;
+
+    tableBody.innerHTML = '';
+
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, totalFilteredCount);
+    const pageReports = filteredReportsData.slice(startIndex, endIndex);
+
+    const fragment = document.createDocumentFragment();
+
+    pageReports.forEach(report => {
+        reportsData.push(report);
+        fragment.appendChild(createTableRow(report));
+    });
+
+    if (fragment.childNodes.length > 0) {
+        tableBody.appendChild(fragment);
+    } else {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="11" class="empty-state">
+                    <i class="fas fa-inbox"></i>
+                    <h3>No reports found</h3>
+                    <p>Try changing your filters or submit a new report.</p>
+                </td>
+            </tr>
+        `;
+    }
+
+    updatePageInfo();
+    updatePaginationButtons();
+}
+
+function applyFiltersAndRender() {
+    const filters = getFilterValues();
+    filteredReportsData = applyClientFilters(allReportsData, filters);
+    totalFilteredCount = filteredReportsData.length;
+    sortReportsByDate();
+    renderReportsTable();
+    updateStatisticsFromAllReports();
+}
+
+function refreshChartFromCache() {
+    if (allReportsData.length > 0) {
+        analyzeStorePerformance();
+        createChartBasedOnType();
+    }
+}
+
+async function loadReports(forceRefresh = false) {
     if (isDataLoading) return;
-    
+
     if (!isAuthenticated()) {
         showNotification('Please login to view reports', 'error');
         return;
     }
-    
+
+    const filters = getFilterValues();
+    const useCache = !forceRefresh && isReportsCacheValid(filters);
+
     isDataLoading = true;
-    showLoading(true, 'Loading reports...');
-    
+    showLoading(true, useCache ? 'Updating view...' : 'Loading reports...');
+
     try {
-        reportsData = [];
-        const tableBody = Performance.getElement('#reportsTableBody');
-        if (!tableBody) return;
-        
-        tableBody.innerHTML = '';
-        
-        const storeFilter = Performance.getElement('#filterStore');
-        const dateFromFilter = Performance.getElement('#filterDateFrom');
-        const dateToFilter = Performance.getElement('#filterDateTo');
-        const searchInput = Performance.getElement('#searchInput');
-        const typeFilter = Performance.getElement('#filterType');
-        const filterStatus = Performance.getElement('#filterStatus');
-        
-        let query = db.collection('wasteReports');
-        
-        if (storeFilter?.value) {
-            query = query.where('store', '==', storeFilter.value);
-        }
-        
-        query = query.orderBy('submittedAt', 'desc');
-        
-        const snapshot = await query.get();
-        
-        filteredReportsData = [];
-        const allReports = [];
-        
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            const report = { 
-                id: doc.id, 
-                ...data,
-                disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                            data.disposalType ? [data.disposalType] : ['unknown']
-            };
-            allReports.push(report);
-            
-            const searchMatch = !searchInput?.value || 
-                            (report.reportId && report.reportId.toLowerCase().includes(searchInput.value.toLowerCase())) ||
-                            (report.email && report.email.toLowerCase().includes(searchInput.value.toLowerCase())) ||
-                            (report.personnel && report.personnel.toLowerCase().includes(searchInput.value.toLowerCase())) ||
-                            (report.store && report.store.toLowerCase().includes(searchInput.value.toLowerCase()));
-            
-            const typeMatch = !typeFilter?.value || 
-                            report.disposalTypes.includes(typeFilter.value);
-            
-            let statusMatch = true;
-            if (filterStatus?.value) {
-                const approvalStatus = getReportApprovalStatus(report);
-                
-                if (filterStatus.value === 'pending') {
-                    statusMatch = hasPendingItems(report);
-                } else if (filterStatus.value === 'rejected') {
-                    statusMatch = hasRejectedItems(report);
-                } else if (filterStatus.value === 'complete') {
-                    statusMatch = approvalStatus === 'complete';
-                } else if (filterStatus.value === 'partial') {
-                    statusMatch = approvalStatus === 'partial';
-                }
-            }
-            
-            let dateMatch = true;
-            if (dateFromFilter?.value || dateToFilter?.value) {
-                const reportDate = new Date(report.reportDate);
-                
-                if (dateFromFilter?.value) {
-                    const fromDate = new Date(dateFromFilter.value);
-                    fromDate.setHours(0, 0, 0, 0);
-                    if (reportDate < fromDate) {
-                        dateMatch = false;
-                    }
-                }
-                
-                if (dateToFilter?.value) {
-                    const toDate = new Date(dateToFilter.value);
-                    toDate.setHours(23, 59, 59, 999);
-                    if (reportDate > toDate) {
-                        dateMatch = false;
-                    }
-                }
-            }
-            
-            if (searchMatch && typeMatch && statusMatch && dateMatch) {
-                filteredReportsData.push(report);
-            }
-        });
-        
-        allReportsData = allReports;
-        totalFilteredCount = filteredReportsData.length;
-        
-        sortReportsByDate();
-        
-        const totalPages = Math.ceil(totalFilteredCount / pageSize);
-        const startIndex = (currentPage - 1) * pageSize;
-        const endIndex = Math.min(startIndex + pageSize, totalFilteredCount);
-        
-        const pageReports = filteredReportsData.slice(startIndex, endIndex);
-        
-        const fragment = document.createDocumentFragment();
-        
-        pageReports.forEach(report => {
-            reportsData.push(report);
-            const row = createTableRow(report);
-            fragment.appendChild(row);
-        });
-        
-        if (fragment.childNodes.length > 0) {
-            tableBody.appendChild(fragment);
+        if (useCache) {
+            allReportsData = reportsCache.data;
         } else {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="11" class="empty-state">
-                        <i class="fas fa-inbox"></i>
-                        <h3>No reports found</h3>
-                        <p>Try changing your filters or submit a new report.</p>
-                    </td>
-                </tr>
-            `;
+            allReportsData = await fetchReportsFromFirestore(filters);
+            reportsCache.data = allReportsData;
+            reportsCache.timestamp = Date.now();
+            reportsCache.queryKey = getReportsQueryKey(filters);
         }
-        
-        updateStatisticsFromAllReports();
-        
-        updatePageInfo();
-        updatePaginationButtons();
-        
-        if (currentPage === 1) {
-            setTimeout(() => {
-                loadAllReportsForChart();
-            }, 100);
-        }
-        
-        reportsCache.data = reportsData;
-        reportsCache.timestamp = Date.now();
-        
+
+        applyFiltersAndRender();
+        refreshChartFromCache();
+
     } catch (error) {
         console.error('Error loading reports:', error);
         showNotification('Error loading reports: ' + error.message, 'error');
@@ -4283,11 +4342,11 @@ function updatePaginationButtons() {
 function changePage(direction) {
     currentPage += direction;
     if (currentPage < 1) currentPage = 1;
-    
+
     const totalPages = Math.ceil(totalFilteredCount / pageSize);
     if (currentPage > totalPages) currentPage = totalPages;
-    
-    loadReports();
+
+    renderReportsTable();
 }
 
 // ================================
@@ -4296,7 +4355,13 @@ function changePage(direction) {
 function debounceApplyFilters() {
     Performance.debounce(() => {
         currentPage = 1;
-        loadReports();
+        const filters = getFilterValues();
+        const storeChanged = reportsCache.queryKey !== getReportsQueryKey(filters);
+        if (!storeChanged && isReportsCacheValid(filters)) {
+            applyFiltersAndRender();
+        } else {
+            loadReports();
+        }
     }, 300, 'filters')();
 }
 
@@ -4523,6 +4588,8 @@ async function approveItem(reportId, itemIndex, itemType) {
         
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: items });
+
+        const updatedReport = normalizeReport(reportId, { ...report, [field]: items });
         
         if (report.email) {
             await sendApprovalEmailViaGAS(
@@ -4537,7 +4604,7 @@ async function approveItem(reportId, itemIndex, itemType) {
         
         showNotification('Item approved successfully', 'success');
         
-        updateReportAfterApproval(reportId);
+        updateReportAfterApproval(reportId, updatedReport);
         
     } catch (error) {
         console.error('Error approving item:', error);
@@ -4600,10 +4667,12 @@ async function rejectItem(reportId, itemIndex, itemType, reason) {
         
         const field = itemType === 'expired' ? 'expiredItems' : 'wasteItems';
         await docRef.update({ [field]: items });
+
+        const updatedReport = normalizeReport(reportId, { ...report, [field]: items });
         
         showNotification('Item rejected successfully', 'success');
         
-        updateReportAfterApproval(reportId);
+        updateReportAfterApproval(reportId, updatedReport);
         
         await sendRejectionEmailViaGAS(
             report.email, 
@@ -4683,9 +4752,11 @@ async function bulkApproveItems(reportId, itemType) {
             );
         }
         
+        const updatedReport = normalizeReport(reportId, { ...report, [field]: updatedItems });
+
         showNotification(`All pending items approved successfully (${approvedCount} items)`, 'success');
         
-        updateReportAfterApproval(reportId);
+        updateReportAfterApproval(reportId, updatedReport);
         
     } catch (error) {
         console.error('Error bulk approving items:', error);
@@ -4788,8 +4859,10 @@ async function bulkRejectItems(reportId, itemType, reason) {
             );
         }
 
+        const updatedReport = normalizeReport(reportId, { ...report, [field]: updatedItems });
+
         showNotification(`Bulk rejection completed (${rejectedCount} items)`, 'success');
-        updateReportAfterApproval(reportId);
+        updateReportAfterApproval(reportId, updatedReport);
     } catch (error) {
         console.error('Error bulk rejecting items:', error);
         showNotification('Error bulk rejecting items: ' + error.message, 'error');
@@ -5385,48 +5458,46 @@ async function sendBulkRejectionEmailViaGAS(toEmail, reportId, rejectedCount, re
         return { success: false, error: error.message || 'Unknown error' };
     }
 }
-async function updateReportAfterApproval(reportId) {
+async function updateReportAfterApproval(reportId, updatedReport = null) {
     try {
-        const doc = await db.collection('wasteReports').doc(reportId).get();
-        if (!doc.exists) return;
-        
-        const data = doc.data();
-        const updatedReport = { 
-            id: doc.id, 
-            ...data,
-            disposalTypes: Array.isArray(data.disposalTypes) ? data.disposalTypes : 
-                        data.disposalType ? [data.disposalType] : ['unknown']
-        };
-        
+        let report = updatedReport;
+        if (!report) {
+            report = allReportsData.find(r => r.id === reportId) ||
+                reportsData.find(r => r.id === reportId);
+            if (!report) {
+                const doc = await db.collection('wasteReports').doc(reportId).get();
+                if (!doc.exists) return;
+                report = normalizeReport(doc.id, doc.data());
+            }
+        } else if (!report.id) {
+            report = normalizeReport(reportId, report);
+        }
+
+        patchReportInCache(reportId, report);
+
         const rowIndex = reportsData.findIndex(r => r.id === reportId);
         if (rowIndex !== -1) {
-            reportsData[rowIndex] = updatedReport;
-            
             const tableBody = Performance.getElement('#reportsTableBody');
             if (tableBody && tableBody.children[rowIndex]) {
                 const row = tableBody.children[rowIndex];
                 const approvalCell = row.cells[9];
                 if (approvalCell) {
-                    approvalCell.innerHTML = getApprovalStatusBadge(updatedReport);
+                    approvalCell.innerHTML = getApprovalStatusBadge(report);
                 }
             }
         }
-        
+
         if (currentReportDetailsId === reportId) {
-            await viewReportDetails(reportId);
+            await buildModalContent(report);
         }
-        
-        if (allReportsData.length > 0) {
-            updateStatisticsFromAllReports();
-        }
-        
-        setTimeout(() => {
-            loadAllReportsForChart();
-        }, 500);
-        
+
+        updateStatisticsFromAllReports();
+        refreshChartFromCache();
+
     } catch (error) {
         console.error('Error updating UI after approval:', error);
-        loadReports();
+        invalidateReportsCache();
+        loadReports(true);
     }
 }
 
@@ -6117,37 +6188,64 @@ function closeItemsManagement() {
     }
 }
 
+function invalidateItemsCache() {
+    itemsCache.regular = [];
+    itemsCache.kitchen = [];
+    itemsCache.timestamp = 0;
+}
+
+function updateItemCountsFromCache() {
+    regularItemsCount = itemsCache.regular.length;
+    kitchenItemsCount = itemsCache.kitchen.length;
+
+    meatCount = 0;
+    vegetablesCount = 0;
+    seafoodCount = 0;
+
+    itemsCache.kitchen.forEach(item => {
+        if (item.kitchenCategory === 'meat') meatCount++;
+        else if (item.kitchenCategory === 'vegetables') vegetablesCount++;
+        else if (item.kitchenCategory === 'seafood') seafoodCount++;
+    });
+
+    const regularTotalEl = Performance.getElement('#totalRegularItemsCount');
+    const kitchenTotalEl = Performance.getElement('#totalKitchenItemsCount');
+
+    if (regularTotalEl) regularTotalEl.textContent = regularItemsCount;
+    if (kitchenTotalEl) kitchenTotalEl.textContent = kitchenItemsCount;
+
+    updateKitchenCategoryStats();
+}
+
+async function ensureItemsCache(forceRefresh = false) {
+    if (!forceRefresh && itemsCache.timestamp &&
+        Date.now() - itemsCache.timestamp < itemsCache.ttl) {
+        return;
+    }
+
+    const [regularSnapshot, kitchenSnapshot] = await Promise.all([
+        db.collection('items').where('category', '==', 'regular').get(),
+        db.collection('items').where('category', '==', 'kitchen').get()
+    ]);
+
+    itemsCache.regular = [];
+    itemsCache.kitchen = [];
+
+    regularSnapshot.forEach(doc => {
+        itemsCache.regular.push({ id: doc.id, ...doc.data() });
+    });
+
+    kitchenSnapshot.forEach(doc => {
+        itemsCache.kitchen.push({ id: doc.id, ...doc.data() });
+    });
+
+    itemsCache.timestamp = Date.now();
+}
+
 async function updateItemCounts() {
     try {
-        const regularSnapshot = await db.collection('items')
-            .where('category', '==', 'regular')
-            .get();
-        regularItemsCount = regularSnapshot.size;
-        
-        const kitchenSnapshot = await db.collection('items')
-            .where('category', '==', 'kitchen')
-            .get();
-        kitchenItemsCount = kitchenSnapshot.size;
-        
-        meatCount = 0;
-        vegetablesCount = 0;
-        seafoodCount = 0;
-        
-        kitchenSnapshot.forEach(doc => {
-            const item = doc.data();
-            if (item.kitchenCategory === 'meat') meatCount++;
-            else if (item.kitchenCategory === 'vegetables') vegetablesCount++;
-            else if (item.kitchenCategory === 'seafood') seafoodCount++;
-        });
-        
-        const regularTotalEl = Performance.getElement('#totalRegularItemsCount');
-        const kitchenTotalEl = Performance.getElement('#totalKitchenItemsCount');
-        
-        if (regularTotalEl) regularTotalEl.textContent = regularItemsCount;
-        if (kitchenTotalEl) kitchenTotalEl.textContent = kitchenItemsCount;
-        
-        updateKitchenCategoryStats();
-        
+        await ensureItemsCache();
+        updateItemCountsFromCache();
     } catch (error) {
         console.error('Error updating item counts:', error);
     }
@@ -6183,7 +6281,56 @@ function updateKitchenCategoryVisibility() {
     }
 }
 
-async function loadItems() {
+function renderItemsPage(filteredItems) {
+        const startIndex = (itemsCurrentPage - 1) * itemsPageSize;
+        const endIndex = startIndex + itemsPageSize;
+        const pageItems = filteredItems.slice(startIndex, endIndex);
+
+        itemsData = pageItems;
+        itemsLastVisibleDoc = endIndex < filteredItems.length;
+
+        renderItemsTable(itemsData);
+
+        const showingEl = Performance.getElement('#showingItemsCount');
+        if (showingEl) {
+            showingEl.textContent = itemsData.length;
+        }
+
+        const pageInfo = Performance.getElement('#itemsPageInfo');
+        if (pageInfo) {
+            const totalPages = Math.ceil(filteredItems.length / itemsPageSize) || 1;
+            pageInfo.textContent = `Page ${itemsCurrentPage} of ${totalPages}`;
+        }
+
+        const prevBtn = Performance.getElement('#prevItemsPageBtn');
+        const nextBtn = Performance.getElement('#nextItemsPageBtn');
+
+        if (prevBtn) {
+            prevBtn.disabled = itemsCurrentPage <= 1;
+        }
+
+        if (nextBtn) {
+            nextBtn.disabled = endIndex >= filteredItems.length;
+        }
+
+        const searchTerm = Performance.getElement('#searchItems')?.value || '';
+        const categoryCountEl = Performance.getElement('#categoryItemCount');
+        if (categoryCountEl) {
+            const totalInCategory = currentItemType === 'regular' ? regularItemsCount : kitchenItemsCount;
+            const showingCount = itemsData.length;
+            const filteredTotal = filteredItems.length;
+
+            if (searchTerm) {
+                categoryCountEl.innerHTML = `<i class="fas fa-search"></i> Found ${filteredTotal} of ${totalInCategory} ${currentItemType} items (showing ${showingCount})`;
+            } else {
+                categoryCountEl.innerHTML = `<i class="fas fa-database"></i> Showing ${showingCount} of ${totalInCategory} ${currentItemType} items`;
+            }
+        }
+
+        updateKitchenCategoryStats();
+}
+
+async function loadItems(forceRefresh = false) {
     if (!isAuthenticated()) return;
     
     showLoading(true, 'Loading items...');
@@ -6204,17 +6351,12 @@ async function loadItems() {
         }
         
         updateKitchenCategoryVisibility();
-        
-        let query = db.collection('items').where('category', '==', currentItemType);
-        
-        const snapshot = await query.get();
-        
-        let allItems = [];
-        snapshot.forEach(doc => {
-            const item = { id: doc.id, ...doc.data() };
-            allItems.push(item);
-        });
-        
+
+        await ensureItemsCache(forceRefresh);
+        updateItemCountsFromCache();
+
+        const allItems = currentItemType === 'regular' ? itemsCache.regular : itemsCache.kitchen;
+
         let filteredItems = allItems;
         if (searchTerm) {
             const searchLower = searchTerm.toLowerCase().trim();
@@ -6225,54 +6367,7 @@ async function loadItems() {
         
         filteredItems.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         
-        await updateItemCounts();
-        
-        const startIndex = (itemsCurrentPage - 1) * itemsPageSize;
-        const endIndex = startIndex + itemsPageSize;
-        const pageItems = filteredItems.slice(startIndex, endIndex);
-        
-        itemsData = pageItems;
-        
-        itemsLastVisibleDoc = endIndex < filteredItems.length;
-        
-        renderItemsTable(itemsData);
-        
-        const showingEl = Performance.getElement('#showingItemsCount');
-        if (showingEl) {
-            showingEl.textContent = itemsData.length;
-        }
-        
-        const pageInfo = Performance.getElement('#itemsPageInfo');
-        if (pageInfo) {
-            const totalPages = Math.ceil(filteredItems.length / itemsPageSize) || 1;
-            pageInfo.textContent = `Page ${itemsCurrentPage} of ${totalPages}`;
-        }
-        
-        const prevBtn = Performance.getElement('#prevItemsPageBtn');
-        const nextBtn = Performance.getElement('#nextItemsPageBtn');
-        
-        if (prevBtn) {
-            prevBtn.disabled = itemsCurrentPage <= 1;
-        }
-        
-        if (nextBtn) {
-            nextBtn.disabled = endIndex >= filteredItems.length;
-        }
-        
-        const categoryCountEl = Performance.getElement('#categoryItemCount');
-        if (categoryCountEl) {
-            const totalInCategory = currentItemType === 'regular' ? regularItemsCount : kitchenItemsCount;
-            const showingCount = itemsData.length;
-            const filteredTotal = filteredItems.length;
-            
-            if (searchTerm) {
-                categoryCountEl.innerHTML = `<i class="fas fa-search"></i> Found ${filteredTotal} of ${totalInCategory} ${currentItemType} items (showing ${showingCount})`;
-            } else {
-                categoryCountEl.innerHTML = `<i class="fas fa-database"></i> Showing ${showingCount} of ${totalInCategory} ${currentItemType} items`;
-            }
-        }
-        
-        updateKitchenCategoryStats();
+        renderItemsPage(filteredItems);
         
     } catch (error) {
         console.error('Error loading items:', error);
@@ -6467,8 +6562,7 @@ async function addItemToDatabase() {
         if (nameInput) nameInput.value = '';
         if (costInput) costInput.value = '0';
         
-        await loadItems();
-        await updateItemCounts();
+        await loadItems(true);
         
     } catch (error) {
         console.error('Error adding item:', error);
@@ -6607,8 +6701,7 @@ async function saveItemChanges() {
         
         showNotification('Item updated successfully', 'success');
         closeEditItemModal();
-        await loadItems();
-        await updateItemCounts();
+        await loadItems(true);
         
     } catch (error) {
         console.error('Error updating item:', error);
@@ -6636,22 +6729,31 @@ async function deleteItem(itemId, itemName) {
     showLoading(true, 'Deleting item...');
     
     try {
-        const reportsQuery = await db.collection('wasteReports')
-            .where('disposalType', 'in', ['expired', 'waste'])
-            .get();
-        
         let isUsed = false;
-        reportsQuery.forEach(doc => {
-            const report = doc.data();
-            const expiredItems = report.expiredItems || [];
-            const wasteItems = report.wasteItems || [];
-            
-            [...expiredItems, ...wasteItems].forEach(item => {
-                if (item.item === itemName) {
-                    isUsed = true;
-                }
+        const reportsToCheck = allReportsData.length > 0 ? allReportsData : null;
+
+        if (reportsToCheck) {
+            reportsToCheck.forEach(report => {
+                const expiredItems = report.expiredItems || [];
+                const wasteItems = report.wasteItems || [];
+                [...expiredItems, ...wasteItems].forEach(item => {
+                    if (item.item === itemName) isUsed = true;
+                });
             });
-        });
+        } else {
+            const reportsQuery = await db.collection('wasteReports')
+                .where('disposalType', 'in', ['expired', 'waste'])
+                .get();
+
+            reportsQuery.forEach(doc => {
+                const report = doc.data();
+                const expiredItems = report.expiredItems || [];
+                const wasteItems = report.wasteItems || [];
+                [...expiredItems, ...wasteItems].forEach(item => {
+                    if (item.item === itemName) isUsed = true;
+                });
+            });
+        }
         
         if (isUsed) {
             showNotification(`Cannot delete "${itemName}" because it is used in existing reports.`, 'error');
@@ -6661,8 +6763,7 @@ async function deleteItem(itemId, itemName) {
         await db.collection('items').doc(itemId).delete();
         
         showNotification(`Item "${itemName}" deleted successfully`, 'success');
-        await loadItems();
-        await updateItemCounts();
+        await loadItems(true);
         
     } catch (error) {
         console.error('Error deleting item:', error);
@@ -6923,8 +7024,7 @@ async function saveImportedItems(items) {
         
         showNotification(`Successfully imported ${addedCount} items. ${skippedCount} items skipped (already exist).`, 'success');
         
-        await loadItems();
-        await updateItemCounts();
+        await loadItems(true);
         
     } catch (error) {
         console.error('Error saving imported items:', error);
@@ -7232,7 +7332,16 @@ function setupEventListeners() {
 function changeItemsPage(direction) {
     itemsCurrentPage += direction;
     if (itemsCurrentPage < 1) itemsCurrentPage = 1;
-    loadItems();
+
+    const searchTerm = Performance.getElement('#searchItems')?.value || '';
+    const allItems = currentItemType === 'regular' ? itemsCache.regular : itemsCache.kitchen;
+    let filteredItems = allItems;
+    if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase().trim();
+        filteredItems = allItems.filter(item => item.name && item.name.toLowerCase().includes(searchLower));
+    }
+    filteredItems.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    renderItemsPage(filteredItems);
 }
 
 // ================================

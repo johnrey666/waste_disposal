@@ -114,6 +114,10 @@ let ALL_ITEMS_LIST = [];
 let REGULAR_ITEMS_LIST = [];
 let KITCHEN_ITEMS_LIST = [];
 let KITCHEN_ITEMS_BY_CATEGORY = { meat: [], vegetables: [], seafood: [] };
+const ITEM_COST_CACHE = new Map();
+const ITEMS_CACHE_KEY = 'mcbien_items_cache_v1';
+const STORES_CACHE_KEY = 'mcbien_stores_cache_v1';
+const LOCAL_CACHE_TTL = 30 * 60 * 1000;
 let itemsLoaded = false;
 let isResubmitting = false;
 let resubmissionData = null;
@@ -156,8 +160,70 @@ function initializeFirebase() {
     }
 }
 
+function readLocalCache(key) {
+    try {
+        const raw = sessionStorage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed?.timestamp || Date.now() - parsed.timestamp > LOCAL_CACHE_TTL) {
+            sessionStorage.removeItem(key);
+            return null;
+        }
+        return parsed.data;
+    } catch (error) {
+        return null;
+    }
+}
+
+function writeLocalCache(key, data) {
+    try {
+        sessionStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), data }));
+    } catch (error) {
+        console.warn('Could not write local cache:', error);
+    }
+}
+
+function applyItemsData(items) {
+    ALL_ITEMS_LIST = [];
+    REGULAR_ITEMS_LIST = [];
+    KITCHEN_ITEMS_LIST = [];
+    KITCHEN_ITEMS_BY_CATEGORY = { meat: [], vegetables: [], seafood: [] };
+    ITEM_COST_CACHE.clear();
+
+    items.forEach(item => {
+        const itemName = item.name;
+        const category = item.category || 'regular';
+        const kitchenCategory = item.kitchenCategory;
+
+        ALL_ITEMS_LIST.push(itemName);
+        ITEM_COST_CACHE.set(itemName, parseFloat(item.cost) || 0);
+
+        if (category === 'kitchen') {
+            KITCHEN_ITEMS_LIST.push(itemName);
+            if (kitchenCategory === 'meat') KITCHEN_ITEMS_BY_CATEGORY.meat.push(itemName);
+            else if (kitchenCategory === 'vegetables') KITCHEN_ITEMS_BY_CATEGORY.vegetables.push(itemName);
+            else if (kitchenCategory === 'seafood') KITCHEN_ITEMS_BY_CATEGORY.seafood.push(itemName);
+        } else {
+            REGULAR_ITEMS_LIST.push(itemName);
+        }
+    });
+
+    REGULAR_ITEMS_LIST.sort();
+    KITCHEN_ITEMS_LIST.sort();
+    KITCHEN_ITEMS_BY_CATEGORY.meat.sort();
+    KITCHEN_ITEMS_BY_CATEGORY.vegetables.sort();
+    KITCHEN_ITEMS_BY_CATEGORY.seafood.sort();
+}
+
 async function loadStores() {
     try {
+        const cachedStores = readLocalCache(STORES_CACHE_KEY);
+        if (cachedStores) {
+            STORE_LIST = cachedStores;
+            renderStoreOptions();
+            return;
+        }
+
         const snapshot = await db.collection('stores').orderBy('name').get();
         const storeSet = new Set(DEFAULT_STORE_LIST);
         STORE_LIST = [...DEFAULT_STORE_LIST];
@@ -171,6 +237,8 @@ async function loadStores() {
                 STORE_LIST.push(name);
             }
         });
+
+        writeLocalCache(STORES_CACHE_KEY, STORE_LIST);
     } catch (error) {
         console.error('Error loading stores:', error);
         STORE_LIST = [...DEFAULT_STORE_LIST];
@@ -486,48 +554,36 @@ async function processAllItemsWithUploads(reportId, allItems, progressCallback) 
 async function fetchItemsFromFirestore() {
     try {
         if (!db) throw new Error('Firebase not initialized');
-        console.log('Fetching items from Firestore...');
         Loader.show('Loading items...');
-     
+
+        const cachedItems = readLocalCache(ITEMS_CACHE_KEY);
+        if (cachedItems) {
+            applyItemsData(cachedItems);
+            console.log(`✅ Loaded ${ALL_ITEMS_LIST.length} items from session cache`);
+            itemsLoaded = true;
+            initializeAllSelect2Dropdowns();
+            return ALL_ITEMS_LIST;
+        }
+
+        console.log('Fetching items from Firestore...');
         const snapshot = await db.collection('items').orderBy('name', 'asc').get();
-     
-        ALL_ITEMS_LIST = [];
-        REGULAR_ITEMS_LIST = [];
-        KITCHEN_ITEMS_LIST = [];
-        KITCHEN_ITEMS_BY_CATEGORY = { meat: [], vegetables: [], seafood: [] };
-     
+
+        const itemsForCache = [];
         snapshot.forEach(doc => {
-            const itemData = doc.data();
-            const itemName = itemData.name;
-            const category = itemData.category || 'regular';
-            const kitchenCategory = itemData.kitchenCategory;
-         
-            ALL_ITEMS_LIST.push(itemName);
-         
-            if (category === 'kitchen') {
-                KITCHEN_ITEMS_LIST.push(itemName);
-                if (kitchenCategory === 'meat') KITCHEN_ITEMS_BY_CATEGORY.meat.push(itemName);
-                else if (kitchenCategory === 'vegetables') KITCHEN_ITEMS_BY_CATEGORY.vegetables.push(itemName);
-                else if (kitchenCategory === 'seafood') KITCHEN_ITEMS_BY_CATEGORY.seafood.push(itemName);
-            } else {
-                REGULAR_ITEMS_LIST.push(itemName);
-            }
+            itemsForCache.push({ id: doc.id, ...doc.data() });
         });
-     
-        REGULAR_ITEMS_LIST.sort();
-        KITCHEN_ITEMS_LIST.sort();
-        KITCHEN_ITEMS_BY_CATEGORY.meat.sort();
-        KITCHEN_ITEMS_BY_CATEGORY.vegetables.sort();
-        KITCHEN_ITEMS_BY_CATEGORY.seafood.sort();
-     
+
+        applyItemsData(itemsForCache);
+        writeLocalCache(ITEMS_CACHE_KEY, itemsForCache);
+
         console.log(`✅ Loaded ${ALL_ITEMS_LIST.length} total items`);
         console.log(` - REGULAR: ${REGULAR_ITEMS_LIST.length}`);
         console.log(` - KITCHEN: ${KITCHEN_ITEMS_LIST.length}`);
-     
+
         itemsLoaded = true;
         initializeAllSelect2Dropdowns();
         return ALL_ITEMS_LIST;
-     
+
     } catch (error) {
         console.error('❌ Error fetching items:', error);
         showNotification('Failed to load items. Please try again.', 'error');
@@ -540,10 +596,16 @@ async function fetchItemsFromFirestore() {
 async function getItemCost(itemName) {
     try {
         if (!itemName || !db) return 0;
+        if (ITEM_COST_CACHE.has(itemName)) {
+            return ITEM_COST_CACHE.get(itemName);
+        }
         const query = await db.collection('items').where('name', '==', itemName).limit(1).get();
         if (!query.empty) {
-            return parseFloat(query.docs[0].data().cost) || 0;
+            const cost = parseFloat(query.docs[0].data().cost) || 0;
+            ITEM_COST_CACHE.set(itemName, cost);
+            return cost;
         }
+        ITEM_COST_CACHE.set(itemName, 0);
         return 0;
     } catch (error) {
         console.error('Error getting item cost:', error);
