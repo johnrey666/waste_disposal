@@ -4119,7 +4119,7 @@ async function fetchReportsFromFirestore(filters) {
         query = query.where('store', '==', filters.store);
     }
 
-    query = query.orderBy('submittedAt', 'desc');
+    query = query.orderBy('reportDate', 'desc');
 
     const snapshot = await query.get();
     const allReports = [];
@@ -4200,6 +4200,7 @@ async function loadReports(forceRefresh = false) {
             allReportsData = reportsCache.data;
         } else {
             allReportsData = await fetchReportsFromFirestore(filters);
+            allReportsData.sort((a, b) => new Date(b.reportDate) - new Date(a.reportDate));
             reportsCache.data = allReportsData;
             reportsCache.timestamp = Date.now();
             reportsCache.queryKey = getReportsQueryKey(filters);
