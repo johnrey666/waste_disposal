@@ -7101,7 +7101,7 @@ function setupEventListeners() {
     const chartStore = Performance.getElement('#chartStore');
     const chartFilterStores = Performance.getElement('#chartFilterStores');
     const chartFilterStockrooms = Performance.getElement('#chartFilterStockrooms');
-    
+
     if (chartPeriod) chartPeriod.addEventListener('change', updateChartControls);
     if (chartMetric) chartMetric.addEventListener('change', createChartBasedOnType);
     if (chartSort) chartSort.addEventListener('change', createChartBasedOnType);
@@ -7292,21 +7292,23 @@ function setupEventListeners() {
     const closeDeleteModalBtn = Performance.getElement('#closeDeleteModal');
     const cancelDeleteButton = Performance.getElement('#cancelDeleteButton');
     const confirmDeleteButton = Performance.getElement('#confirmDeleteButton');
+    const deleteAllButton = Performance.getElement('#deleteAllButton');
     const closeDeleteAllModalBtn = Performance.getElement('#closeDeleteAllModal');
     const cancelDeleteAllButton = Performance.getElement('#cancelDeleteAllButton');
     const confirmDeleteAllButton = Performance.getElement('#confirmDeleteAllButton');
     const closeDeleteImageModalBtn = Performance.getElement('#closeDeleteImageModal');
     const cancelDeleteImageButton = Performance.getElement('#cancelDeleteImageButton');
     const confirmDeleteImageButton = Performance.getElement('#confirmDeleteImageButton');
-    
+
     if (closeDeleteModalBtn) closeDeleteModalBtn.addEventListener('click', closeDeleteModal);
     if (cancelDeleteButton) cancelDeleteButton.addEventListener('click', closeDeleteModal);
     if (confirmDeleteButton) confirmDeleteButton.addEventListener('click', confirmDelete);
-    
+
+    if (deleteAllButton) deleteAllButton.addEventListener('click', openDeleteAllModal);
     if (closeDeleteAllModalBtn) closeDeleteAllModalBtn.addEventListener('click', closeDeleteAllModal);
     if (cancelDeleteAllButton) cancelDeleteAllButton.addEventListener('click', closeDeleteAllModal);
     if (confirmDeleteAllButton) confirmDeleteAllButton.addEventListener('click', confirmDeleteAll);
-    
+        
     if (closeDeleteImageModalBtn) closeDeleteImageModalBtn.addEventListener('click', ImageManager.closeDeleteImageModal);
     if (cancelDeleteImageButton) cancelDeleteImageButton.addEventListener('click', ImageManager.closeDeleteImageModal);
     if (confirmDeleteImageButton) confirmDeleteImageButton.addEventListener('click', () => {
