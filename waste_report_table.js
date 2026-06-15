@@ -1,5 +1,5 @@
 // ================================
-// PERFORMANCE OPTIMIZATION MODULE
+// PERFORMANCE OPTIMIZATION MODULE waste_report_table.js
 // ================================
 const Performance = {
     cache: new Map(),
@@ -55,7 +55,7 @@ const Loader = {
             clearTimeout(this.showTimeout);
         }
 
-        if (this.visible) {
+                            if (this.visible) {
             if (this.textElement) {
                 this.textElement.textContent = message;
             }
@@ -3730,93 +3730,6 @@ async function deleteReport(reportId) {
     }
 }
 
-async function deleteAllReports(applyFilters = false) {
-    if (!isAuthenticated()) {
-        showNotification('Please login to delete reports', 'error');
-        return;
-    }
-    
-    if (!isAdmin()) {
-        showNotification('Only administrators can delete reports', 'error');
-        return;
-    }
-    
-    showLoading(true, 'Deleting reports and images...');
-    
-    try {
-        let query = db.collection('wasteReports');
-        
-        if (applyFilters) {
-            const storeFilter = Performance.getElement('#filterStore');
-            const dateFromFilter = Performance.getElement('#filterDateFrom');
-            const dateToFilter = Performance.getElement('#filterDateTo');
-            const typeFilter = Performance.getElement('#filterType');
-            const filterStatus = Performance.getElement('#filterStatus');
-            
-            if (storeFilter?.value) {
-                query = query.where('store', '==', storeFilter.value);
-            }
-        }
-        
-        const snapshot = await query.get();
-        
-        if (snapshot.empty) {
-            showNotification('No reports found to delete', 'warning');
-            return;
-        }
-        
-        const totalReports = snapshot.size;
-        let deletedReports = 0;
-        let deletedImages = 0;
-        
-        const batchSize = 5;
-        const reports = [];
-        
-        snapshot.forEach(doc => {
-            reports.push({ id: doc.id, ...doc.data() });
-        });
-        
-        for (let i = 0; i < reports.length; i += batchSize) {
-            const batch = reports.slice(i, i + batchSize);
-            
-            const deletePromises = batch.map(async (report) => {
-                try {
-                    const imagesCount = await deleteAllImagesFromReport(report);
-                    deletedImages += imagesCount;
-                    
-                    await db.collection('wasteReports').doc(report.id).delete();
-                    deletedReports++;
-                    
-                    if (deletedReports % 10 === 0 || deletedReports === totalReports) {
-                        showLoading(true, `Deleting ${deletedReports}/${totalReports} reports...`);
-                    }
-                    
-                } catch (error) {
-                    console.error(`Error deleting report ${report.id}:`, error);
-                }
-            });
-            
-            await Promise.all(deletePromises);
-            
-            if (i + batchSize < reports.length) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-        }
-        
-        invalidateReportsCache();
-        await loadReports(true);
-        
-        closeDeleteAllModal();
-        
-        showNotification(`Deleted ${deletedReports} reports and ${deletedImages} images from storage.`, 'success');
-        
-    } catch (error) {
-        console.error('Error deleting all reports:', error);
-        showNotification('Error deleting reports: ' + error.message, 'error');
-    } finally {
-        showLoading(false);
-    }
-}
 
 async function deleteSingleImage(reportId, itemIndex, itemType, imageIndex) {
     if (!isAuthenticated()) {
@@ -3953,58 +3866,173 @@ function openDeleteAllModal() {
         showNotification('Please login to delete reports', 'error');
         return;
     }
-    
+
     if (!isAdmin()) {
         showNotification('Only administrators can delete reports', 'error');
         return;
     }
-    
-    const deleteAllCount = Performance.getElement('#deleteAllCount');
+
+    const dateFrom = Performance.getElement('#deleteAllDateFrom');
+    const dateTo = Performance.getElement('#deleteAllDateTo');
     const deleteAllConfirmation = Performance.getElement('#deleteAllConfirmation');
     const confirmDeleteAllButton = Performance.getElement('#confirmDeleteAllButton');
-    const applyFiltersCheckbox = Performance.getElement('#applyFiltersToDeleteAll');
-    
-    if (deleteAllCount) {
-        const count = applyFiltersCheckbox?.checked ? reportsData.length : allReportsData.length;
-        deleteAllCount.textContent = count;
-    }
-    
+    const applyStoreFilterCheckbox = Performance.getElement('#applyStoreFilterToDeleteAll');
+    const rangeCountEl = Performance.getElement('#deleteAllRangeCount');
+
+    if (dateFrom) dateFrom.value = '';
+    if (dateTo) dateTo.value = '';
+    if (applyStoreFilterCheckbox) applyStoreFilterCheckbox.checked = false;
+    if (rangeCountEl) rangeCountEl.textContent = '';
+
     if (deleteAllConfirmation && confirmDeleteAllButton) {
         deleteAllConfirmation.value = '';
         confirmDeleteAllButton.disabled = true;
-        
-        deleteAllConfirmation.addEventListener('input', function() {
+
+        deleteAllConfirmation.oninput = function() {
             confirmDeleteAllButton.disabled = this.value.toUpperCase() !== 'DELETE ALL';
+        };
+    }
+
+    const updateRangeCount = () => {
+        if (!rangeCountEl) return;
+        const from = dateFrom?.value;
+        const to = dateTo?.value;
+
+        if (!from || !to) {
+            rangeCountEl.textContent = '';
+            return;
+        }
+
+        const storeFilter = applyStoreFilterCheckbox?.checked ? Performance.getElement('#filterStore')?.value : '';
+
+        const fromDate = new Date(from);
+        fromDate.setHours(0, 0, 0, 0);
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+
+        const matching = allReportsData.filter(report => {
+            const reportDate = new Date(report.reportDate);
+            if (reportDate < fromDate || reportDate > toDate) return false;
+            if (storeFilter && report.store !== storeFilter) return false;
+            return true;
         });
-    }
-    
-    if (applyFiltersCheckbox) {
-        applyFiltersCheckbox.checked = false;
-    }
-    
+
+        rangeCountEl.innerHTML = `<strong>${matching.length}</strong> report(s) match this date range${storeFilter ? ` for store "${storeFilter}"` : ''}.`;
+    };
+
+    if (dateFrom) dateFrom.oninput = updateRangeCount;
+    if (dateTo) dateTo.oninput = updateRangeCount;
+    if (applyStoreFilterCheckbox) applyStoreFilterCheckbox.onchange = updateRangeCount;
+
     const deleteAllModal = Performance.getElement('#deleteAllModal');
     if (deleteAllModal) {
         deleteAllModal.style.display = 'flex';
-        deleteAllConfirmation?.focus();
+        dateFrom?.focus();
     }
 }
 
-function closeDeleteAllModal() {
-    const deleteAllModal = Performance.getElement('#deleteAllModal');
-    if (deleteAllModal) {
-        deleteAllModal.style.display = 'none';
+async function deleteAllReportsByDateRange(dateFrom, dateTo, applyStoreFilter = false) {
+    if (!isAuthenticated()) {
+        showNotification('Please login to delete reports', 'error');
+        return;
     }
-}
 
-function confirmDelete() {
-    if (currentReportToDelete) {
-        deleteReport(currentReportToDelete.id);
+    if (!isAdmin()) {
+        showNotification('Only administrators can delete reports', 'error');
+        return;
+    }
+
+    if (!dateFrom || !dateTo) {
+        showNotification('Please select both a From date and a To date', 'error');
+        return;
+    }
+
+    showLoading(true, 'Finding reports to delete...');
+
+    try {
+        let query = db.collection('wasteReports');
+
+        if (applyStoreFilter) {
+            const storeFilter = Performance.getElement('#filterStore')?.value;
+            if (storeFilter) {
+                query = query.where('store', '==', storeFilter);
+            }
+        }
+
+        const snapshot = await query.get();
+
+        const fromDate = new Date(dateFrom);
+        fromDate.setHours(0, 0, 0, 0);
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+
+        const reports = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const reportDate = new Date(data.reportDate);
+            if (reportDate >= fromDate && reportDate <= toDate) {
+                reports.push({ id: doc.id, ...data });
+            }
+        });
+
+        if (reports.length === 0) {
+            showNotification('No reports found in the selected date range', 'warning');
+            return;
+        }
+
+        const totalReports = reports.length;
+        let deletedReports = 0;
+        let deletedImages = 0;
+
+        const batchSize = 5;
+
+        for (let i = 0; i < reports.length; i += batchSize) {
+            const batch = reports.slice(i, i + batchSize);
+
+            const deletePromises = batch.map(async (report) => {
+                try {
+                    const imagesCount = await deleteAllImagesFromReport(report);
+                    deletedImages += imagesCount;
+
+                    await db.collection('wasteReports').doc(report.id).delete();
+                    deletedReports++;
+
+                    if (deletedReports % 10 === 0 || deletedReports === totalReports) {
+                        showLoading(true, `Deleting ${deletedReports}/${totalReports} reports...`);
+                    }
+
+                } catch (error) {
+                    console.error(`Error deleting report ${report.id}:`, error);
+                }
+            });
+
+            await Promise.all(deletePromises);
+
+            if (i + batchSize < reports.length) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        invalidateReportsCache();
+        await loadReports(true);
+
+        closeDeleteAllModal();
+
+        showNotification(`Deleted ${deletedReports} reports and ${deletedImages} images from storage (${dateFrom} to ${dateTo}).`, 'success');
+
+    } catch (error) {
+        console.error('Error deleting reports by date range:', error);
+        showNotification('Error deleting reports: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
     }
 }
 
 function confirmDeleteAll() {
-    const applyFilters = Performance.getElement('#applyFiltersToDeleteAll')?.checked || false;
-    deleteAllReports(applyFilters);
+    const dateFrom = Performance.getElement('#deleteAllDateFrom')?.value;
+    const dateTo = Performance.getElement('#deleteAllDateTo')?.value;
+    const applyStoreFilter = Performance.getElement('#applyStoreFilterToDeleteAll')?.checked || false;
+    deleteAllReportsByDateRange(dateFrom, dateTo, applyStoreFilter);
 }
 
 // ================================
