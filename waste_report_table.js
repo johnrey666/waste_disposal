@@ -7398,3 +7398,4 @@ window.uploadSignatureImage = uploadSignatureImage;
 window.saveDrawnSignature = saveDrawnSignature;
 window.clearSignaturePad = clearSignaturePad;
 window.toggleDateSort = toggleDateSort;
+window.openDeleteModalById = openDeleteModalById;
