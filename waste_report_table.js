@@ -3799,136 +3799,61 @@ async function deleteSingleImage(reportId, itemIndex, itemType, imageIndex) {
     }
 }
 
+function openDeleteModalById(reportId) {
+    const report = allReportsData.find(r => r.id === reportId) ||
+                   reportsData.find(r => r.id === reportId);
+    if (!report) {
+        showNotification('Report not found', 'error');
+        return;
+    }
+    openDeleteModal(report);
+}
+
 function openDeleteModal(report) {
     if (!isAdmin()) {
         showNotification('Only administrators can delete reports', 'error');
         return;
     }
-    
-    currentReportToDelete = report;
-    
-    const deleteReportInfo = Performance.getElement('#deleteReportInfo');
-    if (deleteReportInfo) {
-        const totalCost = calculateReportCost(report);
-        const approvedCost = calculateApprovedReportCost(report);
-        const itemCount = getItemCount(report);
-        
-        let imageCount = 0;
-        const countImages = (items) => {
-            if (!items) return;
-            items.forEach(item => {
-                if (item.documentation && Array.isArray(item.documentation)) {
-                    imageCount += item.documentation.filter(doc => doc.type?.startsWith('image/')).length;
-                }
-            });
-        };
-        countImages(report.expiredItems);
-        countImages(report.wasteItems);
-        
-        deleteReportInfo.innerHTML = `
-            <p><strong>Report ID:</strong> ${report.reportId || report.id.substring(0, 8)}...</p>
-            <p><strong>Store:</strong> ${report.store || 'N/A'}</p>
-            <p><strong>Date:</strong> ${formatDate(report.reportDate)}</p>
-            <p><strong>Items:</strong> ${itemCount} items (₱${totalCost.toFixed(2)} total, ₱${approvedCost.toFixed(2)} approved)</p>
-            <p><strong>Images:</strong> ${imageCount} images will be deleted</p>
-        `;
-    }
-    
-    const deleteConfirmation = Performance.getElement('#deleteConfirmation');
-    const confirmDeleteButton = Performance.getElement('#confirmDeleteButton');
-    
-    if (deleteConfirmation && confirmDeleteButton) {
-        deleteConfirmation.value = '';
-        confirmDeleteButton.disabled = true;
-        
-        deleteConfirmation.addEventListener('input', function() {
-            confirmDeleteButton.disabled = this.value.toUpperCase() !== 'DELETE';
+
+    const totalCost = calculateReportCost(report);
+    const approvedCost = calculateApprovedReportCost(report);
+    const itemCount = getItemCount(report);
+
+    let imageCount = 0;
+    const countImages = (items) => {
+        if (!items) return;
+        items.forEach(item => {
+            if (item.documentation && Array.isArray(item.documentation)) {
+                imageCount += item.documentation.filter(doc => doc.type?.startsWith('image/')).length;
+            }
         });
-    }
-    
-    const deleteModal = Performance.getElement('#deleteModal');
-    if (deleteModal) {
-        deleteModal.style.display = 'flex';
-        deleteConfirmation?.focus();
+    };
+    countImages(report.expiredItems);
+    countImages(report.wasteItems);
+
+    const confirmed = confirm(
+        `Delete this report?\n\n` +
+        `Store: ${report.store || 'N/A'}\n` +
+        `Date: ${formatDate(report.reportDate)}\n` +
+        `Items: ${itemCount} (₱${totalCost.toFixed(2)})\n` +
+        `Images: ${imageCount}\n\n` +
+        `This action cannot be undone.`
+    );
+
+    if (confirmed) {
+        deleteReport(report.id);
     }
 }
 
 function closeDeleteModal() {
     currentReportToDelete = null;
     const deleteModal = Performance.getElement('#deleteModal');
-    if (deleteModal) {
-        deleteModal.style.display = 'none';
-    }
+    if (deleteModal) deleteModal.style.display = 'none';
 }
 
-function openDeleteAllModal() {
-    if (!isAuthenticated()) {
-        showNotification('Please login to delete reports', 'error');
-        return;
-    }
-
-    if (!isAdmin()) {
-        showNotification('Only administrators can delete reports', 'error');
-        return;
-    }
-
-    const dateFrom = Performance.getElement('#deleteAllDateFrom');
-    const dateTo = Performance.getElement('#deleteAllDateTo');
-    const deleteAllConfirmation = Performance.getElement('#deleteAllConfirmation');
-    const confirmDeleteAllButton = Performance.getElement('#confirmDeleteAllButton');
-    const applyStoreFilterCheckbox = Performance.getElement('#applyStoreFilterToDeleteAll');
-    const rangeCountEl = Performance.getElement('#deleteAllRangeCount');
-
-    if (dateFrom) dateFrom.value = '';
-    if (dateTo) dateTo.value = '';
-    if (applyStoreFilterCheckbox) applyStoreFilterCheckbox.checked = false;
-    if (rangeCountEl) rangeCountEl.textContent = '';
-
-    if (deleteAllConfirmation && confirmDeleteAllButton) {
-        deleteAllConfirmation.value = '';
-        confirmDeleteAllButton.disabled = true;
-
-        deleteAllConfirmation.oninput = function() {
-            confirmDeleteAllButton.disabled = this.value.toUpperCase() !== 'DELETE ALL';
-        };
-    }
-
-    const updateRangeCount = () => {
-        if (!rangeCountEl) return;
-        const from = dateFrom?.value;
-        const to = dateTo?.value;
-
-        if (!from || !to) {
-            rangeCountEl.textContent = '';
-            return;
-        }
-
-        const storeFilter = applyStoreFilterCheckbox?.checked ? Performance.getElement('#filterStore')?.value : '';
-
-        const fromDate = new Date(from);
-        fromDate.setHours(0, 0, 0, 0);
-        const toDate = new Date(to);
-        toDate.setHours(23, 59, 59, 999);
-
-        const matching = allReportsData.filter(report => {
-            const reportDate = new Date(report.reportDate);
-            if (reportDate < fromDate || reportDate > toDate) return false;
-            if (storeFilter && report.store !== storeFilter) return false;
-            return true;
-        });
-
-        rangeCountEl.innerHTML = `<strong>${matching.length}</strong> report(s) match this date range${storeFilter ? ` for store "${storeFilter}"` : ''}.`;
-    };
-
-    if (dateFrom) dateFrom.oninput = updateRangeCount;
-    if (dateTo) dateTo.oninput = updateRangeCount;
-    if (applyStoreFilterCheckbox) applyStoreFilterCheckbox.onchange = updateRangeCount;
-
-    const deleteAllModal = Performance.getElement('#deleteAllModal');
-    if (deleteAllModal) {
-        deleteAllModal.style.display = 'flex';
-        dateFrom?.focus();
-    }
+function confirmDelete() {
+    if (!currentReportToDelete) return;
+    deleteReport(currentReportToDelete.id);
 }
 
 async function deleteAllReportsByDateRange(dateFrom, dateTo, applyStoreFilter = false) {
@@ -4025,6 +3950,14 @@ async function deleteAllReportsByDateRange(dateFrom, dateTo, applyStoreFilter = 
         showNotification('Error deleting reports: ' + error.message, 'error');
     } finally {
         showLoading(false);
+    }
+}
+
+
+function closeDeleteAllModal() {
+    const modal = Performance.getElement('#deleteAllModal');
+    if (modal) {
+        modal.style.display = 'none';
     }
 }
 
@@ -4274,7 +4207,7 @@ function createTableRow(report) {
                     <button class="view-details-btn" onclick="viewReportDetails('${report.id}')" title="${imageCount > 0 ? `View (${imageCount} images)` : 'View'}">
                         <i class="fas fa-eye"></i> View
                     </button>
-                    <button class="delete-btn-small" onclick="openDeleteModal(${JSON.stringify(report).replace(/"/g, '&quot;')})" title="Delete report and images">
+                    <button class="delete-btn-small" onclick="openDeleteModalById('${report.id}')"title="Delete report and images">
                         <i class="fas fa-trash-alt"></i>
                     </button>
                 </div>

@@ -436,7 +436,7 @@ async function uploadFilesForItemParallel(files, reportId, itemId, itemType, ite
         const file = files[i];
         try {
             let fileToUpload = file;
-            if (file.size > 2 * 1024 * 1024 && file.type.startsWith('image/')) {
+            if (file.size > 500 * 1024 && file.type.startsWith('image/')) {
                 fileToUpload = await prepareFileForUpload(file);
             }
          
@@ -1538,7 +1538,7 @@ function validateDisposalTypeSelection() {
 }
 
 async function prepareFileForUpload(file) {
-    if (file.size <= 2 * 1024 * 1024 || !file.type.startsWith('image/')) return file;
+    if (file.size <= 500 * 1024 || !file.type.startsWith('image/')) return file;
 
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
