@@ -2002,26 +2002,30 @@ async function sendEmailConfirmation(reportData, reportId, itemsDetails, isResub
             isResubmission: isActuallyResubmission
         };
      
-        const formData = new FormData();
+ const formData = new FormData();
         Object.keys(emailData).forEach(key => formData.append(key, emailData[key]));
      
         let success = false;
      
         try {
-            const response = await fetch(GAS_CONFIG.ENDPOINT, { method: 'POST', body: formData });
-            if (response.ok) success = true;
+            await fetch(GAS_CONFIG.ENDPOINT, {
+                method: 'POST',
+                body: formData,
+                mode: 'no-cors'
+            });
+            success = true;
         } catch (err) {
-            console.log('FormData failed, trying fallback...');
+            console.error('FormData POST failed:', err);
         }
      
         if (!success) {
             try {
                 const params = new URLSearchParams(emailData);
                 const url = `${GAS_CONFIG.ENDPOINT}?${params.toString()}`;
-                const response = await fetch(url);
-                if (response.ok) success = true;
+                await fetch(url, { mode: 'no-cors' });
+                success = true;
             } catch (err) {
-                console.log('GET fallback failed');
+                console.error('GET fallback failed:', err);
             }
         }
      
